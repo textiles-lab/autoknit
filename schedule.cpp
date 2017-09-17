@@ -28,7 +28,7 @@ struct Loop {
 		else return std::to_string(stitch) + "_" + std::to_string(idx);
 	}
 };
-constexpr const Loop GAP = Loop(-1U, -1U);
+constexpr const Loop INVALID_LOOP = Loop(-1U, -1U);
 
 
 int main(int argc, char **argv) {
@@ -61,7 +61,7 @@ int main(int argc, char **argv) {
 	//------------------------------
 
 	//New scheduling workflow:
-	// (1) split into "steps" ==> tube-supported bits of knitting that will be done at once
+	// (1) split into "steps" ==> bits of knitting that will be done at once
 	//    - each step eventually needs a shape + roll + offset for its output loops
 	//      (implies a shape for input loops)
 	// (2) pick a consistent shape + roll for "interesting" steps
@@ -69,53 +69,213 @@ int main(int argc, char **argv) {
 	//    - effectively, this finds an upward planar embedding, where the edges are chains of construction steps and the vertices occur when steps have more than one tube as a parent or child.
 	// (2) figure out a layout (shape + roll) for each step
 
-	//Cycle is a tube-supported chunk of loops on the bed.
-	struct Cycle : public std::deque< Loop > {
-		//cycle is stored in CCW order.
-		//Loops created by corresponding stitch will either be at the .back() [ccw stitch] or .front() [cw stitch]
-		// one or more 'GAP' stitches may exist in open cycles.
+	//Construction will proceed in "Steps".
+	// Each step will:
+	//  a) shift loops stored on the bed, if needed.
+	//  b) split/merge cycles if needed.
+	//  c) reshape stored loops (roll/increase/decrease)
+	//  d) create some new stitches
 
-		//TODO: shape!
-		//TODO: info about bridges! (== past merges)
+	// In other words, we can build a graph where the edges are loops stored on the bed, and the vertices are steps.
+	// Scheduling means assigning compatible shapes to each edge (equiv: each shape's output)
+
+	//Storage connects steps:
+	typedef uint32_t StepIdx;
+	typedef uint32_t StorageIdx;
+	struct Storage : std::deque< Loop > {
+		Shape shape;
 	};
 
-	//Cycles are 1-1 with stitches -- each stitch creates a new cycle from [part of] an old cycle
-
-	std::vector< Cycle > cycles;
+	struct Step {
+		uint32_t begin = 0, end = 0; //stitch range constructed in this step
+		std::vector< StorageIdx > in, out;
+	};
 
 	#define REPORT_ERROR( X ) do { std::cerr << (X) << std::endl; exit(1); } while(0)
 
-	{ //build cycles:
-		//current yarn position w.r.t. loops:
+	std::vector< Storage > storages;
+	std::vector< Step > steps;
+
+	storages.reserve(2 * stitches.size()); //just how much storage can there actually be?
+	steps.reserve(stitches.size());
+
+	{ //build steps:
+		//current yarn position w.r.t. active loops:
 		struct YarnInfo {
-			Loop loop = GAP;
+			Loop loop = INVALID_LOOP;
 			char direction = '\0';
 		};
 		std::map< uint32_t, YarnInfo > active_yarns;
 
-		//Cycle locations of all active loops:
-		struct CycleIndex {
-			CycleIndex() = default;
-			CycleIndex(uint32_t cycle_, uint32_t index_) : cycle(cycle_), index(index_) { }
-			uint32_t cycle = -1U;
-			uint32_t index = -1U;
-		};
-		std::map< Loop, CycleIndex > active_loops;
+		std::map< Loop, StorageIdx > active_loops;
 
-		/*
-		//helper: get the last-constructed loop from a stitch index:
-		auto last_loop = [&stitches](uint32_t idx) -> Loop {
-			assert(idx < stitches.size());
-			auto const &s = stitches[idx];
-			if (s.out[1] < stitches.size()) {
-				return Loop(idx, 1);
-			} else {
-				assert(s.out[0] < stitches.size());
-				return Loop(idx, 0);
+		struct Bridge {
+			Loop a,b;
+			uint32_t distance = 0;
+		};
+		std::vector< Bridge > bridges;
+
+		uint32_t next_begin = 0;
+		while (next_begin < stitches.size()) {
+			steps.emplace_back();
+			Step &step = steps.back();
+
+			{ //figure out begin/end range for step:
+				step.begin = next_begin;
+				step.end = step.begin + 1;
+				//steps take as many stitches as they can, given some constraints:
+				uint32_t increases = 0, decreases = 0;
+				uint32_t last_shaping = step.begin;
+				if (stitches[step.begin].type == Stitch::Increase) {
+					++increases;
+				}
+				if (stitches[step.begin].type == Stitch::Decrease) {
+					++decreases;
+				}
+				auto basic_type = [](Stitch const &s) {
+					if (s.type == Stitch::Start) return '+';
+					else if (s.type == Stitch::End) return '-';
+					else return '|';
+				};
+				while (step.end < stitches.size()) {
+					//same basic type:
+					if (basic_type(stitches[step.end]) != basic_type(stitches[step.begin])) break;
+					//same direction:
+					if (stitches[step.end].direction != stitches[step.begin].direction) break;
+					//same yarn:
+					if (stitches[step.end].yarn != stitches[step.begin].yarn) break;
+					//same course: (not sure this is really needed, but it does mean that every loop ends up in a Storage at some point)
+					if (stitches[step.end].in[0] != -1U && stitches[step.end].in[0] >= step.begin) break;
+					if (stitches[step.end].in[1] != -1U && stitches[step.end].in[1] >= step.begin) break;
+					//not too many decreases/increases in a segment (...and, if there might be, cut things back a bit)
+					if (stitches[step.end].type == Stitch::Increase) {
+						++increases;
+						if (increases >= 4) {
+							step.end = (step.end - last_shaping + 1) / 2 + last_shaping;
+							break;
+						}
+						last_shaping = step.end;
+					}
+					if (stitches[step.end].type == Stitch::Decrease) {
+						++decreases;
+						if (decreases >= 4) {
+							step.end = (step.end - last_shaping + 1) / 2 + last_shaping;
+							break;
+						}
+						last_shaping = step.end;
+					}
+					++step.end;
+				}
+				next_begin = step.end;
 			}
-		};
-		*/
 
+			std::vector< Loop > in_chain;
+			std::vector< Loop > out_chain;
+
+			//stitches take in_chain -> out_chain:
+			for (uint32_t si = step.begin; si != step.end; ++si) {
+				for (uint32_t i = 0; i < 2; ++i) {
+					if (stitches[si].in[i] == -1U) continue;
+					Loop l(stitches[si].in[i], 0);
+					if (stitches[l.stitch].out[0] == si) l.idx = 0;
+					else if (stitches[l.stitch].out[1] == si) l.idx = 1;
+					else assert(false && "stitches should be properly linked");
+					in_chain.emplace_back(l);
+				}
+				for (uint32_t o = 0; o < 2; ++o) {
+					if (stitches[si].out[o] == -1U) continue;
+					out_chain.emplace_back(si, o);
+				}
+			}
+
+		
+			if (stitches[step.begin].direction == CW) {
+				std::reverse(in_chain.begin(), in_chain.end());
+				std::reverse(out_chain.begin(), out_chain.end());
+			}
+
+			YarnInfo &yarn = active_yarns[stitches[step.begin].yarn];
+
+			{ //fill in step's 'in' array based on storages holding in_chain:
+				std::set< StorageIdx > used;
+				for (auto const &l : in_chain) {
+					auto f = active_loops.find(l);
+					assert(f != active_loops.end() && "stitches should depend only on active stuff");
+					used.insert(f->second);
+				}
+				if (yarn.loop != INVALID_LOOP && yarn.direction == ) {
+					auto f = active_loops.find(yarn.loop);
+					assert(f != active_loops.end() && "active yarn should reference active stuff");
+					used.insert(f->second);
+				}
+
+				step.in.assign(used.begin(), used.end());
+			}
+
+			{ //do some loop surgery to figure out 'out' storages:
+				struct LoopLinks {
+					LoopLinks(Loop const &loop_, uint32_t next_, uint32_t prev_) : loop(loop_), next(next_), prev(prev_) {
+					}
+					Loop loop = INVALID_LOOP;
+					uint32_t next = -1U, prev = -1U;
+				};
+				std::vector< LoopLinks > links;
+				for (auto storage_idx : step.in) {
+					Storage const &storage = storages[storage_idx];
+					uint32_t first = links.size();
+					uint32_t last = links.size() + storage.size() - 1;
+					for (uint32_t i = 0; i < storage.size(); ++i) {
+						links.emplace_back(storage[i], (i + 1 < storage.size() ? i + 1 : first), (i > 0 ? i - 1 : last));
+					}
+				}
+
+
+				//flip and re-jigger yarn links:
+				auto link_ccw = [&links](Loop const &a, Loop const &b) {
+					uint32_t la = -1U, lb = -1U;
+					for (auto &ll : links) {
+						if (ll.loop == a) {
+							la = &ll - &links[0];
+							if (lb != -1U) break;
+						}
+						if (ll.loop == b) {
+							lb = &ll - &links[0];
+							if (la != -1U) break;
+						}
+					}
+					assert(la < links.size() && lb < links.size() && "should only try to link things that are in array of links");
+
+					//<---- I was here. This should be simple pointer surgery.
+
+
+				};
+
+				for (uint32_t i = 0; i + 1 < in_chain.size(); ++i) {
+					link_ccw(in_chain[i], in_chain[i+1]);
+				}
+
+				if (yarn.loop != INVALID_LOOP) {
+					if (yarn.direction != stitches[step.begin].direction) {
+						//reversing direction should happen on the same stitch:
+						assert(!in_chain.empty() && yarn.loop == in_chain[0]);
+					} else {
+						assert(!in_chain.empty() && "Don't handle linking yarn into starts, though that might be useful.");
+						if (yarn.direction == Stitch::CCW) { //formed ccw, so yarn link is before first elt of chain:
+							link_ccw(yarn.loop, in_chain[0]);
+						} else {
+							link_ccw(in_chain.back(), yarn.loop);
+						}
+					}
+				}
+
+				//now read out new circular storage arrays... (?)
+
+
+			}
+
+		}
+
+#if 0
 		//helper: make a new active cycle by:
 		// (1) finding the 'find' loops
 		// (2a) merging cycles so that they are in the same cycle
@@ -334,6 +494,7 @@ int main(int argc, char **argv) {
 		
 		
 	}
+#endif //#def'ing out other method
 
 	return 0;
 }
