@@ -3,6 +3,7 @@
 #include <glm/glm.hpp>
 
 #include <vector>
+#include <string>
 
 struct Stitch {
 	//which yarn the stitch is being made with:
