@@ -1,4 +1,5 @@
 #include "Stitch.hpp"
+#include "Shape.hpp"
 
 #include "TaggedArguments.hpp"
 
@@ -474,7 +475,57 @@ int main(int argc, char **argv) {
 		} //while (more stitches)
 
 	} //end of build steps
-	
+
+
+	{ //Figure out possible shapes for storages near *interesting* steps:
+		std::cout << "Figuring out shapes for interesting steps:" << std::endl; //DEBUG
+		for (auto const &step : steps) {
+			//interesting steps have more than one out/in:
+			if (step.in.size() <= 1 && step.out.size() <= 1) continue;
+
+			std::cout << "steps[" << (&step - &steps[0]) << "]:\n"; //DEBUG
+
+			{ //DEBUG
+				for (StorageIdx s : step.in) {
+					std::cout << "  uses storages[" << s << "]:";
+					for (auto const &l : storages[s]) std::cout << " " << l.to_string();
+					std::cout << "\n";
+				}
+				for (StorageIdx s : step.out) {
+					std::cout << "  makes storages[" << s << "]:";
+					for (auto const &l : storages[s]) std::cout << " " << l.to_string();
+					std::cout << "\n";
+				}
+				std::cout.flush();
+			}
+
+			//shape of in storage => shape of intermediate storage => shape of out storage
+			//"intermediate" storage is shape of storage before increase/decrease, so might end up rolled.
+			// but important not to roll too much relative to bridges(!)
+
+			//<---- I WAS HERE
+
+			//Brute force idea:
+			// tag each loop in in shapes with its intermediate-shape loop number + index.
+			// For every order of in shapes,
+			//  for every nibble/roll of each in shape,
+			//   does splatting all the numbers produce nice intermediate shapes?
+			//    if so, how can we roll/change nibbles on these shapes in a way that works with bridges?
+
+			//Slightly different:
+			// what are all the output orders, rolls, nibbles that work with the bridges?
+			//   okay, so what intermediate loops + blanks do those come from?
+			//     okay, so what input shapes do those come from?
+
+			//(vision being that the construction process looks like:
+			//   -- arrange all input storages
+			//   -- compact all input storages
+			//   -- do knitting
+			// )
+
+
+		}
+	}
 
 #if 0
 		//helper: make a new active cycle by:
