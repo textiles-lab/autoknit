@@ -6,6 +6,7 @@
 #include <map>
 #include <set>
 #include <algorithm>
+#include <list>
 
 //Loop held on a needle:
 struct Loop {
@@ -80,10 +81,9 @@ int main(int argc, char **argv) {
 	// Scheduling means assigning compatible shapes to each edge (equiv: each shape's output)
 
 	//Storage connects steps:
-	typedef uint32_t StepIdx;
 	typedef uint32_t StorageIdx;
 	struct Storage : std::deque< Loop > {
-		Shape shape;
+		//Shape shape;
 	};
 
 	struct Step {
@@ -117,6 +117,8 @@ int main(int argc, char **argv) {
 
 		uint32_t next_begin = 0;
 		while (next_begin < stitches.size()) {
+			std::cout << "steps[" << steps.size() << "]:\n"; //DEBUG
+
 			steps.emplace_back();
 			Step &step = steps.back();
 
@@ -189,9 +191,23 @@ int main(int argc, char **argv) {
 			}
 
 		
-			if (stitches[step.begin].direction == CW) {
+			if (stitches[step.begin].direction == Stitch::CW) {
 				std::reverse(in_chain.begin(), in_chain.end());
 				std::reverse(out_chain.begin(), out_chain.end());
+			}
+
+			{ //DEBUG
+				std::cout << "  in:";
+				for (auto const &l : in_chain) {
+					std::cout << " " << l.to_string();
+				}
+				std::cout << '\n';
+				std::cout << "  out:";
+				for (auto const &l : out_chain) {
+					std::cout << " " << l.to_string();
+				}
+				std::cout << '\n';
+				std::cout.flush();
 			}
 
 			YarnInfo &yarn = active_yarns[stitches[step.begin].yarn];
@@ -203,7 +219,7 @@ int main(int argc, char **argv) {
 					assert(f != active_loops.end() && "stitches should depend only on active stuff");
 					used.insert(f->second);
 				}
-				if (yarn.loop != INVALID_LOOP && yarn.direction == ) {
+				if (yarn.loop != INVALID_LOOP) {
 					auto f = active_loops.find(yarn.loop);
 					assert(f != active_loops.end() && "active yarn should reference active stuff");
 					used.insert(f->second);
@@ -213,40 +229,87 @@ int main(int argc, char **argv) {
 			}
 
 			{ //do some loop surgery to figure out 'out' storages:
-				struct LoopLinks {
-					LoopLinks(Loop const &loop_, uint32_t next_, uint32_t prev_) : loop(loop_), next(next_), prev(prev_) {
-					}
-					Loop loop = INVALID_LOOP;
-					uint32_t next = -1U, prev = -1U;
-				};
-				std::vector< LoopLinks > links;
+				std::list< Storage > outs;
 				for (auto storage_idx : step.in) {
-					Storage const &storage = storages[storage_idx];
-					uint32_t first = links.size();
-					uint32_t last = links.size() + storage.size() - 1;
-					for (uint32_t i = 0; i < storage.size(); ++i) {
-						links.emplace_back(storage[i], (i + 1 < storage.size() ? i + 1 : first), (i > 0 ? i - 1 : last));
-					}
+					outs.emplace_back(storages[storage_idx]);
 				}
 
+				//flip and re-jigger yarn storages:
+				auto link_ccw = [&outs](Loop const &a, Loop const &b) {
+					std::list< Storage >::iterator sa = outs.end();
+					uint32_t la = -1U;
+					std::list< Storage >::iterator sb = outs.end();
+					uint32_t lb = -1U;
 
-				//flip and re-jigger yarn links:
-				auto link_ccw = [&links](Loop const &a, Loop const &b) {
-					uint32_t la = -1U, lb = -1U;
-					for (auto &ll : links) {
-						if (ll.loop == a) {
-							la = &ll - &links[0];
-							if (lb != -1U) break;
-						}
-						if (ll.loop == b) {
-							lb = &ll - &links[0];
-							if (la != -1U) break;
+					for (auto oi = outs.begin(); oi != outs.end(); ++oi) {
+						for (uint32_t li = 0; li < oi->size(); ++li) {
+							if ((*oi)[li] == a) {
+								assert(sa == outs.end());
+								sa = oi;
+								assert(la == -1U);
+								la = li;
+							}
+							if ((*oi)[li] == b) {
+								assert(sb == outs.end());
+								sb = oi;
+								assert(lb == -1U);
+								lb = li;
+							}
 						}
 					}
-					assert(la < links.size() && lb < links.size() && "should only try to link things that are in array of links");
+					assert(sa != outs.end() && la < sa->size());
+					assert(sb != outs.end() && lb < sb->size());
 
-					//<---- I was here. This should be simple pointer surgery.
-
+					if (sa == sb) {
+						if ((la + 1) % sa->size() == lb) {
+							//already ccw! great.
+						} else {
+							//must split loop.
+							Storage non_ab;
+							Storage ab;
+							if (la < lb) {
+								ab.insert(ab.end(), sa->begin(), sa->begin() + la + 1);
+								non_ab.insert(non_ab.end(), sa->begin() + la + 1, sa->begin() + lb);
+								ab.insert(ab.end(), sa->begin() + lb, sa->end());
+							} else { assert(lb < la);
+								non_ab.insert(non_ab.end(), sa->begin(), sa->begin() + lb);
+								ab.insert(ab.end(), sa->begin() + lb, sa->begin() + la + 1);
+								non_ab.insert(non_ab.end(), sa->begin() + la + 1, sa->end());
+							}
+							//PARANOIA:
+							assert(non_ab.size() + ab.size() == sa->size());
+							la = -1U;
+							lb = -1U;
+							for (uint32_t li = 0; li < ab.size(); ++li) {
+								if (ab[li] == a) {
+									assert(la == -1U);
+									la = li;
+								}
+								if (ab[li] == b) {
+									assert(lb == -1U);
+									lb = li;
+								}
+							}
+							assert(la != -1U && lb != -1U);
+							assert((la + 1) % ab.size() == lb);
+							for (auto const &l : non_ab) {
+								assert(l != a && l != b);
+							}
+							//end PARANOIA
+							*sa = std::move(ab);
+							outs.emplace_back(non_ab);
+						}
+					} else {
+						//must merge loops
+						std::rotate(sa->begin(), sa->begin() + (la + 1), sa->end());
+						assert(sa->back() == a);
+						std::rotate(sb->begin(), sb->begin() + lb, sb->end());
+						assert(sb->front() == b);
+						//TODO: add_bridge(sa->front(), sa->back())
+						//TODO: add_bridge(sb->front(), sb->back())
+						sa->insert(sa->end(), sb->begin(), sb->end());
+						outs.erase(sb);
+					}
 
 				};
 
@@ -257,7 +320,7 @@ int main(int argc, char **argv) {
 				if (yarn.loop != INVALID_LOOP) {
 					if (yarn.direction != stitches[step.begin].direction) {
 						//reversing direction should happen on the same stitch:
-						assert(!in_chain.empty() && yarn.loop == in_chain[0]);
+						assert(!in_chain.empty() && yarn.loop == (stitches[step.begin].direction == Stitch::CCW ? in_chain[0] : in_chain.back()));
 					} else {
 						assert(!in_chain.empty() && "Don't handle linking yarn into starts, though that might be useful.");
 						if (yarn.direction == Stitch::CCW) { //formed ccw, so yarn link is before first elt of chain:
@@ -268,12 +331,150 @@ int main(int argc, char **argv) {
 					}
 				}
 
-				//now read out new circular storage arrays... (?)
+				//Now 'outs' should have in_chain in one ccw list.
+				// --> replace with out_chain.
+				if (in_chain.empty()) {
+					//empty in chain -> create a new cycle~
+					Storage result;
+					result.insert(result.end(), out_chain.begin(), out_chain.end());
+					outs.emplace_back(result);
+				} else {
+					//check that in_chain is indeed in order:
+					std::list< Storage >::iterator s = outs.end();
+					uint32_t l = -1U;
 
+					for (auto oi = outs.begin(); oi != outs.end(); ++oi) {
+						for (uint32_t li = 0; li < oi->size(); ++li) {
+							if ((*oi)[li] == in_chain[0]) {
+								assert(s == outs.end());
+								s = oi;
+								assert(l == -1U);
+								l = li;
+							}
+						}
+					}
+					assert(s != outs.end());
+					assert(l < s->size());
+					std::rotate(s->begin(), s->begin() + l, s->end());
 
+					assert(s->size() >= in_chain.size());
+					for (uint32_t i = 0; i < in_chain.size(); ++i) {
+						assert((*s)[i] == in_chain[i]);
+					}
+
+					s->erase(s->begin(), s->begin() + in_chain.size());
+					s->insert(s->begin(), out_chain.begin(), out_chain.end());
+					if (s->empty()) {
+						outs.erase(s);
+					}
+				}
+				uint32_t base = storages.size();
+				storages.insert(storages.end(), outs.begin(), outs.end());
+				for (uint32_t i = base; i < storages.size(); ++i) {
+					step.out.push_back(i);
+				}
 			}
 
-		}
+			{ //DEBUG
+				for (StorageIdx s : step.in) {
+					std::cout << "  uses storages[" << s << "]:";
+					for (auto const &l : storages[s]) std::cout << " " << l.to_string();
+					std::cout << "\n";
+				}
+				for (StorageIdx s : step.out) {
+					std::cout << "  makes storages[" << s << "]:";
+					for (auto const &l : storages[s]) std::cout << " " << l.to_string();
+					std::cout << "\n";
+				}
+				std::cout.flush();
+			}
+
+			{ //update active yarn:
+				if (out_chain.empty()) {
+					//no outs -> take yarn out.
+					auto f = active_yarns.find(stitches[step.begin].yarn);
+					assert(f != active_yarns.end());
+					active_yarns.erase(f);
+				} else {
+					yarn.loop = Loop(
+						step.end-1,
+						stitches[step.end-1].out[1] != -1U ? 1 : 0
+					);
+					assert(stitches[step.end-1].out[yarn.loop.idx] != -1U);
+					yarn.direction = stitches[step.end-1].direction;
+				}
+			}
+
+			{ //update ~other ~ yarns:
+				std::map< Loop, Loop > cw_out;
+				std::map< Loop, Loop > ccw_out;
+				for (uint32_t si = step.begin; si < step.end; ++si) {
+					Loop cw = Loop(si, -1U);
+					Loop ccw = Loop(si, -1U);
+					if (stitches[si].out[0] == -1U) {
+						//leave with '-1U' for out idx
+					} else if (stitches[si].out[1] == -1U) {
+						cw.idx = ccw.idx = 0;
+					} else {
+						if (stitches[si].direction == Stitch::CCW) {
+							cw.idx = 0;
+							ccw.idx = 1;
+						} else {
+							cw.idx = 1;
+							ccw.idx = 0;
+						}
+					}
+					for (uint32_t i = 0; i < 2; ++i) {
+						if (stitches[si].in[i] == -1U) continue;
+						Loop from(stitches[si].in[i], stitches[stitches[si].in[0]].find_out(si));
+						auto res = cw_out.insert(std::make_pair(from, cw));
+						assert(res.second);
+						res = ccw_out.insert(std::make_pair(from, ccw));
+						assert(res.second);
+					}
+
+					//TODO: (this would be a good place to update bridges as well)
+				}
+				for (auto &i_ay : active_yarns) {
+					auto &ay = i_ay.second;
+					if (ay.direction == Stitch::CCW) {
+						auto f = ccw_out.find(ay.loop);
+						if (f != ccw_out.end()) {
+							ay.loop = f->second;
+						}
+					} else {
+						auto f = cw_out.find(ay.loop);
+						if (f != cw_out.end()) {
+							ay.loop = f->second;
+						}
+					}
+					if (ay.loop.idx == -1U) {
+						//TODO: need to take yarn out, probably; does this ever come up though?
+						assert(false && "yarn-out case that probably never comes up");
+					}
+				}
+			}
+
+			{ //update active_loops:
+				for (StorageIdx i : step.in) {
+					for (auto const &l : storages[i]) {
+						auto f = active_loops.find(l);
+						assert(f != active_loops.end());
+						active_loops.erase(f);
+					}
+				}
+				for (StorageIdx i : step.out) {
+					for (auto const &l : storages[i]) {
+						assert(!active_loops.count(l));
+						active_loops[l] = i;
+					}
+				}
+			}
+
+		} //while (more stitches)
+
+	} //end of build steps
+	
 
 #if 0
 		//helper: make a new active cycle by:
