@@ -1,5 +1,7 @@
 #include "Stitch.hpp"
 #include "Shape.hpp"
+#include "typeset.hpp"
+#include "ScheduleCost.hpp"
 
 #include "TaggedArguments.hpp"
 
@@ -31,6 +33,38 @@ struct Loop {
 	}
 };
 constexpr const Loop INVALID_LOOP = Loop(-1U, -1U);
+
+
+struct CycleIndex {
+	CycleIndex(uint32_t cycle_, uint32_t index_) : cycle(cycle_), index(index_) { }
+	uint32_t cycle = -1U;
+	uint32_t index = -1U;
+	bool operator!=(CycleIndex const &o) const {
+		return cycle != o.cycle && index != o.index;
+	}
+	std::string to_string() const {
+		if (cycle == -1U && index == -1U) return ".";
+		return std::to_string(int32_t(cycle)) + "-" + std::to_string(int32_t(index));
+	}
+	std::string to_string_simple() const {
+		if (cycle == -1U && index == -1U) return ".";
+		if (cycle < 26) {
+			if (index == 0) {
+				return std::string() + char('A' + cycle);
+			} else if (index == 1) {
+				return std::string() + '+';
+			} else {
+				return std::string() + char('a' + cycle);
+			}
+		} else {
+			if (index == 0) {
+				return std::string() + '*';
+			} else {
+				return std::string() + 'x';
+			}
+		}
+	}
+};
 
 
 int main(int argc, char **argv) {
@@ -87,9 +121,26 @@ int main(int argc, char **argv) {
 		//Shape shape;
 	};
 
+	struct ScheduleOption {
+		ScheduleCost cost;
+		std::vector< uint32_t > in_order;
+		std::vector< PackedShape > in_shapes;
+		PackedShape inter_shape;
+		std::vector< uint32_t > out_order;
+		std::vector< PackedShape > out_shapes;
+	};
+
 	struct Step {
 		uint32_t begin = 0, end = 0; //stitch range constructed in this step
 		std::vector< StorageIdx > in, out;
+		Storage inter; //configuration of loops after input arrangement but before performing stitches
+		std::vector< uint32_t > inter_to_out; //how stitches in inter are transformed to get to out
+
+		//Step reinterprets storages[in[*]] as inter + storages[out[1...]]
+		// stretches and rolls inter,
+		// and performs knitting on inter to produce storages[out[0]]
+
+		std::vector< ScheduleOption > options;
 	};
 
 	#define REPORT_ERROR( X ) do { std::cerr << (X) << std::endl; exit(1); } while(0)
@@ -99,6 +150,15 @@ int main(int argc, char **argv) {
 
 	storages.reserve(2 * stitches.size()); //just how much storage can there actually be?
 	steps.reserve(stitches.size());
+
+	//get the out loop for a given 'in':
+	auto source_loop = [&stitches](uint32_t si, uint32_t ii) {
+		assert(stitches[si].in[ii] < stitches.size());
+		Loop ret(stitches[si].in[ii], 0);
+		if (stitches[ret.stitch].out[ret.idx] != si) ret.idx = 1;
+		assert(stitches[ret.stitch].out[ret.idx] == si);
+		return ret;
+	};
 
 	{ //build steps:
 		//current yarn position w.r.t. active loops:
@@ -118,7 +178,7 @@ int main(int argc, char **argv) {
 
 		uint32_t next_begin = 0;
 		while (next_begin < stitches.size()) {
-			std::cout << "steps[" << steps.size() << "]:\n"; //DEBUG
+			//std::cout << "steps[" << steps.size() << "]:\n"; //DEBUG
 
 			steps.emplace_back();
 			Step &step = steps.back();
@@ -179,10 +239,7 @@ int main(int argc, char **argv) {
 			for (uint32_t si = step.begin; si != step.end; ++si) {
 				for (uint32_t i = 0; i < 2; ++i) {
 					if (stitches[si].in[i] == -1U) continue;
-					Loop l(stitches[si].in[i], 0);
-					if (stitches[l.stitch].out[0] == si) l.idx = 0;
-					else if (stitches[l.stitch].out[1] == si) l.idx = 1;
-					else assert(false && "stitches should be properly linked");
+					Loop l = source_loop(si, i);
 					in_chain.emplace_back(l);
 				}
 				for (uint32_t o = 0; o < 2; ++o) {
@@ -191,13 +248,12 @@ int main(int argc, char **argv) {
 				}
 			}
 
-		
 			if (stitches[step.begin].direction == Stitch::CW) {
 				std::reverse(in_chain.begin(), in_chain.end());
 				std::reverse(out_chain.begin(), out_chain.end());
 			}
 
-			{ //DEBUG
+			/*{ //DEBUG
 				std::cout << "  in:";
 				for (auto const &l : in_chain) {
 					std::cout << " " << l.to_string();
@@ -209,7 +265,7 @@ int main(int argc, char **argv) {
 				}
 				std::cout << '\n';
 				std::cout.flush();
-			}
+			}*/
 
 			YarnInfo &yarn = active_yarns[stitches[step.begin].yarn];
 
@@ -333,12 +389,16 @@ int main(int argc, char **argv) {
 				}
 
 				//Now 'outs' should have in_chain in one ccw list.
+
 				// --> replace with out_chain.
 				if (in_chain.empty()) {
 					//empty in chain -> create a new cycle~
+
+					step.inter = Storage(); //inter is an empty cycle
+
 					Storage result;
 					result.insert(result.end(), out_chain.begin(), out_chain.end());
-					outs.emplace_back(result);
+					outs.emplace_front(result);
 				} else {
 					//check that in_chain is indeed in order:
 					std::list< Storage >::iterator s = outs.end();
@@ -358,6 +418,13 @@ int main(int argc, char **argv) {
 					assert(l < s->size());
 					std::rotate(s->begin(), s->begin() + l, s->end());
 
+					//move 's' to outs[0]:
+					std::swap(*outs.begin(), *s);
+					s = outs.begin();
+
+					//store the pre-transform version of outs[0] as the step's "inter":
+					step.inter = *s;
+
 					assert(s->size() >= in_chain.size());
 					for (uint32_t i = 0; i < in_chain.size(); ++i) {
 						assert((*s)[i] == in_chain[i]);
@@ -367,6 +434,7 @@ int main(int argc, char **argv) {
 					s->insert(s->begin(), out_chain.begin(), out_chain.end());
 					if (s->empty()) {
 						outs.erase(s);
+						//TODO: special flag for steps whose inter doesn't actually turn into outs[0] ?
 					}
 				}
 				uint32_t base = storages.size();
@@ -376,7 +444,74 @@ int main(int argc, char **argv) {
 				}
 			}
 
-			{ //DEBUG
+			if (step.in.size() > 0 && step.out.size() > 0) {
+				//make a map from step.inter -> step.out[0]
+				std::vector< uint32_t > inter_to_out(step.inter.size(), -1U);
+		
+				std::map< Loop, CycleIndex > inter_loops;
+				std::map< Loop, CycleIndex > out_loops;
+
+				for (uint32_t oi = 0; oi < step.out.size(); ++oi) {
+					Storage const &inter = (oi == 0 ? step.inter : storages[step.out[oi]]);
+					for (uint32_t i = 0; i < inter.size(); ++i) {
+						auto const &l = inter[i];
+						auto ret = inter_loops.insert(std::make_pair(l, CycleIndex(oi, i)));
+						assert(ret.second);
+					}
+					Storage const &out = storages[step.out[oi]];
+					for (uint32_t i = 0; i < out.size(); ++i) {
+						auto const &l = out[i];
+						auto ret = out_loops.insert(std::make_pair(l, CycleIndex(oi, i)));
+						assert(ret.second);
+					}
+				}
+		
+				//First, the loops that actually change because of stitches:
+				for (uint32_t si = step.begin; si != step.end; ++si) {
+					Stitch const &stitch = stitches[si];
+					if (stitch.type == Stitch::Tuck || stitch.type == Stitch::Miss || stitch.type == Stitch::Knit
+					 || stitch.type == Stitch::Increase) {
+						auto f = inter_loops.find(source_loop(si,0));
+						assert(f != inter_loops.end());
+						assert(f->second.cycle == 0 && f->second.index < inter_to_out.size());
+	
+						auto t = out_loops.find(Loop(si, 0));
+						assert(t != out_loops.end());
+						assert(t->second.cycle == 0 && t->second.index < storages[step.out[0]].size());
+	
+						assert(inter_to_out[f->second.index] == -1U);
+						inter_to_out[f->second.index] = t->second.index;
+
+					} else if (stitch.type == Stitch::Decrease) {
+						auto t = out_loops.find(Loop(si, 0));
+						assert(t != out_loops.end());
+						assert(t->second.cycle == 0 && t->second.index < storages[step.out[0]].size());
+						for (uint32_t i = 0; i < 2; ++i) {
+							auto f = inter_loops.find(source_loop(si,i));
+							assert(f != inter_loops.end());
+							assert(f->second.cycle == 0 && f->second.index < inter_to_out.size());
+
+							assert(inter_to_out[f->second.index] == -1U);
+							inter_to_out[f->second.index] = t->second.index;
+						}
+					} else {
+						assert(0 && "Unsupported stitch type.");
+					}
+				}
+
+				//add things in the cycle that aren't touched by stitches:
+				for (uint32_t ii = 0; ii < step.inter.size(); ++ii) {
+					if (inter_to_out[ii] != -1U) continue;
+					auto t = out_loops.find(step.inter[ii]);
+					assert(t != out_loops.end());
+					assert(t->second.cycle == 0 && t->second.index < storages[step.out[0]].size());
+					inter_to_out[ii] = t->second.index;
+				}
+
+				step.inter_to_out = inter_to_out;
+			}
+
+			/*{ //DEBUG
 				for (StorageIdx s : step.in) {
 					std::cout << "  uses storages[" << s << "]:";
 					for (auto const &l : storages[s]) std::cout << " " << l.to_string();
@@ -388,7 +523,7 @@ int main(int argc, char **argv) {
 					std::cout << "\n";
 				}
 				std::cout.flush();
-			}
+			}*/
 
 			{ //update active yarn:
 				if (out_chain.empty()) {
@@ -477,276 +612,424 @@ int main(int argc, char **argv) {
 	} //end of build steps
 
 
-	{ //Figure out possible shapes for storages near *interesting* steps:
-		std::cout << "Figuring out shapes for interesting steps:" << std::endl; //DEBUG
-		for (auto const &step : steps) {
-			//interesting steps have more than one out/in:
-			if (step.in.size() <= 1 && step.out.size() <= 1) continue;
+	//Figure out possible shapes for storages near *interesting* steps:
+	std::cout << "Figuring out shapes for interesting steps:" << std::endl; //DEBUG
+	for (auto &step : steps) {
+		//interesting steps have more than one out/in:
+		if (step.in.size() <= 1 && step.out.size() <= 1) continue;
 
-			std::cout << "steps[" << (&step - &steps[0]) << "]:\n"; //DEBUG
+		std::cout << "\nsteps[" << (&step - &steps[0]) << "]:\n"; //DEBUG
 
-			{ //DEBUG
-				for (StorageIdx s : step.in) {
-					std::cout << "  uses storages[" << s << "]:";
-					for (auto const &l : storages[s]) std::cout << " " << l.to_string();
-					std::cout << "\n";
+		{ //DEBUG
+			for (StorageIdx s : step.in) {
+				std::cout << "  uses storages[" << s << "]:";
+				for (auto const &l : storages[s]) std::cout << " " << l.to_string();
+				std::cout << "\n";
+			}
+			for (StorageIdx s : step.out) {
+				std::cout << "  makes storages[" << s << "]:";
+				for (auto const &l : storages[s]) std::cout << " " << l.to_string();
+				std::cout << "\n";
+			}
+			std::cout.flush();
+		}
+
+		//Construction model:
+		// input cycles come in some order and shape
+		// (input cycles are perhaps reshaped) <-- "late reshape"
+		// middle (intermediate) cycle is created
+		// intermediate cycle is reshaped
+		// knitting happens
+
+	
+		//get local copies of storages:
+		std::vector< Storage > ins, outs, intermediates;
+		for (auto si : step.in) {
+			ins.emplace_back(storages[si]);
+		}
+		for (auto si : step.out) {
+			outs.emplace_back(storages[si]);
+		}
+		intermediates.emplace_back(step.inter);
+		for (uint32_t i = 1; i < step.out.size(); ++i) {
+			intermediates.emplace_back(storages[step.out[i]]);
+		}
+
+		//The contents of 'inter + outs[1...]' and 'ins' should be the same. Construct a mapping:
+		std::vector< std::vector< CycleIndex > > in_to_inter;
+		{
+			std::map< Loop, CycleIndex > loops;
+			for (auto const &inter : intermediates) {
+				for (uint32_t i = 0; i < inter.size(); ++i) {
+					auto const &l = inter[i];
+					auto ret = loops.insert(std::make_pair(l, CycleIndex(&inter - &intermediates[0], i)));
+					assert(ret.second);
 				}
-				for (StorageIdx s : step.out) {
-					std::cout << "  makes storages[" << s << "]:";
-					for (auto const &l : storages[s]) std::cout << " " << l.to_string();
-					std::cout << "\n";
+			}
+			uint32_t used = 0;
+			in_to_inter.reserve(ins.size());
+			for (auto const &in : ins) {
+				in_to_inter.emplace_back();
+				in_to_inter.back().reserve(in.size());
+				for (auto const &l : in) {
+					auto f = loops.find(l);
+					assert(f != loops.end());
+					in_to_inter.back().emplace_back(f->second);
+					++used;
 				}
-				std::cout.flush();
+				assert(in_to_inter.back().size() == in.size());
+			}
+			assert(in_to_inter.size() == ins.size());
+			assert(used == loops.size());
+		}
+
+		//intermediates[0] (== step.inter) gets knit on and changes contents before its output:
+		assert(step.inter_to_out.size() == step.inter.size());
+
+		//TODO: ~cache of transfer costs~
+
+
+		//enumerate input orders and shapes:
+		//  -- for each order, test if the intermediate storages are all cycles
+		//     then figure out cost to reshape for knitting (for all possible reshapes)
+		//     add [cost, input order, input shapes, output shapes, output order] to possible shapes list
+		std::vector< uint32_t > remaining;
+		remaining.reserve(ins.size());
+		for (uint32_t i = 0; i < ins.size(); ++i) {
+			remaining.emplace_back(i);
+		}
+		std::vector< uint32_t > in_order;
+		std::vector< PackedShape > in_shapes(ins.size(), -1U);
+		std::vector< CycleIndex > front;
+		std::vector< CycleIndex > back;
+
+		//Given a current order, test to see if it leaves intermediates in a valid configuration:
+		auto test_order = [&]() -> const char * {
+			struct Info {
+				uint32_t back_min = -1U;
+				uint32_t back_max = 0;
+				uint32_t front_min = -1U;
+				uint32_t front_max = 0;
+				uint32_t zero_index = -1U;
+				bool zero_on_back = false;
+			};
+			std::vector< Info > inter_info(intermediates.size());
+			for (uint32_t i = 0; i < back.size(); ++i) {
+				auto const &ci = back[i];
+				if (ci.cycle == -1U) continue; //gap
+				assert(ci.cycle < inter_info.size());
+				auto &info = inter_info[ci.cycle];
+				info.back_min = std::min(info.back_min, i);
+				info.back_max = std::max(info.back_max, i);
+				if (ci.index == 0) {
+					assert(info.zero_index == -1U);
+					info.zero_index = i;
+					info.zero_on_back = true;
+				}
+			}
+			for (uint32_t i = 0; i < front.size(); ++i) {
+				auto const &ci = front[i];
+				if (ci.cycle == -1U) continue; //gap
+				assert(ci.cycle < inter_info.size());
+				auto &info = inter_info[ci.cycle];
+				info.front_min = std::min(info.front_min, i);
+				info.front_max = std::max(info.front_max, i);
+				if (ci.index == 0) {
+					assert(info.zero_index == -1U);
+					info.zero_index = i;
+					info.zero_on_back = false;
+				}
 			}
 
-			//shape of in storage => shape of intermediate storage => shape of out storage
-			//"intermediate" storage is shape of storage before increase/decrease, so might end up rolled.
-			// but important not to roll too much relative to bridges(!)
-
-			//<---- I WAS HERE
-
-			//Brute force idea:
-			// tag each loop in in shapes with its intermediate-shape loop number + index.
-			// For every order of in shapes,
-			//  for every nibble/roll of each in shape,
-			//   does splatting all the numbers produce nice intermediate shapes?
-			//    if so, how can we roll/change nibbles on these shapes in a way that works with bridges?
-
-			//Slightly different:
-			// what are all the output orders, rolls, nibbles that work with the bridges?
-			//   okay, so what intermediate loops + blanks do those come from?
-			//     okay, so what input shapes do those come from?
-
-			//(vision being that the construction process looks like:
-			//   -- arrange all input storages
-			//   -- compact all input storages
-			//   -- do knitting
-			// )
-
-
-		}
-	}
-
-#if 0
-		//helper: make a new active cycle by:
-		// (1) finding the 'find' loops
-		// (2a) merging cycles so that they are in the same cycle
-		// (2b) splitting cycle if crossing (note: stitch_direction used to figure out which part to take)
-		// (3) replacing them with the 'replace' loops
-		auto make_cycle = [&cycles, &active_loops](std::vector< Loop > const &find, std::vector< Loop > const &replace /*, char stitch_direction */) {
-			//(Not as general a function as it appears.)
-
-			//helper: find loop using index
-			auto find_loop = [&active_loops](Loop const &loop) -> CycleIndex const & {
-				auto f = active_loops.find(loop);
-				assert(f != active_loops.end() && "expecting an active loop");
-				return f->second;
-			};
-
-			auto roll_to_back = [](Cycle &cycle, uint32_t index) {
-				assert(index < cycle.size());
-				std::rotate(cycle.begin(), cycle.begin() + index + 1, cycle.end());
-			};
-
-			auto roll_to_front = [](Cycle &cycle, uint32_t index) {
-				assert(index < cycle.size());
-				std::rotate(cycle.begin(), cycle.begin() + index, cycle.end());
-			};
-
-			//always will make a new cycle:
-			cycles.emplace_back();
-			Cycle &cycle = cycles.back();
-
-			//Special case the easy things:
-			if (find.size() == 1 && find[0] == GAP) {
-				//finding *just* a GAP always creates a new cycle.
-				cycle.assign(replace.begin(), replace.end());
-			} else if (find.size() == 1 && find[0] != GAP) {
-				//finding a non-gap is straightforward:
-				CycleIndex ci = find_loop(find[0]);
-				//grab cycle holding non-gap:
-				cycle = cycles[ci.cycle];
-				//perform replacement:
-				cycle.erase(cycle.begin() + ci.index);
-				cycle.insert(cycle.begin() + ci.index, replace.begin(), replace.end());
-			} else if (find.size() == 2 && find[0] != GAP) {
-				CycleIndex ci0 = find_loop(find[0]);
-
-				//start with the ci0 cycle:
-				cycle = cycles[ci0.cycle];
-
-				assert(cycle.size() >= 2); //all cycles are at least size 2
-
-				//arrange find[0] at the back:
-				roll_to_back(cycle, ci0.index);
-				assert(cycle.back() == find[0]);
-
-				//first non-gap stitch at the front of cycle:
-				auto non_gap = cycle.begin();
-				while (non_gap != cycle.end() && *non_gap == GAP) {
-					++non_gap;
+			std::vector< PackedShape > inter_shapes;
+			inter_shapes.reserve(intermediates.size());
+			for (auto const &info : inter_info) {
+				uint32_t cycle = &info - &inter_info[0];
+				//check for gaps inside cycle:
+				uint32_t count = 0;
+				if (info.back_min <= info.back_max) count += (info.back_max - info.back_min + 1);
+				if (info.front_min <= info.front_max) count += (info.front_max - info.front_min + 1);
+				if (count > intermediates[cycle].size()) {
+					//gap found; bail out
+					return "gap";
 				}
-				assert(non_gap != cycle.end());
+				assert(count == intermediates[cycle].size()); //must have seen all loops
+				assert(info.zero_index != -1U); //including the zero element, of course
 
-				if (cycle.front() == find[1]) {
-					//all in one cycle; great!
-					assert(cycle.back() == find[0] && cycle.front() == find[1]);
-				} else if (*non_gap == find[1]) {
-					//all in one cycle + closing a gap.
-					cycle.erase(cycle.begin(), non_gap);
-					assert(cycle.back() == find[0] && cycle.front() == find[1]);
+				Shape shape(0,0);
+
+				//check that things are aligned:
+				if (info.back_min > info.back_max) {
+					//only on front bed
+					assert(info.front_min <= info.front_max);
+					if (info.front_min != info.front_max) {
+						return "flat (front)";
+					}
+					shape.nibbles = Shape::BackLeft;
+					shape.roll = 0;
+				} else if (info.front_min > info.front_max) {
+					//only on back bed
+					assert(info.back_min <= info.back_max);
+					if (info.back_min != info.back_max) {
+						return "flat (back)";
+					}
+					shape.nibbles = Shape::FrontLeft;
+					shape.roll = 0;
 				} else {
-					//not all in one cycle, so...
-					if (find[1] == GAP) { //...add gap:
-						//TODO: add_bridge(cycle.back(), cycle.front())
-						cycle.emplace_front(GAP);
-						assert(cycle.back() == find[0] && cycle.front() == find[1]);
+					//on both beds, so check alignment between beds:
+					if (std::abs(int32_t(info.back_min) - int32_t(info.front_min)) > 1) {
+						return "mis-aligned (left)";
+					}
+					if (std::abs(int32_t(info.back_max) - int32_t(info.front_max)) > 1) {
+						return "mis-aligned (right)";
+					}
+					shape.nibbles = 
+						  (info.back_min > info.front_min ? Shape::BackLeft : 0)
+						| (info.back_min < info.front_min ? Shape::FrontLeft : 0)
+						| (info.back_max < info.front_max ? Shape::BackRight : 0)
+						| (info.back_max > info.front_max ? Shape::FrontRight : 0)
+					;
+					if (info.zero_on_back) {
+						shape.roll = (info.front_max - info.front_min + 1) + (info.back_max - info.zero_index);
 					} else {
-						CycleIndex ci1 = find_loop(find[1]);
-						if (ci1.cycle == ci0.cycle) { //...split cycle:
-							//want find[0] find[1] to be CCW-ordered in new cycle, so erase the proper bits:
-							cycle.erase(cycle.begin(), cycle.begin() + ci1.index);
-
-							assert(cycle.back() == find[0] && cycle.front() == find[1]);
-						} else { //...merge cycles:
-							Cycle cycle1 = cycles[ci1.cycle];
-							roll_to_front(cycle1, ci1.index);
-							assert(cycle1.size() >= 2);
-							assert(cycle1.front() == find[1]);
-							//NOTE: might end up with doubled GAP, but that doesn't matter(?)
-
-							//TODO: add_bridge(cycle.back(), cycle.front())
-							//TODO: add_bridge(cycle1.back(), cycle1.front())
-							cycle.insert(cycle.begin(), cycle1.begin(), cycle1.end());
-							assert(cycle.back() == find[0] && cycle.front() == find[1]);
-						}
+						shape.roll = info.zero_index - info.front_min;
 					}
 				}
-				//remove pattern:
-				assert(cycle.back() == find[0] && cycle.front() == find[1]);
-				cycle.pop_back(); //remove find[0] from the back
-				cycle.pop_front(); //remove find[1] from the front
-				//insert replacement:
-				cycle.insert(cycle.end(), replace.begin(), replace.end());
-			} else {
-				assert(0 && "make_cycle handles very few cases for find/replace");
+
+				std::vector< CycleIndex > data;
+				data.reserve(intermediates[cycle].size());
+				for (uint32_t i = 0; i < intermediates[cycle].size(); ++i) {
+					data.emplace_back(cycle, i);
+				}
+				std::vector< CycleIndex > expected_front, expected_back;
+				shape.append_to_beds(data, CycleIndex(-1U, -1U), &expected_front, &expected_back);
+
+				/*//DEBUG
+				std::cout << "    Testing:\n";
+				std::string front_string, back_string;
+				typeset_beds< CycleIndex >(expected_front, expected_back, [](CycleIndex const &ci){
+					return ci.to_string_simple();
+				}, "", &front_string, &back_string);
+				std::cout << "      " << back_string << std::endl;
+				std::cout << "      " << front_string << std::endl;
+				*/
+
+				for (uint32_t i = info.back_min; i <= info.back_max; ++i) {
+					uint32_t r = i - std::min(info.back_min, info.front_min);
+					assert(r < expected_back.size());
+					if (back[i] != expected_back[r]) {
+						return "bad shape (back)";
+					}
+				}
+				for (uint32_t i = info.front_min; i <= info.front_max; ++i) {
+					uint32_t r = i - std::min(info.back_min, info.front_min);
+					assert(r < expected_front.size());
+					if (front[i] != expected_front[r]) {
+						return "bad shape (front)";
+					}
+				}
+
+				inter_shapes.emplace_back(shape.pack());
 			}
 
-			assert(cycle.size() >= 2); //all cycles are at least size 2
-
-			//remove everything in 'find' from active_loop:
-			for (auto const &l : find) {
-				if (l != GAP) {
-					auto f = active_loops.find(l);
-					assert(f != active_loops.end());
-					active_loops.erase(f);
+			std::vector< uint32_t > out_order;
+			out_order.resize(outs.size());
+			{ //figure out order of outs:
+				std::vector< bool > seen(outs.size(), false);
+				auto do_out = [&seen, &out_order](uint32_t cycle) {
+					if (cycle == -1U) return;
+					assert(cycle < seen.size());
+					if (!seen[cycle]) {
+						seen[cycle] = true;
+						out_order.emplace_back(cycle);
+					}
+				};
+				for (uint32_t i = 0; i < std::max(front.size(), back.size()); ++i) {
+					if (i < front.size()) do_out(front[i].cycle);
+					if (i < back.size()) do_out(back[i].cycle);
+				}
+				//make sure we saw all out cycles:
+				for (auto s : seen) {
+					assert(s);
 				}
 			}
-			//update everything in 'cycle' in active_loops:
-			for (uint32_t index = 0; index < cycle.size(); ++index) {
-				active_loops[cycle[index]] = CycleIndex(cycles.size()-1, index);
+
+
+			//Order passed the test, now add possible transforms with their costs:
+
+			/*//DEBUG:
+			std::cout << "Have a working order:" << std::endl;
+			std::string front_string, back_string;
+			typeset_beds< CycleIndex >(front, back, [](CycleIndex const &ci){
+				return ci.to_string();
+			}, " ", &front_string, &back_string);
+			std::cout << "  " << back_string << std::endl;
+			std::cout << "  " << front_string << std::endl;
+			*/
+
+
+			std::vector< Shape > out0_shapes = Shape::make_shapes_for(outs[0].size());
+			for (auto const &out0_shape : out0_shapes) {
+				ScheduleCost cost;
+				for (auto const &inter_shape : inter_shapes) {
+					cost += ScheduleCost::shape_cost(Shape::unpack(inter_shape));
+				}
+				cost += ScheduleCost::shape_cost(out0_shape);
+				cost += ScheduleCost::transfer_cost(
+					intermediates[0].size(), Shape::unpack(inter_shapes[0]),
+					outs[0].size(), out0_shape,
+					step.inter_to_out);
+
+				ScheduleOption option;
+				option.cost = cost;
+
+				option.in_order = in_order;
+				option.in_shapes = in_shapes;
+
+				option.inter_shape = inter_shapes[0];
+
+				option.out_order = out_order;
+				option.out_shapes = inter_shapes;
+				option.out_shapes[0] = out0_shape.pack();
+
+				step.options.emplace_back(option);
 			}
 
+			return nullptr;
 
 		};
 
-		for (uint32_t si = 0; si < stitches.size(); ++si) {
-			Stitch const &s = stitches[si];
-			YarnInfo &yarn = active_yarns[s.yarn];
+		std::function< void() > enumerate_orders = [&]() {
+			if (remaining.empty()) {
 
-			if (s.type == Stitch::Start) {
-				assert(s.in[0] == -1U && s.in[1] == -1U && s.out[0] != -1U && s.out[0] > si && s.out[1] == -1U && "valid 0-1 stitch");
-				Loop out0(si, 0);
+				/*//DEBUG:
+				std::cout << "  Trying:\n";
+				std::string front_string, back_string;
+				typeset_beds< CycleIndex >(front, back, [](CycleIndex const &ci){
+					return ci.to_string_simple();
+				}, "", &front_string, &back_string);
+				std::cout << "    " << back_string << std::endl;
+				std::cout << "    " << front_string << std::endl;
+				*/
 
-				std::vector< Loop > find, replace;
-				if (yarn.loop == GAP) {
-					//bringing in yarn, I suppose:
-					find = {GAP};
-					replace = {out0, GAP};
-				} else if (yarn.direction != s.direction) {
-					//turning around:
-					REPORT_ERROR("Can't turn around on start stitch.");
-				} else {
-					//adjacent stitch:
-					find = {yarn.loop, GAP};
-					replace = {yarn.loop, out0};
-					if (s.direction != Stitch::CCW) {
-						std::swap(find[0], find[1]);
-						std::swap(replace[0], replace[1]);
-					}
-				}
 
-				//DEBUG: dump find/replace:
-				std::cout << "  find:";
-				for (auto const &l : find) std::cout << ' ' << l.to_string();
-				std::cout << '\n';
-				std::cout << "  replace:";
-				for (auto const &l : replace) std::cout << ' ' << l.to_string();
-				std::cout << '\n';
-
-				//update active cycles:
-				make_cycle(find, replace);
-				assert(cycles.size() == si + 1); //make sure cycle was made.
-
-				//update yarn for stitch:
-				yarn.loop = out0;
-				yarn.direction = s.direction;
-
-			} else if (s.type == Stitch::Tuck || s.type == Stitch::Miss || s.type == Stitch::Knit) {
-				assert(s.in[0] < si && s.in[1] == -1U && s.out[0] != -1U && s.out[0] > si && s.out[1] == -1U && "valid 1-1 stitch");
-				Loop in0(s.in[0], stitches[s.in[0]].find_out(si));
-				Loop out0(si, 0);
-
-				std::vector< Loop > find, replace;
-				if (yarn.loop == GAP) {
-					//bringing in yarn, I suppose:
-					assert("TODO: bring in yarn on 1-1 stitch(!?!)"); //kinda weird case
-					find = {in0};
-					replace = {out0};
-				} else if (yarn.loop == in0 && yarn.direction != s.direction) {
-					//turning around:
-					find = {in0};
-					replace = {out0};
-				} else {
-					//adjacent stitch:
-					find = {yarn.loop, in0};
-					replace = {yarn.loop, out0};
-					if (s.direction != Stitch::CCW) {
-						std::swap(find[0], find[1]);
-						std::swap(replace[0], replace[1]);
-					}
-				}
-
-				//update active cycles:
-				make_cycle(find, replace);
-				assert(cycles.size() == si + 1); //make sure cycle was made.
-
-				//update all yarns at in0:
-				for (auto &y : active_yarns) {
-					if (y.second.loop == in0) {
-						y.second.loop = out0;
-					}
-				}
-
-				//update yarn for stitch:
-				yarn.loop = out0;
-				yarn.direction = s.direction;
-
+				test_order();
+				/*
+				const char *reason =
+				if (reason != nullptr) { //DEBUG
+					std::cout << "   FAILED: " << reason << "." << std::endl;
+				}*/
+				return;
 			}
+			//order isn't done yet, try all shapes:
+			for (uint32_t r = 0; r < remaining.size(); ++r) {
+				std::swap(remaining[r], remaining.back());
+				uint32_t idx = remaining.back();
+				remaining.pop_back();
+				in_order.emplace_back(idx);
 
+				std::vector< Shape > shapes = Shape::make_shapes_for(ins[idx].size());
+				for (auto const &shape : shapes) {
+					in_shapes[idx] = shape.pack();
+
+					uint32_t front_size_before = front.size();
+					uint32_t back_size_before = back.size();
+
+					shape.append_to_beds(in_to_inter[idx], CycleIndex(-1U, -1U), &front, &back);
+
+					enumerate_orders();
+
+					front.erase(front.begin() + front_size_before, front.end());
+					back.erase(back.begin() + back_size_before, back.end());
+
+					in_shapes[idx] = -1U;
+				}
+
+				assert(!in_order.empty() && in_order.back() == idx);
+				in_order.pop_back();
+				remaining.push_back(idx);
+				std::swap(remaining[r], remaining.back());
+			}
+		};
+
+		enumerate_orders();
+
+		std::cout << "In total, step had " << step.options.size() << " scheduling options." << std::endl;
+
+	} //interesting steps
+	std::cout << "(done)" << std::endl;
+
+	//Figure out possible shapes for storages near *boring* steps:
+	std::cout << "Figuring out shapes for boring steps:" << std::endl; //DEBUG
+	for (auto &step : steps) {
+		if (!(step.in.size() <= 1 && step.out.size() <= 1)) continue; //skip exciting steps
+
+		if (step.in.size() == 0 && step.out.size() == 1) {
+			//Starts a cycle -- can do so in any order.
+			assert(stitches[step.begin].type == Stitch::Start);
+
+			std::vector< Shape > out_shapes = Shape::make_shapes_for(storages[step.out[0]].size());
+			ScheduleOption option;
+			option.in_order.clear();
+			option.in_shapes.clear();
+			option.inter_shape = 0;
+			option.out_order = {0};
+			for (auto const &out_shape : out_shapes) {
+				option.cost = ScheduleCost::shape_cost(out_shape);
+				option.out_shapes = {out_shape.pack()};
+				step.options.emplace_back(option);
+			}
 			
-			//DEBUG: dump new cycle:
-			std::cout << "cycles[" << (cycles.size()-1) << "]:";
-			for (auto const &l : cycles.back()) {
-				std::cout << ' ' << l.to_string();
+		} else if (step.in.size() == 1 && step.out.size() == 0) {
+			//Ends a cycle -- can do so in any order.
+			assert(stitches[step.begin].type == Stitch::End);
+
+			std::vector< Shape > in_shapes = Shape::make_shapes_for(storages[step.in[0]].size());
+			ScheduleOption option;
+			option.out_order.clear();
+			option.out_shapes.clear();
+			option.in_order = {0};
+			for (auto const &in_shape : in_shapes) {
+				option.cost = ScheduleCost::shape_cost(in_shape);
+				option.inter_shape = in_shape.pack();
+				option.in_shapes = {in_shape.pack()};
+				step.options.emplace_back(option);
 			}
-			std::cout << '\n';
+
+		} else { assert(step.in.size() == 1 && step.out.size() == 1);
+
+			std::vector< Shape > in_shapes = Shape::make_shapes_for(storages[step.in[0]].size());
+			std::vector< Shape > out_shapes = Shape::make_shapes_for(storages[step.out[0]].size());
+			assert(step.inter.size() == storages[step.in[0]].size());
+			assert(step.inter.size() == step.inter_to_out.size());
+
+			ScheduleOption option;
+			option.in_order = {0};
+			option.out_order = {0};
+			for (auto const &in_shape : in_shapes) {
+				option.in_shapes = {in_shape.pack()};
+				option.inter_shape = in_shape.pack();
+				for (auto const &out_shape : out_shapes) {
+					option.out_shapes = {out_shape.pack()};
+
+					option.cost = ScheduleCost::shape_cost(in_shape);
+					option.cost += ScheduleCost::shape_cost(out_shape);
+					option.cost += ScheduleCost::transfer_cost(
+						step.inter.size(), in_shape,
+						storages[step.out[0]].size(), out_shape,
+						step.inter_to_out
+					);
+
+					step.options.emplace_back(option);
+				}
+			}
 
 		}
-		
-		
+		std::cout << "steps[" << (&step - &steps[0]) << "] had " << step.options.size() << " scheduling options." << std::endl;
 	}
-#endif //#def'ing out other method
+
+
+
 
 	return 0;
 }

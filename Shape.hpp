@@ -1,5 +1,9 @@
 #pragma once
 
+#include <vector>
+#include <cstdint>
+#include <cassert>
+
 //Shape represents the shape of a cycle of stitches on the bed.
 // It is a map from stitch indices to needles, such that each stitch
 //is on a needle adjacent to its index-wise neighbors.
@@ -35,7 +39,7 @@
 
 typedef uint32_t PackedShape;
 struct Shape {
-	uint32_t roll = 0;
+	uint32_t roll = 0; //cycle starts at front left at roll zero; roll is ccw steps.
 	enum Nibble : uint8_t {
 		BackLeft   = (1 << 0),
 		BackRight  = (1 << 1),
@@ -47,6 +51,59 @@ struct Shape {
 	//------------------
 
 	Shape(uint32_t roll_, uint8_t nibbles_) : roll(roll_), nibbles(nibbles_) {
+	}
+
+	//------------------
+	template< typename T >
+	void append_to_beds(std::vector< T > const &data, T const &gap, std::vector< T > *front_, std::vector< T > *back_) const {
+		assert(front_);
+		auto &front = *front_;
+		assert(back_);
+		auto &back = *back_;
+
+		//add gaps as needed to get beds evened up (taking into account nibbles):
+		uint32_t front_add = ((nibbles & BackLeft) ? 1 : 0);
+		uint32_t back_add = ((nibbles & FrontLeft) ? 1 : 0);
+		while (front.size() + front_add < back.size() + back_add) front.emplace_back(gap);
+		while (back.size() + back_add < front.size() + front_add) back.emplace_back(gap);
+		if (nibbles & BackLeft) {
+			assert(!(nibbles & FrontLeft));
+			assert(front.size() + 1 == back.size());
+		} else if (nibbles & FrontLeft) {
+			assert(front.size() == back.size() + 1);
+		} else {
+			assert(front.size() == back.size());
+		}
+
+		//figure out how many items go on the back and how many on the front:
+		uint32_t width = data.size()
+			+ ((nibbles & BackLeft) ? 1 : 0)
+			+ ((nibbles & FrontLeft) ? 1 : 0)
+			+ ((nibbles & BackRight) ? 1 : 0)
+			+ ((nibbles & FrontRight) ? 1 : 0);
+		assert(width % 2 == 0);
+		width /= 2;
+
+		uint32_t on_front = width
+			- ((nibbles & FrontLeft) ? 1 : 0)
+			- ((nibbles & FrontRight) ? 1 : 0);
+		uint32_t on_back = width
+			- ((nibbles & BackLeft) ? 1 : 0)
+			- ((nibbles & BackRight) ? 1 : 0);
+		assert(on_front + on_back == data.size());
+
+		//starting element in 'data' from roll; cw roll would make this much easier, but so be it:
+		uint32_t start = (-int32_t(roll) % int32_t(data.size())) + int32_t(data.size());
+
+		for (uint32_t i = 0; i < on_front; ++i) {
+			front.emplace_back(data[(start + i) % data.size()]);
+		}
+		for (uint32_t i = on_back - 1; i < on_back; --i) {
+			back.emplace_back(data[(start + on_front + i) % data.size()]);
+		}
+
+		//make sure beds are as (un-)even as expected:
+		assert(front.size() + ((nibbles & FrontRight) ? 1 : 0) == back.size() + ((nibbles & BackRight) ? 1 : 0));
 	}
 
 	//------------------

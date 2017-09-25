@@ -53,6 +53,7 @@ if $(OS) = NT {
 
 NAMES =
 	Stitch
+	ScheduleCost
 	schedule
 	plan_transfers
 	plan_transfers-best_collapse
