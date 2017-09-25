@@ -120,11 +120,10 @@ bool plan_transfers(
 
 	auto minimize_winding = [](std::vector< int32_t > &winding) {
 		if (winding.empty()) return;
-		for (uint32_t i = 1; i < winding.size(); ++i) {
-			assert(winding[i-1] <= winding[i]);
-		}
-		//winding is sorted, so can just pull out closest multiple of two to median:
-		int32_t twice_median = winding[winding.size()/2] + winding[(winding.size()+1)/2];
+		//pull out closest multiple of two to the median:
+		std::vector< int32_t > temp = winding;
+		std::sort(temp.begin(), temp.end());
+		int32_t twice_median = temp[temp.size()/2] + temp[(temp.size()+1)/2];
 		int32_t close_multiple = (twice_median / 4) * 2;
 		int32_t DEBUG_before = 0;
 		int32_t DEBUG_after = 0;
@@ -143,7 +142,6 @@ bool plan_transfers(
 	};
 
 	minimize_winding(winding);
-	//TODO: *actually* minimizing winding could require moving the jump from index 0 to somewhere else, right?
 
 	std::vector< NeedleRollGoal > rg;
 	rg.reserve(Count);
