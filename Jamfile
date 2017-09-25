@@ -54,6 +54,10 @@ if $(OS) = NT {
 NAMES =
 	Stitch
 	schedule
+	plan_transfers
+	plan_transfers-best_collapse
+	plan_transfers-best_shift
+	plan_transfers-best_expand
 	;
 
 #if $(OS) = NT {
