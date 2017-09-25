@@ -55,6 +55,7 @@ NAMES =
 	Stitch
 	ScheduleCost
 	schedule
+	embed_DAG
 	plan_transfers
 	plan_transfers-best_collapse
 	plan_transfers-best_shift

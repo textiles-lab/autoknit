@@ -141,6 +141,27 @@ struct Shape {
 		return ret;
 	}
 
+	uint32_t index_for(uint32_t count) const {
+		if (count % 2 == 0) {
+			uint32_t ret = roll * 5;
+			if (nibbles == 0) ret += 0;
+			else if (nibbles == (BackLeft | BackRight)) ret += 1;
+			else if (nibbles == (BackLeft | FrontRight)) ret += 2;
+			else if (nibbles == (FrontLeft | BackRight)) ret += 3;
+			else if (nibbles == (FrontLeft | FrontRight)) ret += 4;
+			else assert(0 && "invalid even nibbles config");
+			return ret;
+		} else {
+			uint32_t ret = roll * 4;
+			if (nibbles == BackLeft) ret += 0;
+			else if (nibbles == BackRight) ret += 1;
+			else if (nibbles == FrontLeft) ret += 2;
+			else if (nibbles == FrontRight) ret += 3;
+			else assert(0 && "invalid odd nibbles config");
+			return ret;
+		}
+	}
+
 	//------------------
 
 	PackedShape pack() const {

@@ -2,6 +2,7 @@
 #include "Shape.hpp"
 #include "typeset.hpp"
 #include "ScheduleCost.hpp"
+#include "embed_DAG.hpp"
 
 #include "TaggedArguments.hpp"
 
@@ -959,6 +960,8 @@ int main(int argc, char **argv) {
 	} //interesting steps
 	std::cout << "(done)" << std::endl;
 
+
+#if 0
 	//Figure out possible shapes for storages near *boring* steps:
 	std::cout << "Figuring out shapes for boring steps:" << std::endl; //DEBUG
 	for (auto &step : steps) {
@@ -1020,16 +1023,175 @@ int main(int argc, char **argv) {
 						step.inter_to_out
 					);
 
-					step.options.emplace_back(option);
+					//TEST: how much time is being taken just copying options around?
+					//step.options.emplace_back(option);
 				}
 			}
 
 		}
 		std::cout << "steps[" << (&step - &steps[0]) << "] had " << step.options.size() << " scheduling options." << std::endl;
 	}
+#endif
 
+	//---------------------
+	{ //Next up: do upward-planar embedding.
 
+		//For every 'interesting' step, build a DAGNode
+		//For every chain of 1-in / 1-out steps, build a DAGEdge
 
+		std::vector< DAGNode > nodes;
+		std::vector< DAGEdge > edges;
+
+		std::map< uint32_t, DAGEdgeIndex > active_edges; //maps from storages to edges currently in progress
+
+		std::cout << "Building DAG "; std::cout.flush();
+		for (auto &step : steps) {
+			std::cout << "."; std::cout.flush();
+			if (step.in.size() == 0 && step.out.size() == 1) {
+				//Start step; build a DAGEdge:
+				auto ret = active_edges.insert(std::make_pair(step.out[0], edges.size()));
+				assert(ret.second);
+
+				edges.emplace_back();
+				DAGEdge &edge = edges.back();
+				edge.from = -1U;
+				edge.from_shapes = 1;
+				edge.to = step.out[0];
+				edge.to_shapes = Shape::count_shapes_for(storages[step.out[0]].size());
+				edge.costs.resize(edge.from_shapes * edge.to_shapes);
+				//TODO: start costs with shape penalties or something?
+
+			} else if (step.in.size() == 1 && step.out.size() == 0) {
+				//End step; finish up a DAGEdge:
+				auto f = active_edges.find(step.in[0]);
+				assert(f != active_edges.end());
+				assert(f->second < edges.size());
+				DAGEdge &edge = edges[f->second];
+				assert(edge.to == step.in[0]);
+				active_edges.erase(f);
+
+				std::vector< DAGCost > old_costs = std::move(edge.costs);
+				uint32_t old_to_shapes = edge.to_shapes;
+				assert(old_costs.size() == old_to_shapes * edge.from_shapes);
+
+				//pick cheapest to shape for each from shape:
+				edge.to = -1U;
+				edge.to_shapes = 1;
+				edge.costs.resize(edge.from_shapes, ScheduleCost::max());
+				for (uint32_t f = 0; f < edge.from_shapes; ++f) {
+					for (uint32_t t = 0; t < old_to_shapes; ++t) {
+						edge.costs[f] = std::min(edge.costs[f], old_costs[f * old_to_shapes + t]);
+					}
+				}
+
+			} else if (step.in.size() == 1 && step.out.size() == 1) {
+				//1-1 step; accumulate DAGEdge cost matrix:
+				auto f = active_edges.find(step.in[0]);
+				assert(f != active_edges.end());
+				assert(f->second < edges.size());
+				DAGEdge &edge = edges[f->second];
+				assert(edge.to == step.in[0]);
+				active_edges.erase(f);
+
+				std::vector< DAGCost > old_costs = std::move(edge.costs);
+				uint32_t old_to_shapes = edge.to_shapes;
+				assert(edge.to_shapes == Shape::count_shapes_for(storages[step.in[0]].size()));
+
+				edge.to = step.out[0];
+				edge.to_shapes = Shape::count_shapes_for(storages[step.out[0]].size());
+				edge.costs.resize(edge.from_shapes * edge.to_shapes, ScheduleCost::max());
+				for (uint32_t f = 0; f < edge.from_shapes; ++f) {
+					for (uint32_t t = 0; t < edge.to_shapes; ++t) {
+						DAGCost &cost = edge.costs[f * edge.to_shapes + t];
+						for (uint32_t i = 0; i < old_to_shapes; ++i) {
+							cost = std::min(
+								cost,
+								old_costs[f * old_to_shapes + i]
+								/* TODO: + step.cost[i * old_to_shapes + t] */
+							);
+						}
+					}
+				}
+
+				auto ret = active_edges.insert(std::make_pair(step.out[0], &edge - &edges[0]));
+				assert(ret.second);
+
+			} else { assert(!(step.in.size() <= 1 && step.out.size() <= 1));
+				//Exciting step; build a DAGNode, consume some DAGEdges, start some DAGEdges.
+
+				nodes.emplace_back();
+				DAGNode &node = nodes.back();
+
+				std::vector< DAGEdgeIndex > in_edges;
+				std::vector< DAGEdgeIndex > out_edges;
+
+				//look up indices of in edges:
+				for (uint32_t i = 0; i < step.in.size(); ++i) {
+					auto f = active_edges.find(step.in[i]);
+					assert(f != active_edges.end());
+					DAGEdge &edge = edges[f->second];
+					assert(edge.to == step.in[i]);
+					edge.to = &node - &nodes[0];
+					in_edges.emplace_back(f->second);
+					active_edges.erase(f);
+				}
+
+				//create out edges:
+				for (uint32_t i = 0; i < step.out.size(); ++i) {
+					auto ret = active_edges.insert(std::make_pair(step.out[i], edges.size()));
+					assert(ret.second);
+					out_edges.emplace_back(edges.size());
+
+					edges.emplace_back();
+					DAGEdge &edge = edges.back();
+					edge.from = &node - &nodes[0];
+					edge.from_shapes = Shape::count_shapes_for(storages[step.out[i]].size());
+					edge.to = step.out[i];
+					edge.to_shapes = Shape::count_shapes_for(storages[step.out[i]].size());
+
+					//NOTE: this ends up costing a bit of extra time, because multiple-source-shape edges always need a square cost matrix, but we don't actually have any costs to put into it:
+					edge.costs.resize(edge.from_shapes * edge.to_shapes);
+				}
+
+				node.options.reserve(step.options.size());
+				for (auto const &option : step.options) {
+					node.options.emplace_back();
+					DAGOption &dag_option = node.options.back();
+					dag_option.cost = option.cost;
+					dag_option.in_order.reserve(step.in.size());
+					dag_option.in_shapes.reserve(step.in.size());
+					dag_option.out_order.reserve(step.out.size());
+					dag_option.out_shapes.reserve(step.out.size());
+					for (uint32_t i = 0; i < step.in.size(); ++i) {
+						assert(option.in_order[i] < in_edges.size());
+						dag_option.in_order.emplace_back(in_edges[option.in_order[i]]);
+						dag_option.in_shapes.emplace_back(Shape::unpack(option.in_shapes[i]).index_for(storages[step.in[i]].size()));
+					}
+					for (uint32_t o = 0; o < step.out.size(); ++o) {
+						assert(option.out_order[o] < out_edges.size());
+						dag_option.out_order.emplace_back(out_edges[option.out_order[o]]);
+						dag_option.out_shapes.emplace_back(Shape::unpack(option.out_shapes[o]).index_for(storages[step.out[o]].size()));
+					}
+					assert(dag_option.in_order.size() == step.in.size());
+					assert(dag_option.in_shapes.size() == step.in.size());
+					assert(dag_option.out_order.size() == step.out.size());
+					assert(dag_option.out_shapes.size() == step.out.size());
+				}
+				assert(node.options.size() == step.options.size());
+			}
+		} //for(steps)
+		std::cout << " done." << std::endl;
+
+		std::cout << "Have " << edges.size() << " edges and " << nodes.size() << " nodes." << std::endl;
+
+		std::vector< uint32_t > node_options;
+		std::vector< int32_t > node_positions, edge_positions;
+
+		if (!embed_DAG(nodes, edges, &node_options, &node_positions, &edge_positions)) {
+			std::cerr << "ERROR: failed to find an upward-planar embedding." << std::endl;
+			return 1;
+		}
+	}
 
 	return 0;
 }
