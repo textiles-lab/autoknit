@@ -1126,7 +1126,7 @@ int main(int argc, char **argv) {
 						for (uint32_t i = 0; i < old_to_shapes; ++i) {
 							cost = std::min(
 								cost,
-								old_costs[f * old_to_shapes + i]
+								(i == t ? old_costs[f * old_to_shapes + i] : DAGCost::max()) //HACK! disregard transition costs like crazy.
 								/* TODO: + step.cost[i * old_to_shapes + t] */
 							);
 						}
