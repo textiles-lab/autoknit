@@ -834,7 +834,7 @@ int main(int argc, char **argv) {
 			}
 
 			std::vector< uint32_t > out_order;
-			out_order.resize(outs.size());
+			out_order.reserve(outs.size());
 			{ //figure out order of outs:
 				std::vector< bool > seen(outs.size(), false);
 				auto do_out = [&seen, &out_order](uint32_t cycle) {
@@ -853,6 +853,7 @@ int main(int argc, char **argv) {
 				for (auto s : seen) {
 					assert(s);
 				}
+				assert(out_order.size() == outs.size());
 			}
 
 
@@ -1048,18 +1049,28 @@ int main(int argc, char **argv) {
 		for (auto &step : steps) {
 			std::cout << "."; std::cout.flush();
 			if (step.in.size() == 0 && step.out.size() == 1) {
-				//Start step; build a DAGEdge:
+				//Start step; build a DAGNode with limited options:
+
 				auto ret = active_edges.insert(std::make_pair(step.out[0], edges.size()));
 				assert(ret.second);
 
 				edges.emplace_back();
 				DAGEdge &edge = edges.back();
-				edge.from = -1U;
+				edge.from = nodes.size();
 				edge.from_shapes = 1;
 				edge.to = step.out[0];
 				edge.to_shapes = Shape::count_shapes_for(storages[step.out[0]].size());
 				edge.costs.resize(edge.from_shapes * edge.to_shapes);
 				//TODO: start costs with shape penalties or something?
+
+				nodes.emplace_back();
+				DAGNode &node = nodes.back();
+				node.options.emplace_back();
+				DAGOption &option = node.options.back();
+				option.in_order = {};
+				option.in_shapes = {};
+				option.out_order = {DAGEdgeIndex(&edge - &edges[0])};
+				option.out_shapes = {0};
 
 			} else if (step.in.size() == 1 && step.out.size() == 0) {
 				//End step; finish up a DAGEdge:
@@ -1075,7 +1086,7 @@ int main(int argc, char **argv) {
 				assert(old_costs.size() == old_to_shapes * edge.from_shapes);
 
 				//pick cheapest to shape for each from shape:
-				edge.to = -1U;
+				edge.to = nodes.size();
 				edge.to_shapes = 1;
 				edge.costs.resize(edge.from_shapes, ScheduleCost::max());
 				for (uint32_t f = 0; f < edge.from_shapes; ++f) {
@@ -1083,6 +1094,15 @@ int main(int argc, char **argv) {
 						edge.costs[f] = std::min(edge.costs[f], old_costs[f * old_to_shapes + t]);
 					}
 				}
+
+				nodes.emplace_back();
+				DAGNode &node = nodes.back();
+				node.options.emplace_back();
+				DAGOption &option = node.options.back();
+				option.in_order = {DAGEdgeIndex(&edge - &edges[0])};
+				option.in_shapes = {0};
+				option.out_order = {};
+				option.out_shapes = {};
 
 			} else if (step.in.size() == 1 && step.out.size() == 1) {
 				//1-1 step; accumulate DAGEdge cost matrix:
@@ -1149,9 +1169,17 @@ int main(int argc, char **argv) {
 					edge.to = step.out[i];
 					edge.to_shapes = Shape::count_shapes_for(storages[step.out[i]].size());
 
-					//NOTE: this ends up costing a bit of extra time, because multiple-source-shape edges always need a square cost matrix, but we don't actually have any costs to put into it:
-					edge.costs.resize(edge.from_shapes * edge.to_shapes);
+					//NOTE: this ends up costing a bit of extra time, because multiple-source-shape edges always need a square cost matrix, but we don't actually have any costs to put into it, so we just make up a matrix that does not permit rotation:
+					edge.costs.resize(edge.from_shapes * edge.to_shapes, ScheduleCost::max());
+					assert(edge.from_shapes == edge.to_shapes);
+					for (uint32_t i = 0; i < edge.from_shapes; ++i) {
+						edge.costs[i * edge.to_shapes + i] = ScheduleCost::zero();
+					}
 				}
+
+				//PARANOIA: no duplicate in_edges or out_edges, right?
+				assert(std::set< uint32_t >(in_edges.begin(), in_edges.end()).size() == in_edges.size());
+				assert(std::set< uint32_t >(out_edges.begin(), out_edges.end()).size() == out_edges.size());
 
 				node.options.reserve(step.options.size());
 				for (auto const &option : step.options) {
@@ -1163,19 +1191,28 @@ int main(int argc, char **argv) {
 					dag_option.out_order.reserve(step.out.size());
 					dag_option.out_shapes.reserve(step.out.size());
 					for (uint32_t i = 0; i < step.in.size(); ++i) {
-						assert(option.in_order[i] < in_edges.size());
-						dag_option.in_order.emplace_back(in_edges[option.in_order[i]]);
-						dag_option.in_shapes.emplace_back(Shape::unpack(option.in_shapes[i]).index_for(storages[step.in[i]].size()));
-					}
-					for (uint32_t o = 0; o < step.out.size(); ++o) {
-						assert(option.out_order[o] < out_edges.size());
-						dag_option.out_order.emplace_back(out_edges[option.out_order[o]]);
-						dag_option.out_shapes.emplace_back(Shape::unpack(option.out_shapes[o]).index_for(storages[step.out[o]].size()));
+						uint32_t in = option.in_order[i];
+						assert(in < in_edges.size());
+						dag_option.in_order.emplace_back(in_edges[in]);
+						assert(in < step.in.size());
+						dag_option.in_shapes.emplace_back(Shape::unpack(option.in_shapes[in]).index_for(storages[step.in[in]].size()));
+						assert(dag_option.in_shapes.back() < edges[in_edges[in]].to_shapes); //DEBUG
 					}
 					assert(dag_option.in_order.size() == step.in.size());
 					assert(dag_option.in_shapes.size() == step.in.size());
+					for (uint32_t o = 0; o < step.out.size(); ++o) {
+						uint32_t out = option.out_order[o];
+						assert(out < out_edges.size());
+						dag_option.out_order.emplace_back(out_edges[out]);
+						assert(out < step.out.size());
+						dag_option.out_shapes.emplace_back(Shape::unpack(option.out_shapes[out]).index_for(storages[step.out[out]].size()));
+						assert(dag_option.out_shapes.back() < edges[out_edges[out]].from_shapes); //DEBUG
+					}
 					assert(dag_option.out_order.size() == step.out.size());
 					assert(dag_option.out_shapes.size() == step.out.size());
+					//PARANOIA: no duplicates in order, right?
+					assert(std::set< uint32_t >(dag_option.in_order.begin(), dag_option.in_order.end()).size() == dag_option.in_order.size());
+					assert(std::set< uint32_t >(dag_option.out_order.begin(), dag_option.out_order.end()).size() == dag_option.out_order.size());
 				}
 				assert(node.options.size() == step.options.size());
 			}

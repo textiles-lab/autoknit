@@ -32,6 +32,7 @@ struct DAGNode {
 	std::vector< DAGOption > options;
 };
 
+//NOTE: edges must have from < to (i.e., nodes should be topologically sorted)
 bool embed_DAG(
 	std::vector< DAGNode > const &nodes,
 	std::vector< DAGEdge > const &edges,
