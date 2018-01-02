@@ -12,7 +12,11 @@ struct NeedleRollGoal {
 	int32_t roll = 0;
 	int32_t goal = 0;
 
-	bool operator==(NeedleRollGoal const &o) const {
+	//slack available on both sides of the stitch:
+	Slack left_slack = 0;
+	Slack right_slack = 0;
+
+	bool has_same_goal_as(NeedleRollGoal const &o) const {
 		return needle == o.needle && roll == o.roll && goal == o.goal;
 	}
 

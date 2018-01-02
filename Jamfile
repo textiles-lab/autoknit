@@ -51,23 +51,30 @@ if $(OS) = NT {
 
 #---- build ----
 
-NAMES =
-	Stitch
-	ScheduleCost
-	schedule
-	embed_DAG
+PLAN_TRANSFERS_NAMES =
 	plan_transfers
 	plan_transfers-best_collapse
 	plan_transfers-best_shift
 	plan_transfers-best_expand
 	;
 
+NAMES =
+	Stitch
+	ScheduleCost
+	schedule
+	embed_DAG
+	$(PLAN_TRANSFERS_NAMES)
+	;
+
+
 #if $(OS) = NT {
 #	NAMES += gl_shims ;
 #}
 
 LOCATE_TARGET = objs ; #put objects in 'objs' directory
-Objects $(NAMES:S=.cpp) ;
+Objects $(NAMES:S=.cpp) test_plan_transfers.cpp ;
 
 LOCATE_TARGET = dist ; #put main in 'dist' directory
 MainFromObjects schedule : $(NAMES:S=$(SUFOBJ)) ;
+
+MainFromObjects test_plan_transfers : test_plan_transfers$(SUFOBJ) $(PLAN_TRANSFERS_NAMES:S=$(SUFOBJ)) ;

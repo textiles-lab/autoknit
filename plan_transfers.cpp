@@ -159,7 +159,7 @@ bool plan_transfers(
 	//PARANOIA: make sure roll/goal matches on any overlapped needles:
 	for (uint32_t i = 0; i < Count; ++i) {
 		uint32_t n = (i + 1 < Count ? i + 1 : 0);
-		assert((from[i] == from[n]) == (rg[i] == rg[n]));
+		assert((from[i] == from[n]) == (rg[i].has_same_goal_as(rg[n])));
 	}
 
 	//(b) Get everything into left-to-right sorted beds:
@@ -196,7 +196,8 @@ bool plan_transfers(
 		auto remove_duplicates = [](std::vector< NeedleRollGoal > &bed) {
 			for (uint32_t i = 0; i + 1 < bed.size(); /* later */) {
 				if (bed[i].needle == bed[i+1].needle) {
-					assert(bed[i] == bed[i+1]);
+					assert(bed[i].has_same_goal_as(bed[i+1]));
+					bed[i+1].left_slack = bed[i].left_slack; //track slack
 					bed.erase(bed.begin() + i);
 				} else {
 					assert(bed[i].needle < bed[i+1].needle);
