@@ -135,6 +135,11 @@ bool simulate_transfers(
 	struct Pin {
 		BedNeedle::Bed under = BedNeedle::Front;
 		int32_t needle = 0;
+		//does the pinned yarn travel from left-to-right or right-to-left?
+		enum Direction : char {
+			LeftToRight = '+',
+			RightToLeft = '-'
+		} direction = LeftToRight;
 	};
 
 	std::list< Pin > pins;
@@ -213,11 +218,12 @@ bool simulate_transfers(
 		assert(bn.needle >= min_needle && bn.needle <= max_needle);
 		return needles[bn.needle - min_needle].on(bn.bed);
 	};
+	/*
 	auto pins_under = [&needles,&min_needle,&max_needle](BedNeedle const &bn) -> std::vector< Pin * > & {
 		assert(bn.needle >= min_needle && bn.needle <= max_needle);
 		return needles[bn.needle - min_needle].under(bn.bed);
 	};
-
+	*/
 
 	//walk through transfers one by one and check state:
 	for (auto const &t : transfers) {
@@ -239,29 +245,89 @@ bool simulate_transfers(
 			ERROR_UNLESS(stitches_on(BedNeedle(BedNeedle::FrontSliders, t.to.needle)).empty(), "Transfer to hook must have empty slider.");
 		}
 
-		//figure out what yarns are getting pinned by this move:
-		std::vector< Pin * > new_pins;
-		for (auto &yarn : yarns) {
-			for (int32_t i = -1; i < int32_t(yarn.pins.size()); ++i) {
-				int32_t from;
-				int32_t to;
-				if (i == -1) from = yarn.from->needle;
-				else from = yarn.pins[i]->needle;
-				if (i + 1 < int32_t(yarn.pins.size())) to = yarn.pins[i+1]->needle;
-				else to = yarn.to->needle;
+		/*NOTE: deferring pins stuff for a bit
+		{ //figure out what yarns are getting pinned by this move:
+			//NOTE: this could be done by walking around the "perimeter" of the bed and keeping a stack of active yarns, but that would require redoing the yarn data structure somewhat. hmm.
+			//thought: could probably get away with *implicit* connections given that overlap-free is guaranteed
+			// just need to have (for every stitch/pin) a notion of direction
+			//follow-up thought: nope, doesn't seem to work
 
-				//question: does the line t.from.needle -> t.to.needle cross the line from -> to?
-
-				//TODO: seems like one needs to think about left/right on pins/stitches to answer this.
-				//<--- I WAS HERE
+			//index will be needle * 3 + shift, where shift is (-1,0,+1) for side of needle
+			int32_t transfer_front_index;
+			int32_t transfer_back_index;
+			if (t.from.bed == BedNeedle::Front || t.from.bed == BedNeedle::FrontSliders) {
+				transfer_front_index = 3 * t.from.needle;
+				assert(t.to.bed == BedNeedle::Back || t.to.bed == BedNeedle::BackSliders);
+				transfer_back_index = 3 * t.to.needle;
+			} else { assert(t.from.bed == BedNeedle::Back || t.from.bed == BedNeedle::BackSliders);
+				transfer_back_index = 3 * t.from.needle;
+				assert(t.to.bed == BedNeedle::Front || t.to.bed == BedNeedle::FrontSliders);
+				transfer_front_index = 3 * t.to.needle;
 			}
+			std::vector< Pin * > new_pins;
+			for (auto &yarn : yarns) {
+				for (int32_t i = -1; i < int32_t(yarn.pins.size()); ++i) {
+					int32_t from_index;
+					bool from_is_front;
+					int32_t to_index;
+					bool to_is_front;
+					if (i == -1) {
+						from_index = 3 * yarn.from->needle + 0;
+						from_is_front = (yarn.from->bed == BedNeedle::Front || yarn.from->bed == BedNeedle::FrontSliders);
+					} else {
+						from_index = 3 * yarn.pins[i]->needle + (yarn.pins[i]->direction == Pin::LeftToRight ? 1 : -1);
+						from_is_front = (yarn.pins[i]->bed == BedNeedle::Front || yarn.pins[i]->bed == BedNeedle::FrontSliders);
+					}
+
+					if (i + 1 < int32_t(yarn.pins.size())) {
+						to_index = 3 * yarn.pins[i+1]->needle + (yarn.pins[i+1]->direction == Pin::LeftToRight ? -1 : 1);
+						to_is_front = (yarn.pins[i+1]->bed == BedNeedle::Front || yarn.pins[i+1]->bed == BedNeedle::FrontSliders);
+					} else {
+						to_index = 3 * yarn.to->needle + 0;
+						to_is_front = (yarn.to->bed == BedNeedle::Front || yarn.to->bed == BedNeedle::FrontSliders);
+					}
+					//question: does the line t.from.needle -> t.to.needle cross the line from -> to?
+
+					//yarn will be pinned iff it crosses from one side of the xfer to the other:
+					int32_t from_offset = from_index - (from_is_front ? transfer_front_index : transfer_back_index);
+					int32_t to_offset = to_index - (to_is_front ? transfer_front_index : transfer_back_index);
+
+					if ( (from_offset < 0 && 0 < to_offset) || (to_offset < 0 && 0 < from_offset) ) {
+						//need to generate a new pin!
+						pins.emplace_back();
+						Pin *pin = &pins.back();
+						pin->under = t.to.bed;
+						pin->needle = t.to.needle;
+						pin->direction = (from_offset < to_offset ? Pin::LeftToRight : Pin::RightToLeft);
+
+						yarn.pins.insert(yarn.pins.begin() + (i+1), pin); //insert between i and i+1
+						assert(i+1 >= 0 && uint32_t(i+1) < yarn.pins.size());
+						assert(yarn.pins[i+1] == pin);
+
+						++i; //don't need to check half of current interval for pins (though it wouldn't hurt I guess)
+
+						new_pins.emplace_back(pin);
+					}
+
+				}
+			}
+		}*/
+
+		//TODO: check that racking was valid
+
+		//move stitches from from to to:
+		std::vector< Stitch * > &to = stitches_on(t.to);
+
+		for (auto s = from.rbegin(); s != from.rend(); ++s) {
+			to.emplace_back(*s);
 		}
-
-		//TODO: move stitches from from to to
-
+		from.clear();
 	}
 
-	//TODO: check that all stitches arrived at their targets
+	//check that all stitches arrived at their targets:
+	for (uint32_t i = 0; i < to_ccw.size(); ++i) {
+		ERROR_UNLESS(stitches[i].bed == to_ccw[i].bed && stitches[i].needle == to_ccw[i].needle, "Stitches must actually arrive at their destinations.");
+	}
 
 	return true;
 
