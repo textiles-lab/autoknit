@@ -7,7 +7,7 @@
 
 struct NeedleRollGoal {
 	NeedleRollGoal() = default;
-	NeedleRollGoal(int32_t needle_, int32_t roll_, int32_t goal_) : needle(needle_), roll(roll_), goal(goal_) {
+	NeedleRollGoal(int32_t needle_, int32_t roll_, int32_t goal_, int32_t left_slack_, int32_t right_slack_) : needle(needle_), roll(roll_), goal(goal_), left_slack(left_slack_), right_slack(right_slack_) {
 	}
 	int32_t needle = 0;
 	int32_t roll = 0;
@@ -19,6 +19,11 @@ struct NeedleRollGoal {
 
 	bool has_same_goal_as(NeedleRollGoal const &o) const {
 		return needle == o.needle && roll == o.roll && goal == o.goal;
+	}
+
+	//compare 'true' even if the other goal has 2*N more rolling involved.
+	bool has_same_real_goal_as(NeedleRollGoal const &o) const {
+		return needle == o.needle && (roll - o.roll) % 2 == 0 && goal == o.goal;
 	}
 
 	uint32_t penalty(int32_t min_free, int32_t max_free) const {

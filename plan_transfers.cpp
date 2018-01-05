@@ -177,10 +177,13 @@ bool plan_transfers(
 	std::vector< NeedleRollGoal > rg;
 	rg.reserve(Count);
 	for (uint32_t i = 0; i < Count; ++i) {
+		uint32_t p = (i > 0 ? i - 1 : Count - 1);
 		rg.emplace_back(
 			from[i].needle,
 			(from[i].bed == BedNeedle::Front ? winding[i] : -winding[i]),
-			to[i].needle
+			to[i].needle,
+			(from[i].bed == BedNeedle::Front ? slack[i] : slack[p]), //left slack
+			(from[i].bed == BedNeedle::Front ? slack[p] : slack[i]) //right slack
 		);
 		//check to make sure roll/goal actually matches desired behavior:
 		assert((from[i].bed == to[i].bed) == (rg.back().roll % 2 == 0));
