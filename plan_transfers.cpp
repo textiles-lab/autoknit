@@ -9,7 +9,7 @@ bool plan_transfers(
 	Constraints const &constraints,
 	std::vector< BedNeedle > const &from,
 	std::vector< BedNeedle > const &to,
-	std::vector< uint8_t > const &slack,
+	std::vector< Slack > const &slack,
 	std::vector< Transfer> *transfers_,
 	std::string *error
 ) {
@@ -29,21 +29,52 @@ bool plan_transfers(
 	if (Count == 0) return true; //empty cycle has empty plan
 
 	//PARANOIA: check consistency of inputs:
+	auto assert_valid_layout = [&](std::vector< BedNeedle > const &cycle) {
+		Slack left_slack = SlackForNoYarn;
+		int32_t left_offset = 0;
+		Slack right_slack = SlackForNoYarn;
+		int32_t right_offset = 0;
+		for (uint32_t i = 0; i < Count; ++i) {
+			//in the constrained region:
+			assert(cycle[i].needle >= constraints.min_free);
+			assert(cycle[i].needle <= constraints.max_free);
+			//slack:
+			uint32_t n = (i + 1 < Count ? i + 1 : 0);
+			if (cycle[i].bed == cycle[n].bed) {
+				assert(std::abs(cycle[n].needle - cycle[i].needle) <= slack[i]);
+			} else if (cycle[i].bed == BedNeedle::Front && cycle[n].bed == BedNeedle::Back) {
+				assert(left_slack == SlackForNoYarn);
+				left_offset = cycle[n].needle - cycle[i].needle;
+				left_slack = slack[i];
+			} else if (cycle[i].bed == BedNeedle::Back && cycle[n].bed == BedNeedle::Front) {
+				assert(right_slack == SlackForNoYarn);
+				right_offset = cycle[i].needle - cycle[n].needle;
+				right_slack = slack[i];
+			} else {
+				assert(0);
+			}
+		}
+		//there should be at least one valid racking:
+		bool has_valid = false;
+		for (int32_t r = -int32_t(constraints.max_racking); r <= int32_t(constraints.max_racking); ++r) {
+			if (std::abs(left_offset + r) > left_slack) continue;
+			if (std::abs(right_offset + r) > right_slack) continue;
+			has_valid = true;
+			break;
+		}
+		assert(has_valid && "Must have valid racking");
+	};
+	assert_valid_layout(from);
+	assert_valid_layout(to);
+
+	//can't split loops:
 	for (uint32_t i = 0; i < Count; ++i) {
-		//in the constrained region:
-		assert(from[i].needle >= constraints.min_free);
-		assert(from[i].needle <= constraints.max_free);
-		assert(to[i].needle >= constraints.min_free);
-		assert(to[i].needle <= constraints.max_free);
-		//slack:
 		uint32_t n = (i + 1 < Count ? i + 1 : 0);
-		assert(std::abs(from[n].needle - from[i].needle) < slack[i]);
-		assert(std::abs(to[n].needle - to[i].needle) < slack[i]);
-		//can't split loops:
 		if (from[i] == from[n]) {
 			assert(to[i] == to[n]);
 		}
 	}
+
 	auto assert_ccw = [](std::vector< BedNeedle > const &cycle) {
 		bool has_front_back = false;
 		bool has_back_front = false;

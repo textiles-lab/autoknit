@@ -3,6 +3,7 @@
 #include "plan_transfers.hpp"
 
 #include <cassert>
+#include <iostream>
 
 struct NeedleRollGoal {
 	NeedleRollGoal() = default;
@@ -23,6 +24,7 @@ struct NeedleRollGoal {
 	uint32_t penalty(int32_t min_free, int32_t max_free) const {
 		uint32_t dir = penalty_dir(min_free, max_free);
 		uint32_t rec = penalty_rec(min_free, max_free);
+		//std::cout << "[n,r,g] = [" << needle << "," << roll << "," << goal << "] -> dir: " << dir << " vs rec: " << rec << std::endl;
 		assert(dir == rec);
 		return dir;
 	}
@@ -33,13 +35,13 @@ struct NeedleRollGoal {
 		} else if (roll < 0) {
 			return (needle - min_free)
 				+ 2 * -roll
-				+ (roll < -1 ? (-roll - 1) * (max_free - min_free) : 0)
-				+ (roll % 2 == 0 ? max_free - needle : needle - min_free);
+				+ (-roll - 1) * (max_free - min_free)
+				+ (roll % 2 == 0 ? max_free - goal : goal - min_free);
 		} else { //(roll > 0)
 			return (max_free - needle)
 				+ 2 * roll
-				+ (roll > 1 ? (roll - 1) * (max_free - min_free) : 0)
-				+ (roll % 2 == 0 ? needle - min_free : max_free - needle);
+				+ (roll - 1) * (max_free - min_free)
+				+ (roll % 2 == 0 ? goal - min_free : max_free - goal);
 		}
 	}
 	uint32_t penalty_rec(int32_t min_free, int32_t max_free) const {
