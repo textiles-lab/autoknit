@@ -46,15 +46,24 @@ void best_collapse(
 		uint32_t r; //index of right stitch on top
 		int32_t l_prev_needle; //needle of stitch to the left of 'l'
 		int32_t r_next_needle; //needle of stitch to the right of 'r'
-		bool l_prev_bottom; //adjacent stitch is on the bottom bed to the left?
-		bool r_next_bottom; //adjacent stitch is on the bottom bed to the right?
+		enum : uint8_t {
+			LRollInvalid = -10,
+			LRoll2 = -2,
+			LRoll1 = -1,
+			Roll0 = 0
+			RRoll1 = 1,
+			RRoll2 = 2,
+			RRollInvalid = 10
+		};
+		int8_t l_prev_roll; //{-10, -2, -1, 0} adjacent stitch is on the bottom bed to the left?
+		int8_t r_next_roll; //{10, 2, 1, 0} adjacent stitch is on the bottom bed to the right?
 		bool operator==(State const &o) const {
 			return l == o.l
 			    && r == o.r
 			    && l_prev_needle == o.l_prev_needle
 			    && r_next_needle == o.r_next_needle
-			    && l_prev_bottom == o.l_prev_bottom
-			    && r_next_bottom == o.r_next_bottom;
+			    && l_prev_roll == o.l_prev_roll
+			    && r_next_roll == o.r_next_roll;
 		};
 	};
 	#pragma pack(pop)
@@ -91,98 +100,245 @@ void best_collapse(
 		}
 	};
 
-	//OKAY! This is getting into special case hell, which is best avoided.
-	// So, things to think about:
-	// the min/max offset range is limited by bridges as long as *any* stitch has been moved
-	// bottom empty, no stitches:
-	//   can move either left or right, roll or no roll
-	// bottom empty, only left stitches moved:
-	//   left moves are "usual", right can still roll or no roll, as long as it is to the right of the last left stitch.
-	// bottom empty, only right stitches moved:
-	//   right moves are "usual", left can still roll or no roll, as long as it is to the left of the last right stitch moved
-	// These two bottom cases seem to be pretty much the same as "usual" moves, with modified roll bounds.
 
-	// Can probably unify these cases by using move and roll ranges, with limited special-casing when setting the ranges up:
-	//  l--o--o--r
-	// [      ] <- range that is okay to "move" into (limits: previously moved stitch, if any; space required -- for early-out)
-	// [   ]   <- range that it is okay to "roll" into (limits: previously rolled stitch, if any; bottom bed stitches, if any)
-	//     p-- ... ---n
-	   
+	//Let's do this in terms of the actions that can be applied:
+	struct Action {
+		enum Type : uint8_t {
+			MoveLeft,
+			MoveRight,
+			RollLeft,
+			RollRight,
+			Roll2Left,
+			Roll2Right
+		} type;
+		int32_t needle;
 
-	//Special-case for first expansion when bottom is empty;
-	// this is done so that in general there are already two stitches on the bottom:
-	auto special_expand_state = [&](State const &state, Cost const &cost) {
-		assert(bottom.empty() && l == 0 && r + 1 == top.size());
+		Action(Type type_, int32_t needle_) : type(type_), needle(needle_) { }
+	};
 
-		//option (0): only one stitch:
-		if (state.l == state.r) {
-			assert(0 && "TODO: the only-one-stitch initial expand case");
-		}
-		//option (1): move l and then move r:
-		if (state.l != state.r)
-		for (int32_t ofs_l = -int32_t(constraints.max_racking); ofs_l <= int32_t(constraints.max_racking); ++ofs_l) {
-			for (int32_t ofs_r = -int32_t(constraints.max_racking); ofs_r <= int32_t(constraints.max_racking); ++ofs_r) {
-			//move l:
-				if (constraints.min_free <= top[l].needle + ofs && top[l].needle + ofs <= constraints.max_free) {
-					State next_state;
-					next_state.l = state.l + 1;
-					next_state.r = state.r;
-					next_state.r_next_needle = next_state.l_prev_needle = top[l].needle + ofs;
+	auto apply_action = [&queue_state,&top,&bottom](Action const &action, State const &state, Cost const &cost) {
+		State next_state = state;
+		Cost next_cost = cost;
+		if        (action.type == MoveLeft) {
+			assert(state.l < top.size());
 
-					{ //roll to bottom:
-						next_state.r_next_bottom = next_state.l_prev_bottom = true;
-						Cost next_cost = cost;
-						NeedleRollGoal nrg = top[l];
-						nrg.needle += ofs;
-						nrg.roll = -(nrg.roll + 1);
-						next_cost.penalty += nrg.penalty(constraints.min_free, constraints.max_free);
-						queue_state(next_state, &state, next_cost);
-					}
+			next_cost.penalty += top[state.l].after_offset_and_roll(action.needle - top[state.l].needle, 0).penalty(constraints.min_free, constraints.max_free);
 
-					{ //move to top:
-						next_state.r_next_bottom = next_state.l_prev_bottom = false;
-						Cost next_cost = cost;
-						NeedleRollGoal nrg = top[l];
-						nrg.needle += ofs;
-						next_cost.penalty += nrg.penalty(constraints.min_free, constraints.max_free);
-						queue_state(next_state, &state, next_cost);
-					}
-				}
+			next_state.l += 1;
+			next_state.l_prev_needle = action.needle;
+			next_state.l_prev_roll = State::Roll0;
 
-				//move r:
-				if (constraints.min_free <= top[r].needle + ofs && top[r].needle + ofs <= constraints.max_free) {
-					State next_state;
-					next_state.l = state.l;
-					next_state.r = state.r - 1;
-					next_state.r_next_needle = next_state.l_prev_needle = top[r].needle + ofs;
+			//if this is the first stitch, track it:
+			if (state.r_next_roll == State::RRollInvalid) {
+				assert(bottom.empty() && state.r + 1 == top.size());
+				state.r_next_needle = action.needle;
+				state.r_next_roll = State::RRoll2;
+			}
+		} else if (action.type == MoveRight) {
+			assert(state.r >= 0);
 
-					{ //roll to bottom:
-						next_state.r_next_bottom = next_state.l_prev_bottom = true;
-						Cost next_cost = cost;
-						NeedleRollGoal nrg = top[r];
-						nrg.needle += ofs;
-						nrg.roll = -(nrg.roll - 1);
-						next_cost.penalty += nrg.penalty(constraints.min_free, constraints.max_free);
-						queue_state(next_state, &state, next_cost);
-					}
+			next_cost.penalty += top[state.r].after_offset_and_roll(action.needle - top[state.r].needle, 0).penalty(constraints.min_free, constraints.max_free);
 
-					{ //move to top:
-						next_state.r_next_bottom = next_state.l_prev_bottom = false;
-						Cost next_cost = cost;
-						NeedleRollGoal nrg = top[r];
-						nrg.needle += ofs;
-						next_cost.penalty += nrg.penalty(constraints.min_free, constraints.max_free);
-						queue_state(next_state, &state, next_cost);
-					}
-				}
+			next_state.r -= 1;
+			next_state.r_next_needle = action.needle;
+			next_state.r_next_roll = State::Roll0;
 
+			//if this is the first stitch, track it:
+			if (state.l_prev_roll == State::LRollInvalid) {
+				assert(bottom.empty() && state.l == 0);
+				state.l_prev_needle = action.needle;
+				state.l_prev_roll = State::RRoll2;
 			}
 
-	}
+		} else if (action.type == RollLeft) {
+			assert(state.l < top.size());
+			
+			next_cost.penalty += top[state.l].after_offset_and_roll(action.needle - top[state.l].needle, -1).penalty(constraints.min_free, constraints.max_free);
+
+			next_state.l += 1;
+			next_state.l_prev_needle = action.needle;
+			next_state.l_prev_roll = State::LRoll1;
+
+			//if this is the first stitch, track it on the other side:
+			if (state.r_next_roll == State::RRollInvalid) {
+				assert(bottom.empty() && state.r + 1 == top.size());
+				state.r_next_needle = action.needle;
+				state.r_next_roll = State::RRoll1;
+			}
+		} else if (action.type == RollRight) {
+			assert(state.r >= 0);
+			
+			next_cost.penalty += top[state.r].after_offset_and_roll(action.needle - top[state.r].needle, +1).penalty(constraints.min_free, constraints.max_free);
+
+			next_state.r -= 1;
+			next_state.r_next_needle = action.needle;
+			next_state.r_next_roll = State::RRoll1;
+
+			//if this is the first stitch, track it on the other side:
+			if (state.l_prev_roll == State::LRollInvalid) {
+				assert(bottom.empty() && state.l == 0);
+				state.l_prev_needle = action.needle;
+				state.l_prev_roll = State::LRoll1;
+			}
+		} else if (action.type == Roll2Left) {
+			assert(state.l < top.size());
+			assert(state.l_prev_roll == State::LRoll2);
+			assert(top[state.l].can_stack_left); //Roll2's are always stacking
+			assert(bottom.empty()); //... on already-xferred right stitches
+
+
+			assert(state.r + 1 < top.size());
+			assert(state.r_next_roll == State::Roll0);
+
+			//do we add to penalty when stacking? I guess so.
+			next_cost.penalty += top[state.l].after_offset_and_roll(action.needle - top[state.l].needle, -2).penalty(constraints.min_free, constraints.max_free);
+
+			next_state.l += 1;
+			next_state.l_prev_needle = action.needle;
+			next_state.l_prev_roll = State::LRoll2;
+
+			//shouldn't ever need to inform other side.
+
+		} else if (action.type == Roll2Right) {
+			assert(state.r >= 0);
+			assert(state.r_next_roll == State::RRoll2);
+			assert(top[state.r].can_stack_right); //Roll2's are always stacking
+			assert(bottom.empty()); //... on already-xferred right stitches
+
+
+			assert(state.l > 0);
+			assert(state.l_prev_roll == State::Roll0);
+
+
+			//do we add to penalty when stacking? I guess so.
+			next_cost.penalty += top[state.r].after_offset_and_roll(action.needle - top[state.r].needle, 2).penalty(constraints.min_free, constraints.max_free);
+
+			next_state.r -= 1;
+			next_state.r_next_needle = action.needle;
+			next_state.r_next_roll = State::RRoll2;
+
+			//shouldn't ever need to inform other side.
+		} else {
+			assert(0 && "Unhandled action type.");
+		}
+
+		queue_state(next_state, &state, next_cost);
+	};
 
 	auto expand_state = [&](State const &state, Cost const &cost) {
 		assert(state.l <= state.r);
 		assert(state.r < top.size());
+
+		assert(state.l_prev_roll <= State::Roll0);
+		assert(state.r_next_roll >= State::Roll0);
+
+		//First, and most important range: what do the current bridges, constraints, and slack allow in terms of racking?
+		int32_t min_ofs = -int32_t(constraints.max_racking);
+		int32_t max_ofs = int32_t(constraints.max_racking);
+
+		if (bottom.empty() && state.l == 0 && state.r + 1 == top.size()) {
+			//no bridges to worry about!
+		} else {
+			//can't have | ofs + top[l].needle - state.l_prev_needle | > top[l].left_slack
+			//want -top[l].left_slack <= ofs + top[l].needle - state.l_prev_needle <= top[l].left_slack
+			// -top[l].left_slack - (top[l].needle - state.l_prev_needle) <= ofs <= top[l].left_slack - (top[l].needle - state.l_prev_needle)
+			min_ofs = std::max(min_ofs, -top[l].left_slack - (top[l].needle - state.l_prev_needle));
+			max_ofs = std::min(max_ofs,  top[l].left_slack - (top[l].needle - state.l_prev_needle));
+			min_ofs = std::max(min_ofs, -top[r].right_slack - (top[r].needle - state.r_next_needle));
+			max_ofs = std::min(max_ofs,  top[r].right_slack - (top[r].needle - state.r_next_needle));
+		}
+
+		{ //"roll" moves for left stitch:
+			int32_t l_roll_min = min_ofs;
+			int32_t l_roll_max = max_ofs;
+
+			//limit based on left stitches:
+			if (state.l_prev_roll == State::LRollInvalid) {
+				//nothing on the other bed, do whatever!
+			} else if (state.l_prev_roll == State::LRoll2) {
+				//must arrive to the left of l_prev_needle, as it's on the front:
+				l_roll_max = std::min(l_roll_max, state.l_prev_needle - 1);
+			} else if (state.l_prev_roll == State::LRoll1) {
+				//can arrive to the left of l_prev_needle or stack:
+				l_roll_max = std::min(l_roll_max, state.l_prev_needle + (top[state.l].can_stack_left ? 0 : -1));
+			} else { assert(state.l_prev_roll == State::Roll0);
+				//have already moved a stitch, so can't continue to roll:
+				l_roll_min = std::numeric_limits< int32_t >::max();
+				l_roll_max = std::numeric_limits< int32_t >::min();
+			}
+			//limit based on right stitches:
+			if (state.r_prev_roll == State::Roll0) {
+				//must be to the left of the top-bed r_prev_needle:
+				l_roll_max = std::min(l_roll_max, state.r_prev_needle - 1);
+			} else if (state.r_prev_roll == State::RRoll2) {
+				assert(state.l_prev_roll == State::Roll0); //would need to limit, but already on front bed
+			}
+
+			for (int32_t needle = l_roll_min; needle <= l_roll_max; ++needle) {
+				apply_action(Action(RollLeft, needle), state, cost);
+			}
+
+		}
+
+		//TODO: the other move types
+
+		//-------- OLD STUFF BELOW HERE -----------
+
+		//TODO: clamp ofs for existing stitch locations as well (can't stack unless ... ?)
+
+		//Next, what stitches is it okay for l to roll onto?
+		int32_t l_roll_min, l_roll_max;
+
+		if (bottom.empty() && l == 0) {
+			if (state.r + 1 == top.size()) {
+				//nothing has been moved, so l can roll to anywhere at all.
+				l_roll_min = min_ofs;
+				l_roll_max = max_ofs;
+			} else {
+				//nothing has moved from this side yet
+				bool can_stack_l;
+				if (state.l_prev_bottom) {
+					can_stack_l = top[0].has_same_real_goal_as(top.back());
+				} else {
+					can_stack_l = false; //TODO: handle "double-roll" case where first stitch stacks with move but subsequent stitches are rolls
+				}
+				l_roll_min = min_ofs;
+				l_roll_max = std::min(max_ofs, state.l_prev_needle + (can_stack_l ? 0 : -1));
+			}
+		} else if (!state.l_prev_bottom) {
+			//TODO: there is a "double roll" case when bottom is empty and first r stitch was moved that is not yet handled here
+			//done rolling, so use invalid range:
+			l_roll_min = std::numeric_limits< int32_t >::max();
+			l_roll_max = std::numeric_limits< int32_t >::min();
+		} else { assert(state.l_prev_bottom);
+			l_roll_min = min_ofs;
+			//must roll to the left of the last stitch
+			//...unless it has the same goal:
+			bool can_stack_l;
+			if (l == 0) {
+				assert(!bottom.empty() && "handled this case above");
+				NeedleRollGoal temp = bottom[0];
+				temp.roll = -(temp.roll + 1);
+				can_stack_l = top[0].has_same_real_goal_as(temp);
+			} else {
+				can_stack_l = top[l-1].has_same_real_goal_as(top[l]);
+			}
+			l_roll_max = std::min(max_ofs, state.l_prev_needle + (can_stack_l ? 0 : -1));
+		}
+
+		int32_t l_move_min = std::numeric_limits< int32_t >::max();
+		int32_t l_move_max = std::numeric_limits< int32_t >::min();
+
+		if (l == 0) {
+			if (bottom.empty() && r + 1 == top.size()) {
+			}
+		}
+
+
+		// <--- I WAS HERE
+
+		/// ----- END OF NEW CODE -----
+
 		if (bottom.empty() && l == 0 && r + 1 == top.size()) {
 			special_expand_state(state, cost);
 			return;

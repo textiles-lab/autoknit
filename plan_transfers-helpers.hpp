@@ -16,6 +16,23 @@ struct NeedleRollGoal {
 	//slack available on both sides of the stitch:
 	Slack left_slack = 0;
 	Slack right_slack = 0;
+	
+	//can stitch be stacked to the left/right?
+	bool can_stack_left = false;
+	bool can_stack_right = false;
+
+	NeedleRollGoal after_offset_and_roll(int32_t offset, int32_t roll) const {
+		NeedleRollGoal ret = *this;
+		ret.needle += offset;
+		//adjust target roll based on transfer's roll:
+		ret.roll = ret.roll - roll;
+		//adjust roll/slack if on the other bed:
+		if (roll % 2) {
+			ret.roll = -ret.roll;
+			std::swap(left_slack, right_slack);
+			std::swap(can_stack_left, can_stack_right);
+		}
+	}
 
 	bool has_same_goal_as(NeedleRollGoal const &o) const {
 		return needle == o.needle && roll == o.roll && goal == o.goal;
