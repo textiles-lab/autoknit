@@ -426,6 +426,7 @@ void best_collapse(
 		std::cout << from.to_string() << " -> " << to.to_string() << "\n"; //DEBUG
 	};
 
+
 	std::cout << "  Final plan: (reversed)\n"; //DEBUG
 	while (best) {
 		auto f = best_source.find(*best);
@@ -469,6 +470,13 @@ void best_collapse(
 		ops,
 		to_top_bed, &to_top,
 		to_bottom_bed, &to_bottom);
+
+	std::cout << "Before:\n"; //DEBUG
+	draw_beds(top_bed, top, bottom_bed, bottom); //DEBUG
+
+	std::cout << "After:\n"; //DEBUG
+	draw_beds(to_top_bed, to_top, to_bottom_bed, to_bottom); //DEBUG
+
 
 	plan.insert(plan.end(), ops.begin(), ops.end());
 

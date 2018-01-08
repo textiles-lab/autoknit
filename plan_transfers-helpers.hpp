@@ -124,6 +124,12 @@ void compute_minimal_winding(
 );
 */
 
+//helper for drawing an (ASCII / ANSI) picture of beds:
+void draw_beds(
+	BedNeedle::Bed top_bed, std::vector< NeedleRollGoal > const &top,
+	BedNeedle::Bed bottom_bed, std::vector< NeedleRollGoal > const &bottom
+);
+
 
 //helper for constructing output beds:
 //NOTE: *recomputes* roll values [only cares about roll parity], cleans up doubled stitches.

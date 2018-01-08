@@ -318,7 +318,7 @@ bool plan_transfers(
 				&plan
 			);
 			uint32_t p = penalty(shrunk_constraints, after_front, after_back);
-			assert(p <= best_penalty);
+			//NOTE: not guaranteed until everything implemented... assert(p <= best_penalty);
 			if (p < best_penalty) {
 				best_front = after_front;
 				best_back = after_back;
