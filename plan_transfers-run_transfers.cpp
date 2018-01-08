@@ -39,6 +39,18 @@ void run_transfers(
 	}
 	assert(ccw.size() == bottom.size() + top.size());
 
+	//DEBUG:
+	std::cout << "before:";
+	for (auto const &bs : ccw) {
+		std::cout << ' ' << BedNeedle(bs.first, bs.second.needle).to_string();
+	}
+	std::cout << "\n";
+
+	//everything must be on the 'from' beds:
+	for (auto const &bs : ccw) {
+		assert(bs.first == bottom_bed || bs.first == top_bed);
+	}
+
 	//run transfers on the ccw list:
 	for (auto const &t : plan) {
 		assert(t.from.bed == top_bed || t.from.bed == bottom_bed);
@@ -71,7 +83,7 @@ void run_transfers(
 			assert(bs.second.needle == t.to.needle);
 		}
 
-		if (target == -1U) {
+		if (target != -1U) {
 			auto &tbs = ccw[target];
 			assert(tbs.first == bs.first && tbs.second.needle == bs.second.needle);
 
@@ -124,6 +136,18 @@ void run_transfers(
 			//delete source or target stitch:
 			ccw.erase(ccw.begin() + std::max(source, target));
 		}
+	}
+
+	//DEBUG:
+	std::cout << "after:";
+	for (auto const &bs : ccw) {
+		std::cout << ' ' << BedNeedle(bs.first, bs.second.needle).to_string();
+	}
+	std::cout << "\n";
+
+	//must have placed everything on the 'to' beds:
+	for (auto const &bs : ccw) {
+		assert(bs.first == to_bottom_bed || bs.first == to_top_bed);
 	}
 
 	{ //update roll:

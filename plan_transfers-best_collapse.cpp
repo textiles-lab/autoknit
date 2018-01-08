@@ -420,19 +420,20 @@ void best_collapse(
 	//read back operations from best:
 	std::vector< Transfer > ops;
 	auto do_xfer = [&](BedNeedle const &from, BedNeedle const &to) {
-		plan.emplace_back();
-		plan.back().from = from;
-		plan.back().to = to;
+		ops.emplace_back();
+		ops.back().from = from;
+		ops.back().to = to;
+		std::cout << from.to_string() << " -> " << to.to_string() << "\n"; //DEBUG
 	};
 
-	std::cout << "  Final plan:\n"; //DEBUG
+	std::cout << "  Final plan: (reversed)\n"; //DEBUG
 	while (best) {
 		auto f = best_source.find(*best);
 		assert(f != best_source.end());
 		if (f->second.source == nullptr) break;
 		State const &state = *f->second.source;
 		Action const &action = f->second.action;
-		std::cout << "    " << action.to_string() << "\n"; //DEBUG
+		std::cout << "    " << action.to_string() << ": "; //DEBUG
 
 		if (action.type == Action::MoveLeft) {
 			assert(state.l >= 0 && state.l < top.size());
