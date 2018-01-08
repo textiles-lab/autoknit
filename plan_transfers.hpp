@@ -3,6 +3,7 @@
 #include <limits>
 #include <vector>
 #include <string>
+#include <cassert>
 
 struct BedNeedle {
 	enum Bed : char {
@@ -15,7 +16,22 @@ struct BedNeedle {
 	bool operator==(BedNeedle const &o) const {
 		return bed == o.bed && needle == o.needle;
 	}
+
 	BedNeedle(Bed bed_ = Front, int32_t needle_ = 0) : bed(bed_), needle(needle_) { }
+	std::string to_string() const {
+		if (bed == Front)             return "f"  + std::to_string(needle);
+		else if (bed == FrontSliders) return "fs" + std::to_string(needle);
+		else if (bed == BackSliders)  return "bs" + std::to_string(needle);
+		else if (bed == Back)         return "b"  + std::to_string(needle);
+		else assert(0 && "Should have handled all cases");
+	}
+};
+
+template< >
+struct std::hash< BedNeedle > {
+	size_t operator()(BedNeedle const &bn) const {
+		return (size_t(bn.bed) << (8*(sizeof(size_t)-sizeof(bn.bed)))) ^ size_t(bn.needle);
+	};
 };
 
 struct Constraints {

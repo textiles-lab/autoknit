@@ -34,6 +34,8 @@ void best_collapse(
 
 	//if no stitches on top, nothing to move, so done:
 	if (top.empty()) {
+		to_top.clear();
+		to_bottom = bottom;
 		return;
 	}
 
@@ -76,6 +78,33 @@ void best_collapse(
 		}
 	};
 
+	//Let's do this in terms of the actions that can be applied:
+	struct Action {
+		enum Type : uint8_t {
+			None,
+			MoveLeft,
+			MoveRight,
+			RollLeft,
+			RollRight,
+			Roll2Left,
+			Roll2Right,
+		} type;
+		int32_t needle;
+
+		Action(Type type_, int32_t needle_) : type(type_), needle(needle_) { }
+
+		std::string to_string() const {
+			if (type == None) return "None";
+			else if (type == MoveLeft) return "MoveLeft to " + std::to_string(needle);
+			else if (type == MoveRight) return "MoveRight to " + std::to_string(needle);
+			else if (type == RollLeft) return "RollLeft to " + std::to_string(needle);
+			else if (type == RollRight) return "RollRight to " + std::to_string(needle);
+			else if (type == Roll2Left) return "Roll2Left to " + std::to_string(needle);
+			else if (type == Roll2Right) return "Roll2Right to " + std::to_string(needle);
+			else assert(0 && "invalid move type");
+		}
+	};
+
 	struct Cost {
 		uint32_t penalty = 0;
 		bool operator<(Cost const &o) const {
@@ -86,13 +115,21 @@ void best_collapse(
 		}
 	};
 
-	std::map< Cost, const State * > todo;
-	std::unordered_map< State, std::pair< const State *, Cost >, HashState > best_source;
+	struct StateInfo {
+		Cost cost;
+		State const *source;
+		Action action;
 
-	auto queue_state = [&](State const &state, const State *from, Cost const &cost) {
-		auto ret = best_source.insert(std::make_pair(state, std::make_pair(from, cost)));
-		if (cost < ret.first->second.second) {
-			ret.first->second = std::make_pair(from, cost);
+		StateInfo(Cost const &cost_, State const *source_, Action const &action_) : cost(cost_), source(source_), action(action_) { }
+	};
+
+	std::map< Cost, const State * > todo;
+	std::unordered_map< State, StateInfo, HashState > best_source;
+
+	auto queue_state = [&](State const &state, Cost const &cost, State const *from, Action const &action) {
+		auto ret = best_source.insert(std::make_pair(state, StateInfo(cost, from, action)));
+		if (cost < ret.first->second.cost) {
+			ret.first->second = StateInfo(cost, from, action);
 			ret.second = true;
 		}
 		if (ret.second) {
@@ -100,31 +137,6 @@ void best_collapse(
 		}
 	};
 
-
-	//Let's do this in terms of the actions that can be applied:
-	struct Action {
-		enum Type : uint8_t {
-			MoveLeft,
-			MoveRight,
-			RollLeft,
-			RollRight,
-			Roll2Left,
-			Roll2Right
-		} type;
-		int32_t needle;
-
-		Action(Type type_, int32_t needle_) : type(type_), needle(needle_) { }
-
-		std::string to_string() const {
-			if (type == MoveLeft) return "MoveLeft to " + std::to_string(needle);
-			else if (type == MoveRight) return "MoveRight to " + std::to_string(needle);
-			else if (type == RollLeft) return "RollLeft to " + std::to_string(needle);
-			else if (type == RollRight) return "RollRight to " + std::to_string(needle);
-			else if (type == Roll2Left) return "Roll2Left to " + std::to_string(needle);
-			else if (type == Roll2Right) return "Roll2Right to " + std::to_string(needle);
-			else assert(0 && "invalid move type");
-		}
-	};
 
 	auto apply_action = [&queue_state,&top,&bottom,&constraints](Action const &action, State const &state, Cost const &cost) {
 		std::cout << "  doing '" << action.to_string() << "'" << std::endl; //DEBUG
@@ -231,7 +243,7 @@ void best_collapse(
 			assert(0 && "Unhandled action type.");
 		}
 
-		queue_state(next_state, &state, next_cost);
+		queue_state(next_state, next_cost, &state, action);
 	};
 
 	auto expand_state = [&](State const &state, Cost const &cost) {
@@ -379,7 +391,7 @@ void best_collapse(
 		init.r_next_roll = (bottom.empty() ? State::RRollInvalid : State::RRoll1);
 		Cost cost;
 		cost.penalty = 0;
-		queue_state(init, nullptr, cost);
+		queue_state(init, cost, nullptr, Action(Action::None, 0));
 	}
 
 	//Actual search:
@@ -392,8 +404,8 @@ void best_collapse(
 			auto f = best_source.find(*state);
 			assert(f != best_source.end());
 			assert(&(f->first) == state);
-			if (f->second.second < cost) continue;
-			assert(f->second.second == cost);
+			if (f->second.cost < cost) continue;
+			assert(f->second.cost == cost);
 		}
 		//if this is an ending state, end:
 		if (state->l > state->r) {
@@ -407,43 +419,56 @@ void best_collapse(
 
 	//read back operations from best:
 	std::vector< Transfer > ops;
+	auto do_xfer = [&](BedNeedle const &from, BedNeedle const &to) {
+		plan.emplace_back();
+		plan.back().from = from;
+		plan.back().to = to;
+	};
+
+	std::cout << "  Final plan:\n"; //DEBUG
 	while (best) {
-		const State *from;
-		{
-			auto f = best_source.find(*best);
-			assert(f != best_source.end());
-			from = f->second.first;
-		}
-		if (from == nullptr) break;
+		auto f = best_source.find(*best);
+		assert(f != best_source.end());
+		if (f->second.source == nullptr) break;
+		State const &state = *f->second.source;
+		Action const &action = f->second.action;
+		std::cout << "    " << action.to_string() << "\n"; //DEBUG
 
-		//reconstruct operation:
-		ops.emplace_back();
-		if (best->l != from->l) {
-			assert(best->l == from->l + 1);
-			ops.back().from.bed = top_bed;
-			ops.back().from.needle = top[from->l].needle;
-			ops.back().to.needle = best->l_prev_needle;
-			if (best->l_prev_roll == State::LRoll2 || best->l_prev_roll == State::Roll0) {
-				ops.back().to.bed = to_top_bed;
-			} else { assert(best->l_prev_roll == State::LRoll1);
-				ops.back().to.bed = to_bottom_bed;
-			}
-		} else { assert(best->r != from->r);
-			assert(best->r == from->r - 1);
-			ops.back().from.bed = top_bed;
-			ops.back().from.needle = top[from->r].needle;
-			ops.back().to.needle = best->r_next_needle;
-			if (best->r_next_roll == State::RRoll2 || best->r_next_roll == State::Roll0) {
-				ops.back().to.bed = to_top_bed;
-			} else { assert(best->r_next_roll == State::RRoll1);
-				ops.back().to.bed = to_bottom_bed;
-			}
+		if (action.type == Action::MoveLeft) {
+			assert(state.l >= 0 && state.l < top.size());
+			do_xfer(BedNeedle(top_bed, top[state.l].needle), BedNeedle(to_top_bed, action.needle));
+		} else if (action.type == Action::MoveRight) {
+			assert(state.r >= 0 && state.r < top.size());
+			do_xfer(BedNeedle(top_bed, top[state.r].needle), BedNeedle(to_top_bed, action.needle));
+		} else if (action.type == Action::RollLeft) {
+			assert(state.l >= 0 && state.l < top.size());
+			do_xfer(BedNeedle(top_bed, top[state.l].needle), BedNeedle(to_bottom_bed, action.needle));
+		} else if (action.type == Action::RollRight) {
+			assert(state.r >= 0 && state.r < top.size());
+			do_xfer(BedNeedle(top_bed, top[state.r].needle), BedNeedle(to_bottom_bed, action.needle));
+		} else if (action.type == Action::Roll2Left) {
+			assert(state.l >= 0 && state.l < top.size());
+			do_xfer(BedNeedle(top_bed, top[state.l].needle), BedNeedle(to_top_bed, action.needle));
+		} else if (action.type == Action::Roll2Right) {
+			assert(state.r >= 0 && state.r < top.size());
+			do_xfer(BedNeedle(top_bed, top[state.r].needle), BedNeedle(to_top_bed, action.needle));
+		} else {
+			assert(0 && "Invalid action type.");
 		}
 
-		best = from;
+		best = f->second.source;
 	}
+	std::cout.flush(); //DEBUG
 
-	plan.insert(plan.end(), ops.rbegin(), ops.rend()); //reverse ops + add to plan
+	std::reverse(ops.begin(), ops.end());
+
+	run_transfers(constraints,
+		top_bed, top,
+		bottom_bed, bottom,
+		ops,
+		to_top_bed, &to_top,
+		to_bottom_bed, &to_bottom);
+
+	plan.insert(plan.end(), ops.begin(), ops.end());
 
 }
-

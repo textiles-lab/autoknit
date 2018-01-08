@@ -53,6 +53,7 @@ if $(OS) = NT {
 
 PLAN_TRANSFERS_NAMES =
 	plan_transfers
+	plan_transfers-run_transfers
 	plan_transfers-best_collapse
 	plan_transfers-best_shift
 	plan_transfers-best_expand

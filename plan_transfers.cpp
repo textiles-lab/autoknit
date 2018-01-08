@@ -293,7 +293,7 @@ bool plan_transfers(
 			std::vector< NeedleRollGoal > collapsed_top, collapsed_bottom;
 			std::vector< NeedleRollGoal > shifted_top, shifted_bottom;
 			std::vector< NeedleRollGoal > after_front, after_back;
-			best_collapse( //collapse 'top' onto 'bottom'
+			best_collapse( //collapse 'top' onto 'bottom':
 				shrunk_constraints,
 				BedNeedle::Front, front, //top
 				BedNeedle::Back, back, //bottom

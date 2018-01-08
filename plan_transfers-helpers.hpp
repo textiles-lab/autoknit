@@ -85,6 +85,59 @@ struct NeedleRollGoal {
 	}
 };
 
+/* This might be useful but might also be overkill:
+
+//the code generally takes two views of a transfer problem, lists of from/to stitches and flattened "top/bottom" arrays.
+//notably, it's much easier to simulate transfers on from/to lists, but easier to actually run dyanmic programming on flattened top/bottom arrays.
+
+struct FromTo;
+
+//TopBottom stores a transfer problem in terms of "NeedleRollGoal" instances, which express the current needle of each stitch as well as its target bed (in terms of roll) and needle (goal).
+struct TopBottom {
+	std::vector< NeedleRollGoal > top; //top stitches, sorted left-to-right
+	std::vector< NeedleRollGoal > bottom; //bottom stitches, sorted left-to-right
+	BedNeedle::Bed top_bed;
+	BedNeedle::Bed bottom_bed;
+
+	TopBottom() = default;
+	TopBottom(BedNeedle::Bed top_bed, BedNeedle::Bed bottom_bed, FromTo const &source); //construct from a FromTo instance
+};
+
+//FromTo stores a cycle in terms of source and destination needles in ccw order:
+struct FromTo {
+	std::vector< BedNeedle > from_ccw;
+	std::vector< BedNeedle > to_ccw;
+	std::vector< Slack > slack;
+
+	FromTo() = default;
+	FromTo(TopBottom const &source); //construct from a TopBottom instance
+};
+*/
+
+
+/* might take the wrong parameters
+//helper for constructing roll values:
+void compute_minimal_winding(
+	std::vector< BedNeedle > const &from_ccw,
+	std::vector< BedNeedle > const &to_ccw,
+	std::vector< int32_t > *winding
+);
+*/
+
+
+//helper for constructing output beds:
+//NOTE: *recomputes* roll values [only cares about roll parity], cleans up doubled stitches.
+void run_transfers(
+	Constraints const &constraints,
+	BedNeedle::Bed top_bed, std::vector< NeedleRollGoal > const &top,
+	BedNeedle::Bed bottom_bed, std::vector< NeedleRollGoal > const &bottom,
+	std::vector< Transfer > const &plan,
+	BedNeedle::Bed to_top_bed, std::vector< NeedleRollGoal > *to_top,
+	BedNeedle::Bed to_bottom_bed, std::vector< NeedleRollGoal > *to_bottom
+);
+
+//NOTE: all the functions below expect *no overlapped stitches* in the top/bottom input arrays, but may overlap stitches in the output arrays:
+
 //collapse 'top' onto 'bottom':
 void best_collapse(
 	Constraints const &constraints,
