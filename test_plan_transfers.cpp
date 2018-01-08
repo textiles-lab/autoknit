@@ -46,7 +46,7 @@ bool simulate_transfers(
 		for (uint32_t i = 0; i < ccw.size(); ++i) {
 			uint32_t n = (i + 1 == ccw.size() ? 0 : i + 1);
 			int32_t diff = std::abs(int32_t(ccw[i].needle) - int32_t(ccw[n].needle));
-			assert(diff < slack[i]);
+			assert(diff <= slack[i]);
 		}
 		//stitches are oriented ccw:
 

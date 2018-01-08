@@ -4,6 +4,7 @@
 
 #include <cassert>
 #include <iostream>
+#include <algorithm>
 
 struct NeedleRollGoal {
 	NeedleRollGoal() = default;
@@ -29,9 +30,10 @@ struct NeedleRollGoal {
 		//adjust roll/slack if on the other bed:
 		if (roll % 2) {
 			ret.roll = -ret.roll;
-			std::swap(left_slack, right_slack);
-			std::swap(can_stack_left, can_stack_right);
+			std::swap(ret.left_slack, ret.right_slack);
+			std::swap(ret.can_stack_left, ret.can_stack_right);
 		}
+		return ret;
 	}
 
 	bool has_same_goal_as(NeedleRollGoal const &o) const {

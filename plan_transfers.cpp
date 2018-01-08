@@ -178,6 +178,7 @@ bool plan_transfers(
 	rg.reserve(Count);
 	for (uint32_t i = 0; i < Count; ++i) {
 		uint32_t p = (i > 0 ? i - 1 : Count - 1);
+		uint32_t n = (i + 1 < Count ? i + 1 : 0);
 		rg.emplace_back(
 			from[i].needle,
 			(from[i].bed == BedNeedle::Front ? winding[i] : -winding[i]),
@@ -185,6 +186,9 @@ bool plan_transfers(
 			(from[i].bed == BedNeedle::Front ? slack[i] : slack[p]), //left slack
 			(from[i].bed == BedNeedle::Front ? slack[p] : slack[i]) //right slack
 		);
+		rg.back().can_stack_left = (to[p] == to[i]);
+		rg.back().can_stack_right = (to[i] == to[n]);
+
 		//check to make sure roll/goal actually matches desired behavior:
 		assert((from[i].bed == to[i].bed) == (rg.back().roll % 2 == 0));
 	}
@@ -230,8 +234,10 @@ bool plan_transfers(
 		auto remove_duplicates = [](std::vector< NeedleRollGoal > &bed) {
 			for (uint32_t i = 0; i + 1 < bed.size(); /* later */) {
 				if (bed[i].needle == bed[i+1].needle) {
+					assert(bed[i].can_stack_left || bed[i+1].can_stack_right);
 					assert(bed[i].has_same_goal_as(bed[i+1]));
 					bed[i+1].left_slack = bed[i].left_slack; //track slack
+					bed[i+1].can_stack_left = bed[i].can_stack_left;
 					bed.erase(bed.begin() + i);
 				} else {
 					assert(bed[i].needle < bed[i+1].needle);
