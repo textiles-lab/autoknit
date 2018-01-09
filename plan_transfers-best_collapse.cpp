@@ -67,6 +67,12 @@ void best_collapse(
 			    && l_prev_roll == o.l_prev_roll
 			    && r_next_roll == o.r_next_roll;
 		};
+		std::string to_string() const {
+			return std::to_string(l_prev_needle) + "r" + std::to_string(int32_t(l_prev_roll))
+				+ " [" + std::to_string(l) + "," + std::to_string(r) + "] "
+				+ std::to_string(r_next_needle) + "r" + std::to_string(int32_t(r_next_roll))
+			;
+		}
 	};
 	#pragma pack(pop)
 	static_assert(sizeof(State) == 4*4+2*1, "collapse's State is packed");
@@ -419,50 +425,47 @@ void best_collapse(
 
 	//read back operations from best:
 	std::vector< Transfer > ops;
-	auto do_xfer = [&](BedNeedle const &from, BedNeedle const &to) {
-		ops.emplace_back();
-		ops.back().from = from;
-		ops.back().to = to;
-		std::cout << from.to_string() << " -> " << to.to_string() << "\n"; //DEBUG
-	};
 
-
-	std::cout << "  Final plan: (reversed)\n"; //DEBUG
 	while (best) {
 		auto f = best_source.find(*best);
 		assert(f != best_source.end());
 		if (f->second.source == nullptr) break;
 		State const &state = *f->second.source;
 		Action const &action = f->second.action;
-		std::cout << "    " << action.to_string() << ": "; //DEBUG
 
 		if (action.type == Action::MoveLeft) {
 			assert(state.l >= 0 && state.l < top.size());
-			do_xfer(BedNeedle(top_bed, top[state.l].needle), BedNeedle(to_top_bed, action.needle));
+			ops.emplace_back(BedNeedle(top_bed, top[state.l].needle), BedNeedle(to_top_bed, action.needle));
 		} else if (action.type == Action::MoveRight) {
 			assert(state.r >= 0 && state.r < top.size());
-			do_xfer(BedNeedle(top_bed, top[state.r].needle), BedNeedle(to_top_bed, action.needle));
+			ops.emplace_back(BedNeedle(top_bed, top[state.r].needle), BedNeedle(to_top_bed, action.needle));
 		} else if (action.type == Action::RollLeft) {
 			assert(state.l >= 0 && state.l < top.size());
-			do_xfer(BedNeedle(top_bed, top[state.l].needle), BedNeedle(to_bottom_bed, action.needle));
+			ops.emplace_back(BedNeedle(top_bed, top[state.l].needle), BedNeedle(to_bottom_bed, action.needle));
 		} else if (action.type == Action::RollRight) {
 			assert(state.r >= 0 && state.r < top.size());
-			do_xfer(BedNeedle(top_bed, top[state.r].needle), BedNeedle(to_bottom_bed, action.needle));
+			ops.emplace_back(BedNeedle(top_bed, top[state.r].needle), BedNeedle(to_bottom_bed, action.needle));
 		} else if (action.type == Action::Roll2Left) {
 			assert(state.l >= 0 && state.l < top.size());
-			do_xfer(BedNeedle(top_bed, top[state.l].needle), BedNeedle(to_top_bed, action.needle));
+			ops.emplace_back(BedNeedle(top_bed, top[state.l].needle), BedNeedle(to_top_bed, action.needle));
 		} else if (action.type == Action::Roll2Right) {
 			assert(state.r >= 0 && state.r < top.size());
-			do_xfer(BedNeedle(top_bed, top[state.r].needle), BedNeedle(to_top_bed, action.needle));
+			ops.emplace_back(BedNeedle(top_bed, top[state.r].needle), BedNeedle(to_top_bed, action.needle));
 		} else {
 			assert(0 && "Invalid action type.");
 		}
+		ops.back().why = state.to_string() + "; " + action.to_string();
 
 		best = f->second.source;
 	}
-	std::cout.flush(); //DEBUG
 
 	std::reverse(ops.begin(), ops.end());
+
+	std::cout << "  Final plan:\n"; //DEBUG
+	for (auto const &op : ops) {
+		std::cout << "    " << op.to_string() << '\n';
+	}
+	std::cout.flush(); //DEBUG
 
 	run_transfers(constraints,
 		top_bed, top,

@@ -26,11 +26,13 @@ void draw_beds(
 
 	auto make_label = [](NeedleRollGoal const &nrg) -> std::string {
 		std::string ret = "";
+		if (nrg.left_slack != SlackForNoYarn) ret += std::to_string(nrg.left_slack);
 		ret += (nrg.can_stack_left ? "<" : "[");
 		ret += std::to_string(nrg.goal);
 		if (nrg.roll > 0) ret += "+" + std::to_string(nrg.roll);
 		if (nrg.roll < 0) ret += std::to_string(nrg.roll);
 		ret += (nrg.can_stack_right ? ">" : "]");
+		if (nrg.right_slack != SlackForNoYarn) ret += std::to_string(nrg.right_slack);
 		return ret;
 	};
 
@@ -55,6 +57,7 @@ void draw_beds(
 	for (auto const &l : needle_labels) column_width = std::max< int32_t >(column_width, l.size());
 	for (auto const &l : top_labels) column_width = std::max< int32_t >(column_width, l.size());
 	for (auto const &l : bottom_labels) column_width = std::max< int32_t >(column_width, l.size());
+	column_width += 1;
 
 	std::ostringstream needle_str, top_str, bottom_str;
 
@@ -79,10 +82,33 @@ void draw_beds(
 		return str;
 	};
 
+	for (auto &l : needle_labels) l = pad(l, ' ', column_width);
+	for (auto &l : top_labels) l = pad(l, ' ', column_width);
+	for (auto &l : bottom_labels) l = pad(l, ' ', column_width);
+
+/*
+	//Someday, nice edge labels
+	for (uint32_t i = 0; i + 1 < top.size(); ++i) {
+		if (top[i].needle == top[i+1].needle) continue;
+		std::string label = std::to_string(top[i].right_slack);
+		uint32_t space = 0;
+		for (uint32_t n = top[i].needle; n <= top[i+1].needle; ++n) {
+			if (n == top[i].needle) {
+			} else if (n == top[i+1].needle) {
+			} else {
+				assert(top_labels[i]
+			}
+		}
+		assert(top_labels[top[i].needle - min_needle] != "");
+		uint32_t space = 
+		if (top[i].
+	}
+*/
+
 	for (int32_t n = min_needle; n <= max_needle; ++n) {
-		needle_str << pad(needle_labels[n - min_needle], ' ', column_width);
-		top_str << pad(top_labels[n - min_needle], ' ', column_width);
-		bottom_str << pad(bottom_labels[n - min_needle], ' ', column_width);
+		needle_str << needle_labels[n - min_needle];
+		top_str << top_labels[n - min_needle];
+		bottom_str << bottom_labels[n - min_needle];
 	}
 
 	std::cout << needle_str.str() << '\n';

@@ -203,8 +203,8 @@ bool plan_transfers(
 			from[i].needle,
 			(from[i].bed == BedNeedle::Front ? winding[i] : -winding[i]),
 			to[i].needle,
-			(from[i].bed == BedNeedle::Front ? slack[i] : slack[p]), //left slack
-			(from[i].bed == BedNeedle::Front ? slack[p] : slack[i]) //right slack
+			(from[i].bed == BedNeedle::Front ? slack[p] : slack[i]), //left slack
+			(from[i].bed == BedNeedle::Front ? slack[i] : slack[p]) //right slack
 		);
 		rg.back().can_stack_left = (to[i] == (from[i].bed == BedNeedle::Front ? to[p] : to[n]));
 		rg.back().can_stack_right = (to[i] == (from[i].bed == BedNeedle::Front ? to[n] : to[p]));

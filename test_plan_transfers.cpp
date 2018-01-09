@@ -254,19 +254,19 @@ bool simulate_transfers(
 		} else {
 			racking = t.from.needle - t.to.needle;
 		}
-		std::cout << "    racking " << racking << std::endl; //DEBUG
+		//std::cout << "    racking " << racking << std::endl; //DEBUG
 
 		for (auto const &y : yarns) {
 			bool from_is_front = (y.from->bed == BedNeedle::Front || y.from->bed == BedNeedle::FrontSliders);
 			bool to_is_front = (y.to->bed == BedNeedle::Front || y.to->bed == BedNeedle::FrontSliders);
 			if (from_is_front && !to_is_front) {
 				int32_t dis = std::abs((y.to->needle + racking) - y.from->needle);
-				std::cout << "slack from " << y.from->to_string() << " to " << y.to->to_string() << " is " << y.slack << ", stretch is " << dis << std::endl;
+				//std::cout << "slack from " << y.from->to_string() << " to " << y.to->to_string() << " is " << y.slack << ", stretch is " << dis << std::endl;
 				ERROR_UNLESS(dis <= y.slack, "Transfer requires racking that stretches yarn too much.");
 			}
 			if (!from_is_front && to_is_front) {
 				int32_t dis = std::abs(y.to->needle - (y.from->needle + racking));
-				std::cout << "slack from " << y.to->to_string() << " to " << y.from->to_string() << " is " << y.slack << ", stretch is " << dis << std::endl;
+				//std::cout << "slack from " << y.to->to_string() << " to " << y.from->to_string() << " is " << y.slack << ", stretch is " << dis << std::endl;
 				ERROR_UNLESS(dis <= y.slack, "Transfer requires racking that stretches yarn too much.");
 			}
 		}
@@ -286,6 +286,8 @@ bool simulate_transfers(
 	for (uint32_t i = 0; i < to_ccw.size(); ++i) {
 		ERROR_UNLESS(stitches[i].bed == to_ccw[i].bed && stitches[i].needle == to_ccw[i].needle, "Stitches must actually arrive at their destinations.");
 	}
+
+	std::cout << "Transfer plan works." << std::endl;
 
 	return true;
 
@@ -533,7 +535,7 @@ bool test_plan_transfers() {
 
 		//add a break with some probability:
 		if ((mt() & 3) == 0) {
-			from_slack.back() = to_slack.back() = SlackForNoYarn;
+			slack.back() = from_slack.back() = to_slack.back() = SlackForNoYarn;
 		}
 
 		//make layouts given layout slack:
@@ -555,7 +557,7 @@ bool test_plan_transfers() {
 
 				int32_t index = mt() % (total_slack + 1);
 				for (auto s : layout_slack) {
-					if (index > total_slack) index -= total_slack;
+					if (index >= total_slack) index -= total_slack;
 
 					if (index < front_slack) {
 						ccw.emplace_back(BedNeedle::Front, index);
@@ -679,6 +681,7 @@ bool test_plan_transfers() {
 			uint32_t roll = mt() % from_ccw.size();
 			std::rotate(from_ccw.begin(), from_ccw.begin() + roll, from_ccw.end());
 			std::rotate(to_ccw.begin(), to_ccw.begin() + roll, to_ccw.end());
+			std::rotate(slack.begin(), slack.begin() + roll, slack.end());
 		}
 
 	}

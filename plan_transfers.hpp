@@ -42,11 +42,14 @@ struct Constraints {
 
 struct Transfer {
 	Transfer() = default;
-	Transfer(BedNeedle const &_from, BedNeedle const &_to) : from(_from), to(_to) { }
+	Transfer(BedNeedle const &from_, BedNeedle const &to_, std::string const &why_ = "") : from(from_), to(to_), why(why_) { }
 	BedNeedle from;
 	BedNeedle to;
+	std::string why;
 	std::string to_string() const {
-		return from.to_string() + " -> " + to.to_string();
+		std::string ret = from.to_string() + " -> " + to.to_string();
+		if (why != "") ret += " (" + why + ")";
+		return ret;
 	}
 };
 

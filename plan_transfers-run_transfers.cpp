@@ -39,12 +39,12 @@ void run_transfers(
 	}
 	assert(ccw.size() == bottom.size() + top.size());
 
-	//DEBUG:
+	/*//DEBUG:
 	std::cout << "before:";
 	for (auto const &bs : ccw) {
 		std::cout << ' ' << BedNeedle(bs.first, bs.second.needle).to_string();
 	}
-	std::cout << "\n";
+	std::cout << "\n";*/
 
 	//everything must be on the 'from' beds:
 	for (auto const &bs : ccw) {
@@ -140,12 +140,12 @@ void run_transfers(
 		}
 	}
 
-	//DEBUG:
+	/*//DEBUG:
 	std::cout << "after:";
 	for (auto const &bs : ccw) {
 		std::cout << ' ' << BedNeedle(bs.first, bs.second.needle).to_string();
 	}
-	std::cout << "\n";
+	std::cout << "\n";*/
 
 	//must have placed everything on the 'to' beds:
 	for (auto const &bs : ccw) {
