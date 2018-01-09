@@ -42,12 +42,33 @@ bool simulate_transfers(
 			assert(constraints.min_free <= s.needle && s.needle <= constraints.max_free);
 			assert(s.bed == BedNeedle::Back || s.bed == BedNeedle::Front);
 		}
-		//stitches obey slack:
+		//stitches obey slack (...at some racking):
+		int32_t min_ofs = -int32_t(constraints.max_racking);
+		int32_t max_ofs =  int32_t(constraints.max_racking);
 		for (uint32_t i = 0; i < ccw.size(); ++i) {
 			uint32_t n = (i + 1 == ccw.size() ? 0 : i + 1);
-			int32_t diff = std::abs(int32_t(ccw[i].needle) - int32_t(ccw[n].needle));
-			assert(diff <= slack[i]);
+			if (ccw[i].bed == ccw[n].bed) {
+				int32_t diff = std::abs(int32_t(ccw[i].needle) - int32_t(ccw[n].needle));
+				assert(diff <= slack[i]);
+			} else if (ccw[i].bed == BedNeedle::Front && ccw[n].bed == BedNeedle::Back) {
+				int32_t diff = ccw[n].needle - ccw[i].needle; //back - front
+				//|back + racking - front| <= slack
+				// -> racking <= slack - (back - front)
+				// -> -slack - (back - front) <= racking
+				min_ofs = std::max(min_ofs,-slack[i] - diff);
+				max_ofs = std::min(max_ofs, slack[i] - diff);
+
+			} else if (ccw[i].bed == BedNeedle::Back && ccw[n].bed == BedNeedle::Front) {
+				int32_t diff = ccw[i].needle - ccw[n].needle; //back - front
+				min_ofs = std::max(min_ofs,-slack[i] - diff);
+				max_ofs = std::min(max_ofs, slack[i] - diff);
+			} else {
+				assert( 0 && "invalid beds" );
+			}
 		}
+		assert(min_ofs <= max_ofs && "Stitches must be able to be held at some offset and obey slack.");
+
+
 		//stitches are oriented ccw:
 
 		//count the various sorts of edges:
@@ -111,8 +132,10 @@ bool simulate_transfers(
 		ERROR_UNLESS(
 			(t.from.bed == BedNeedle::Back && t.to.bed == BedNeedle::Front)
 			|| (t.from.bed == BedNeedle::Back && t.to.bed == BedNeedle::FrontSliders)
+			|| (t.from.bed == BedNeedle::BackSliders && t.to.bed == BedNeedle::Front)
 			|| (t.from.bed == BedNeedle::Front && t.to.bed == BedNeedle::Back)
-			|| (t.from.bed == BedNeedle::Front && t.to.bed == BedNeedle::BackSliders),
+			|| (t.from.bed == BedNeedle::Front && t.to.bed == BedNeedle::BackSliders)
+			|| (t.from.bed == BedNeedle::FrontSliders && t.to.bed == BedNeedle::Back),
 			"Transfer does not have valid source and destination beds."
 		);
 		ERROR_UNLESS(constraints.min_free <= t.from.needle && t.from.needle <= constraints.max_free, "Transfer originates outside of free needle range.");
@@ -197,8 +220,15 @@ bool simulate_transfers(
 		return needles[bn.needle - min_needle].on(bn.bed);
 	};
 
+	//place stitches on needles:
+	for (auto &stitch : stitches) {
+		stitches_on(stitch).emplace_back(&stitch);
+	}
+
 	//walk through transfers one by one and check state:
 	for (auto const &t : transfers) {
+		std::cout << " checking: " << t.to_string() << std::endl; //DEBUG
+
 		//find all stitches that are in the 'from' location:
 		std::vector< Stitch * > &from = stitches_on(t.from);
 
@@ -218,23 +248,26 @@ bool simulate_transfers(
 		}
 
 		//check that racking is valid (assuming that no yarn is pinned)
-		int32_t racking; //measured as back - front
+		int32_t racking; //offset of back relative to front
 		if (t.from.bed == BedNeedle::Back || t.from.bed == BedNeedle::BackSliders) {
-			racking = t.from.needle - t.to.needle;
-		} else {
 			racking = t.to.needle - t.from.needle;
+		} else {
+			racking = t.from.needle - t.to.needle;
 		}
+		std::cout << "    racking " << racking << std::endl; //DEBUG
 
 		for (auto const &y : yarns) {
 			bool from_is_front = (y.from->bed == BedNeedle::Front || y.from->bed == BedNeedle::FrontSliders);
 			bool to_is_front = (y.to->bed == BedNeedle::Front || y.to->bed == BedNeedle::FrontSliders);
 			if (from_is_front && !to_is_front) {
 				int32_t dis = std::abs((y.to->needle + racking) - y.from->needle);
-				ERROR_UNLESS(dis < y.slack, "Transfer requires racking that stretches yarn too much.");
+				std::cout << "slack from " << y.from->to_string() << " to " << y.to->to_string() << " is " << y.slack << ", stretch is " << dis << std::endl;
+				ERROR_UNLESS(dis <= y.slack, "Transfer requires racking that stretches yarn too much.");
 			}
 			if (!from_is_front && to_is_front) {
 				int32_t dis = std::abs(y.to->needle - (y.from->needle + racking));
-				ERROR_UNLESS(dis < y.slack, "Transfer requires racking that stretches yarn too much.");
+				std::cout << "slack from " << y.to->to_string() << " to " << y.from->to_string() << " is " << y.slack << ", stretch is " << dis << std::endl;
+				ERROR_UNLESS(dis <= y.slack, "Transfer requires racking that stretches yarn too much.");
 			}
 		}
 

@@ -45,6 +45,9 @@ struct Transfer {
 	Transfer(BedNeedle const &_from, BedNeedle const &_to) : from(_from), to(_to) { }
 	BedNeedle from;
 	BedNeedle to;
+	std::string to_string() const {
+		return from.to_string() + " -> " + to.to_string();
+	}
 };
 
 typedef int32_t Slack;
