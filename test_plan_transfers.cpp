@@ -140,7 +140,7 @@ bool simulate_transfers(
 		);
 		ERROR_UNLESS(constraints.min_free <= t.from.needle && t.from.needle <= constraints.max_free, "Transfer originates outside of free needle range.");
 		ERROR_UNLESS(constraints.min_free <= t.to.needle && t.to.needle <= constraints.max_free, "Transfer ends outside of free needle range.");
-		ERROR_UNLESS(uint32_t(std::abs(t.to.needle - t.from.needle)) <= constraints.max_racking, "Transfer does not obey racking limit.");
+		ERROR_UNLESS(uint32_t(std::abs(t.to.needle - t.from.needle)) <= constraints.max_racking, "Transfer [" + t.to_string() + "] does not obey racking limit.");
 	}
 
 	// ---------------------------------

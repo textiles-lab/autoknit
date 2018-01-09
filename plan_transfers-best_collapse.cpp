@@ -149,7 +149,7 @@ void best_collapse(
 		State next_state = state;
 		Cost next_cost = cost;
 		if        (action.type == Action::MoveLeft) {
-			assert(state.l < top.size());
+			assert(state.l >= 0 && state.l < top.size());
 
 			next_cost.penalty += top[state.l].after_offset_and_roll(action.needle - top[state.l].needle, 0).penalty(constraints.min_free, constraints.max_free);
 
@@ -164,7 +164,7 @@ void best_collapse(
 				next_state.r_next_roll = State::RRoll2;
 			}
 		} else if (action.type == Action::MoveRight) {
-			assert(state.r >= 0);
+			assert(state.r >= 0 && state.r < top.size());
 
 			next_cost.penalty += top[state.r].after_offset_and_roll(action.needle - top[state.r].needle, 0).penalty(constraints.min_free, constraints.max_free);
 
@@ -176,11 +176,11 @@ void best_collapse(
 			if (state.l_prev_roll == State::LRollInvalid) {
 				assert(bottom.empty() && state.l == 0);
 				next_state.l_prev_needle = action.needle;
-				next_state.l_prev_roll = State::RRoll2;
+				next_state.l_prev_roll = State::LRoll2;
 			}
 
 		} else if (action.type == Action::RollLeft) {
-			assert(state.l < top.size());
+			assert(state.l >= 0 && state.l < top.size());
 			
 			next_cost.penalty += top[state.l].after_offset_and_roll(action.needle - top[state.l].needle, -1).penalty(constraints.min_free, constraints.max_free);
 
@@ -195,7 +195,7 @@ void best_collapse(
 				next_state.r_next_roll = State::RRoll1;
 			}
 		} else if (action.type == Action::RollRight) {
-			assert(state.r >= 0);
+			assert(state.r >= 0 && state.r < top.size());
 			
 			next_cost.penalty += top[state.r].after_offset_and_roll(action.needle - top[state.r].needle, +1).penalty(constraints.min_free, constraints.max_free);
 
@@ -210,7 +210,7 @@ void best_collapse(
 				next_state.l_prev_roll = State::LRoll1;
 			}
 		} else if (action.type == Action::Roll2Left) {
-			assert(state.l < top.size());
+			assert(state.l >= 0 && state.l < top.size());
 			assert(bottom.empty());
 			assert(state.l_prev_roll == State::LRoll2 || state.l_prev_roll == State::LRollInvalid);
 
@@ -227,7 +227,7 @@ void best_collapse(
 			}
 
 		} else if (action.type == Action::Roll2Right) {
-			assert(state.r >= 0);
+			assert(state.r >= 0 && state.r < top.size());
 			assert(bottom.empty());
 			assert(state.r_next_roll == State::RRoll2 || state.r_next_roll == State::RRollInvalid);
 
@@ -270,10 +270,14 @@ void best_collapse(
 			//can't have | ofs + top[l].needle - state.l_prev_needle | > top[l].left_slack
 			//want -top[l].left_slack <= ofs + top[l].needle - state.l_prev_needle <= top[l].left_slack
 			// -top[l].left_slack - (top[l].needle - state.l_prev_needle) <= ofs <= top[l].left_slack - (top[l].needle - state.l_prev_needle)
-			min_ofs = std::max(min_ofs, -top[state.l].left_slack - (top[state.l].needle - state.l_prev_needle));
-			max_ofs = std::min(max_ofs,  top[state.l].left_slack - (top[state.l].needle - state.l_prev_needle));
-			min_ofs = std::max(min_ofs, -top[state.r].right_slack - (top[state.r].needle - state.r_next_needle));
-			max_ofs = std::min(max_ofs,  top[state.r].right_slack - (top[state.r].needle - state.r_next_needle));
+			if (top[state.l].left_slack != SlackForNoYarn) {
+				min_ofs = std::max(min_ofs, -top[state.l].left_slack - (top[state.l].needle - state.l_prev_needle));
+				max_ofs = std::min(max_ofs,  top[state.l].left_slack - (top[state.l].needle - state.l_prev_needle));
+			}
+			if (top[state.r].right_slack != SlackForNoYarn) {
+				min_ofs = std::max(min_ofs, -top[state.r].right_slack - (top[state.r].needle - state.r_next_needle));
+				max_ofs = std::min(max_ofs,  top[state.r].right_slack - (top[state.r].needle - state.r_next_needle));
+			}
 		}
 
 		{ //"roll2" moves for left stitch:
@@ -289,10 +293,14 @@ void best_collapse(
 				max = std::numeric_limits< int32_t >::min();
 			}
 
+			min = std::max(min, constraints.min_free);
+			max = std::min(max, constraints.max_free);
+
 			for (int32_t needle = min; needle <= max; ++needle) {
 				apply_action(Action(Action::Roll2Left, needle), state, cost);
 			}
 		}
+		//TODO: roll2 moves for right stitch
 
 		{ //"roll" moves for left stitch:
 			int32_t min = min_ofs + top[state.l].needle;
@@ -320,10 +328,47 @@ void best_collapse(
 				assert(state.l_prev_roll == State::Roll0); //would need to limit, but already on front bed
 			}
 
+			min = std::max(min, constraints.min_free);
+			max = std::min(max, constraints.max_free);
+
 			for (int32_t needle = min; needle <= max; ++needle) {
 				apply_action(Action(Action::RollLeft, needle), state, cost);
 			}
+		}
 
+		{ //"roll" moves for right stitch:
+			int32_t min = min_ofs + top[state.r].needle;
+			int32_t max = max_ofs + top[state.r].needle;
+
+			//limit based on right stitches:
+			if (state.r_next_roll == State::RRollInvalid) {
+				//nothing on the other bed, do whatever!
+			} else if (state.r_next_roll == State::RRoll2) {
+				//must arrive to the right of r_next_needle, as it's on the front:
+				min = std::max(min, state.r_next_needle + 1);
+			} else if (state.r_next_roll == State::RRoll1) {
+				//can arrive to the right of r_prev_needle or stack:
+				min = std::max(min, state.r_next_needle + (top[state.r].can_stack_right ? 0 : 1));
+			} else { assert(state.r_next_roll == State::Roll0);
+				//have already moved a stitch, so can't continue to roll:
+				min = std::numeric_limits< int32_t >::max();
+				max = std::numeric_limits< int32_t >::min();
+			}
+
+			//limit based on left stitches:
+			if (state.l_prev_roll == State::Roll0) {
+				//must be to the right of the top-bed l_prev_needle:
+				min = std::max(min, state.l_prev_needle + 1);
+			} else if (state.l_prev_roll == State::LRoll2) {
+				assert(state.r_next_roll == State::Roll0); //would need to limit, but already on front bed
+			}
+
+			min = std::max(min, constraints.min_free);
+			max = std::min(max, constraints.max_free);
+
+			for (int32_t needle = min; needle <= max; ++needle) {
+				apply_action(Action(Action::RollRight, needle), state, cost);
+			}
 		}
 
 		{ //"move" moves for left stitch:
@@ -348,6 +393,9 @@ void best_collapse(
 			} else if (state.r_next_roll == State::RRoll2) {
 				assert(state.l_prev_roll == State::Roll0); //would need to limit, but already on front bed
 			}
+
+			min = std::max(min, constraints.min_free);
+			max = std::min(max, constraints.max_free);
 
 			for (int32_t needle = min; needle <= max; ++needle) {
 				apply_action(Action(Action::MoveLeft, needle), state, cost);
@@ -376,6 +424,9 @@ void best_collapse(
 			} else if (state.l_prev_roll == State::LRoll2) {
 				assert(state.r_next_roll == State::Roll0); //would need to limit, but already on front bed
 			}
+
+			min = std::max(min, constraints.min_free);
+			max = std::min(max, constraints.max_free);
 
 			for (int32_t needle = min; needle <= max; ++needle) {
 				apply_action(Action(Action::MoveRight, needle), state, cost);
@@ -411,7 +462,7 @@ void best_collapse(
 			if (f->second.cost < cost) continue;
 			assert(f->second.cost == cost);
 		}
-		//std::cout << "Considering " << state->l_prev_needle << "r" << int32_t(state->l_prev_roll) << " [" << state->l << "," << state->r << "] " << state->r_next_needle << "r" << int32_t(state->r_next_roll) << std::endl; //DEBUG
+		//std::cout << "Considering " << state->to_string() << std::endl; //DEBUG
 
 		//if this is an ending state, end:
 		if (state->l > state->r) {

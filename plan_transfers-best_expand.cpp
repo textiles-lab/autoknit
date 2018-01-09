@@ -233,27 +233,41 @@ void best_expand(
 			int32_t l_needle;
 			Slack l_slack;
 			if (state.l >= 0) {
+				assert(state.l >= 0 && state.l < int32_t(bottom.size()));
 				l_needle = bottom[state.l].needle;
 				l_slack = bottom[state.l].right_slack;
-			} else {
+			} else if (top_l < int32_t(top.size())) {
+				assert(top_l >= 0 && top_l < int32_t(top.size()));
 				l_needle = top[top_l].needle;
 				l_slack = top[top_l].left_slack;
+			} else {
+				l_needle = state.l_next_needle;
+				l_slack = SlackForNoYarn;
 			}
 
 			int32_t r_needle;
 			Slack r_slack;
 			if (state.r < int32_t(bottom.size())) {
+				assert(state.r >= 0 && state.r < int32_t(bottom.size()));
 				r_needle = bottom[state.r].needle;
 				r_slack = bottom[state.r].left_slack;
-			} else {
+			} else if (top_r >= 0) {
+				assert(top_r >= 0 && top_r < int32_t(top.size()));
 				r_needle = top[top_r].needle;
 				r_slack = top[top_r].right_slack;
+			} else {
+				r_needle = state.r_prev_needle;
+				r_slack = SlackForNoYarn;
 			}
 
-			min_ofs = std::max(min_ofs, -l_slack - (l_needle - state.l_next_needle));
-			max_ofs = std::min(max_ofs,  l_slack - (l_needle - state.l_next_needle));
-			min_ofs = std::max(min_ofs, -r_slack - (r_needle - state.r_prev_needle));
-			max_ofs = std::min(max_ofs,  r_slack - (r_needle - state.r_prev_needle));
+			if (l_slack != SlackForNoYarn) {
+				min_ofs = std::max(min_ofs, -l_slack - (l_needle - state.l_next_needle));
+				max_ofs = std::min(max_ofs,  l_slack - (l_needle - state.l_next_needle));
+			}
+			if (r_slack != SlackForNoYarn) {
+				min_ofs = std::max(min_ofs, -r_slack - (r_needle - state.r_prev_needle));
+				max_ofs = std::min(max_ofs,  r_slack - (r_needle - state.r_prev_needle));
+			}
 		}
 
 		//if it is possible to finish, try the finishing move:
@@ -423,13 +437,7 @@ void best_expand(
 
 	//read back operations from best:
 	std::vector< Transfer > ops;
-	auto do_xfer = [&](BedNeedle const &from, BedNeedle const &to) {
-		ops.emplace_back(from, to);
-		std::cout << from.to_string() << " -> " << to.to_string(); //DEBUG
-	};
 
-
-	std::cout << "  Final plan: (reversed)\n"; //DEBUG
 	bool is_first = true;
 	while (best) {
 		auto f = best_source.find(*best);
@@ -437,7 +445,6 @@ void best_expand(
 		if (f->second.source == nullptr) break;
 		State const &state = *f->second.source;
 		Action const &action = f->second.action;
-		std::cout << "   " << state.to_string() << " " << action.to_string() << ": "; //DEBUG
 
 		int32_t top_l = -(state.l + 1);
 		int32_t top_r = int32_t(top.size()) - 1 - (state.r - int32_t(bottom.size()));
@@ -447,26 +454,27 @@ void best_expand(
 
 		if (action.type == Action::MoveLeft) {
 			if (state.l >= 0) {
-				do_xfer(BedNeedle(bottom_bed, bottom[state.l].needle), BedNeedle(to_bottom_bed, action.needle));
+				ops.emplace_back(BedNeedle(bottom_bed, bottom[state.l].needle), BedNeedle(to_bottom_bed, action.needle));
 			} else { assert(state.l < 0);
 				assert(top_l >= 0 && uint32_t(top_l) < top.size());
-				do_xfer(BedNeedle(top_bed, top[top_l].needle), BedNeedle(to_bottom_bed, action.needle));
+				ops.emplace_back(BedNeedle(top_bed, top[top_l].needle), BedNeedle(to_bottom_bed, action.needle));
 			}
 		} else if (action.type == Action::MoveRight) {
 			if (state.r < int32_t(bottom.size())) {
-				do_xfer(BedNeedle(bottom_bed, bottom[state.r].needle), BedNeedle(to_bottom_bed, action.needle));
+				ops.emplace_back(BedNeedle(bottom_bed, bottom[state.r].needle), BedNeedle(to_bottom_bed, action.needle));
 			} else { assert(state.r >= int32_t(bottom.size()));
 				assert(top_r >= 0 && uint32_t(top_r) < top.size());
-				do_xfer(BedNeedle(top_bed, top[top_r].needle), BedNeedle(to_bottom_bed, action.needle));
+				ops.emplace_back(BedNeedle(top_bed, top[top_r].needle), BedNeedle(to_bottom_bed, action.needle));
 			}
 		} else if (action.type == Action::Finish) {
 			assert(is_first);
-			std::cout << " n/a"; //DEBUG
 		} else {
 			assert(0 && "Invalid action type.");
 		}
-
-		std::cout << " [penalty " << f->second.cost.penalty << "]\n"; //DEBUG
+		if (action.type != Action::Finish) {
+			assert(!ops.empty() && ops.back().why == "");
+			ops.back().why = state.to_string() + "; " + action.to_string();
+		}
 
 		best = f->second.source;
 		is_first = false;
@@ -474,6 +482,14 @@ void best_expand(
 	std::cout.flush(); //DEBUG
 
 	std::reverse(ops.begin(), ops.end());
+
+/*
+	std::cout << "  Final plan:\n"; //DEBUG
+	for (auto const &op : ops) {
+		std::cout << "    " << op.to_string() << '\n';
+	}
+	std::cout.flush(); //DEBUG
+*/
 
 	run_transfers(constraints,
 		top_bed, top,
