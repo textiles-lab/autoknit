@@ -478,13 +478,13 @@ bool test_plan_transfers(std::string label) {
 	{ //select count:
 		uint32_t val = mt();
 		//let's be overly fancy in our size distribution and pick sizes up to 10 with uniform probability:
-		//if (val < mt.max() / 2) {
+		if (val < mt.max() / 2) {
 			count = 1 + (val % 10);
-		/*} else {
+		} else {
 			//...and larger sizes with some sort of decaying probability:
 			float amt = (val - mt.max()/2) / float(mt.max()/2);
 			count = 10 + std::floor(100.0f * (1.0f - std::pow(1.0f / 100.0f, amt)));
-		}*/
+		}
 	}
 
 
@@ -780,9 +780,10 @@ bool test_plan_transfers(std::string label) {
 }
 
 int main(int argc, char **argv) {
-	constexpr uint32_t iters = 1000;
+	constexpr uint32_t iters = 100000;
 	for (uint32_t i = 0; i < iters; ++i) {
 		if (!test_plan_transfers(std::to_string(i) + "/" + std::to_string(iters))) return 1;
 	}
+	std::cout << "Passed " << iters << " random test cases." << std::endl;
 	return 0;
 }
