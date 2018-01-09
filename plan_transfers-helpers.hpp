@@ -115,14 +115,10 @@ struct FromTo {
 */
 
 
-/* might take the wrong parameters
 //helper for constructing roll values:
-void compute_minimal_winding(
-	std::vector< BedNeedle > const &from_ccw,
-	std::vector< BedNeedle > const &to_ccw,
+void minimize_winding(
 	std::vector< int32_t > *winding
 );
-*/
 
 //helper for drawing an (ASCII / ANSI) picture of beds:
 void draw_beds(

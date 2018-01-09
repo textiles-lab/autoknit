@@ -230,8 +230,8 @@ void best_expand(
 			//want -top[l].left_slack <= ofs + top[l].needle - state.l_prev_needle <= top[l].left_slack
 			// -top[l].left_slack - (top[l].needle - state.l_prev_needle) <= ofs <= top[l].left_slack - (top[l].needle - state.l_prev_needle)
 
-			int32_t l_needle;
-			Slack l_slack;
+			int32_t l_needle = 0;
+			Slack l_slack = SlackForNoYarn;
 			if (state.l >= 0) {
 				assert(state.l >= 0 && state.l < int32_t(bottom.size()));
 				l_needle = bottom[state.l].needle;
@@ -240,13 +240,14 @@ void best_expand(
 				assert(top_l >= 0 && top_l < int32_t(top.size()));
 				l_needle = top[top_l].needle;
 				l_slack = top[top_l].left_slack;
-			} else {
-				l_needle = state.l_next_needle;
-				l_slack = SlackForNoYarn;
+			} else if (top_l == int32_t(top.size())) {
+				assert(!bottom.empty());
+				l_needle = bottom.back().needle;
+				l_slack = bottom.back().right_slack;
 			}
 
-			int32_t r_needle;
-			Slack r_slack;
+			int32_t r_needle = 0;
+			Slack r_slack = SlackForNoYarn;
 			if (state.r < int32_t(bottom.size())) {
 				assert(state.r >= 0 && state.r < int32_t(bottom.size()));
 				r_needle = bottom[state.r].needle;
@@ -255,9 +256,10 @@ void best_expand(
 				assert(top_r >= 0 && top_r < int32_t(top.size()));
 				r_needle = top[top_r].needle;
 				r_slack = top[top_r].right_slack;
-			} else {
-				r_needle = state.r_prev_needle;
-				r_slack = SlackForNoYarn;
+			} else if (top_r == -1) {
+				assert(!bottom.empty());
+				r_needle = bottom[0].needle;
+				r_slack = bottom[0].left_slack;
 			}
 
 			if (l_slack != SlackForNoYarn) {
@@ -491,15 +493,15 @@ void best_expand(
 	std::cout.flush(); //DEBUG
 */
 
+	std::cout << "Before Expand:\n"; //DEBUG
+	draw_beds(top_bed, top, bottom_bed, bottom); //DEBUG
+
 	run_transfers(constraints,
 		top_bed, top,
 		bottom_bed, bottom,
 		ops,
 		to_top_bed, &to_top,
 		to_bottom_bed, &to_bottom);
-
-	std::cout << "Before Expand:\n"; //DEBUG
-	draw_beds(top_bed, top, bottom_bed, bottom); //DEBUG
 
 	std::cout << "After Expand:\n"; //DEBUG
 	draw_beds(to_top_bed, to_top, to_bottom_bed, to_bottom); //DEBUG

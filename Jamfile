@@ -58,6 +58,7 @@ PLAN_TRANSFERS_NAMES =
 	plan_transfers-best_collapse
 	plan_transfers-best_shift
 	plan_transfers-best_expand
+	plan_transfers-minimize_winding
 	;
 
 NAMES =

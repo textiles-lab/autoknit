@@ -44,8 +44,8 @@ void best_collapse(
 	//Search state:
 	#pragma pack(push,1)
 	struct State {
-		uint32_t l; //index of left stitch on top
-		uint32_t r; //index of right stitch on top
+		int32_t l; //index of left stitch on top
+		int32_t r; //index of right stitch on top
 		int32_t l_prev_needle; //needle of stitch to the left of 'l'
 		int32_t r_next_needle; //needle of stitch to the right of 'r'
 		enum : int8_t {
@@ -512,11 +512,16 @@ void best_collapse(
 
 	std::reverse(ops.begin(), ops.end());
 
+/*
 	std::cout << "  Final plan:\n"; //DEBUG
 	for (auto const &op : ops) {
 		std::cout << "    " << op.to_string() << '\n';
 	}
 	std::cout.flush(); //DEBUG
+	*/
+
+	std::cout << "Before Collapse:\n"; //DEBUG
+	draw_beds(top_bed, top, bottom_bed, bottom); //DEBUG
 
 	run_transfers(constraints,
 		top_bed, top,
@@ -525,9 +530,7 @@ void best_collapse(
 		to_top_bed, &to_top,
 		to_bottom_bed, &to_bottom);
 
-	std::cout << "Before Collapse:\n"; //DEBUG
-	draw_beds(top_bed, top, bottom_bed, bottom); //DEBUG
-
+	
 	std::cout << "After Collapse:\n"; //DEBUG
 	draw_beds(to_top_bed, to_top, to_bottom_bed, to_bottom); //DEBUG
 

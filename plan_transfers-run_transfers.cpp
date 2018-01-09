@@ -100,16 +100,16 @@ void run_transfers(
 
 					bs.second.can_stack_left = tbs.second.can_stack_left;
 					bs.second.left_slack = tbs.second.left_slack;
-					tbs.second.can_stack_right = tbs.second.can_stack_right;
-					tbs.second.right_slack = tbs.second.right_slack;
+					tbs.second.can_stack_right = bs.second.can_stack_right;
+					tbs.second.right_slack = bs.second.right_slack;
 				} else { assert(bs.first == to_bottom_bed);
 					//target is right of source, and source is stacking under
 					assert(tbs.second.can_stack_left);
 
 					tbs.second.can_stack_left = bs.second.can_stack_left;
 					tbs.second.left_slack = bs.second.left_slack;
-					bs.second.can_stack_right = bs.second.can_stack_right;
-					bs.second.right_slack = bs.second.right_slack;
+					bs.second.can_stack_right = tbs.second.can_stack_right;
+					bs.second.right_slack = tbs.second.right_slack;
 				}
 			} else { assert((target + 1) % ccw.size() == source);
 				if (bs.first == to_top_bed) {
@@ -118,8 +118,8 @@ void run_transfers(
 
 					tbs.second.can_stack_left = bs.second.can_stack_left;
 					tbs.second.left_slack = bs.second.left_slack;
-					bs.second.can_stack_right = bs.second.can_stack_right;
-					bs.second.right_slack = bs.second.right_slack;
+					bs.second.can_stack_right = tbs.second.can_stack_right;
+					bs.second.right_slack = tbs.second.right_slack;
 
 				} else { assert(bs.first == to_bottom_bed);
 					//target is left of source, and source is stacking under
@@ -127,8 +127,8 @@ void run_transfers(
 
 					bs.second.can_stack_left = tbs.second.can_stack_left;
 					bs.second.left_slack = tbs.second.left_slack;
-					tbs.second.can_stack_right = tbs.second.can_stack_right;
-					tbs.second.right_slack = tbs.second.right_slack;
+					tbs.second.can_stack_right = bs.second.can_stack_right;
+					tbs.second.right_slack = bs.second.right_slack;
 				}
 			}
 
@@ -194,30 +194,7 @@ void run_transfers(
 			+ swaps(to_bn(ccw.back()), to_bn(ccw[0]))
 			- winding[0]) % 2 == 0);
 
-		auto minimize_winding = [](std::vector< int32_t > &winding) {
-			if (winding.empty()) return;
-			//pull out closest multiple of two to the median:
-			std::vector< int32_t > temp = winding;
-			std::sort(temp.begin(), temp.end());
-			int32_t twice_median = temp[temp.size()/2] + temp[(temp.size()+1)/2];
-			int32_t close_multiple = (twice_median / 4) * 2;
-			int32_t DEBUG_before = 0;
-			int32_t DEBUG_after = 0;
-			int32_t DEBUG_after_minus = 0;
-			int32_t DEBUG_after_plus = 0;
-			for (auto &w : winding) {
-				DEBUG_before += std::abs(w);
-				w -= close_multiple;
-				DEBUG_after += std::abs(w);
-				DEBUG_after_minus += std::abs(w - 2);
-				DEBUG_after_plus += std::abs(w + 2);
-			}
-			assert(DEBUG_after <= DEBUG_before);
-			assert(DEBUG_after <= DEBUG_after_minus);
-			assert(DEBUG_after <= DEBUG_after_plus);
-		};
-
-		minimize_winding(winding);
+		minimize_winding(&winding);
 
 		assert(winding.size() == ccw.size());
 		for (uint32_t i = 0; i < ccw.size(); ++i) {
@@ -263,6 +240,30 @@ void run_transfers(
 		assert(ci == ccw.end());
 
 		std::reverse(to_top.begin(), to_top.end());
+	}
+
+	//PARANOIA: did all the slacks get maintained properly?
+	bool good = true;
+
+	for (uint32_t i = 0; i + 1 < to_top.size(); ++i) {
+		good = good && (to_top[i].right_slack == to_top[i+1].left_slack);
+	}
+	for (uint32_t i = 0; i + 1 < to_bottom.size(); ++i) {
+		good = good && (to_bottom[i].right_slack == to_bottom[i+1].left_slack);
+	}
+	if (!to_top.empty() && !to_bottom.empty()) {
+		good = good && (to_top[0].left_slack == to_bottom[0].left_slack);
+		good = good && (to_top.back().right_slack == to_bottom.back().right_slack);
+	} else if (!to_top.empty() && to_bottom.empty()) {
+		good = good && (to_top[0].left_slack == to_top.back().right_slack);
+	} else if (to_top.empty() && !to_bottom.empty()) {
+		good = good && (to_bottom[0].left_slack == to_bottom.back().right_slack);
+	}
+
+	if (!good) {
+		std::cout << "!!!!! bad slacks after run_transfers !!!!!\n";
+		draw_beds(to_top_bed, to_top, to_bottom_bed, to_bottom);
+		exit(1);
 	}
 
 }

@@ -113,8 +113,9 @@ bool simulate_transfers(
 		}
 
 		if (front_back == 0 && back_front == 0) { //on one bed
-			//exactly one "seam" edge:
-			assert(front_left + back_right == 1);
+			//exactly zero or one "seam" edge:
+			// (zero can happen when all the stitches are stacked up)
+			assert(front_left + back_right <= 1);
 		} else { //on two beds
 			//must cross only once:
 			assert(front_back == 1 && back_front == 1);
@@ -333,7 +334,7 @@ void dump_layout(std::vector< BedNeedle > const &ccw, std::vector< Slack > *slac
 
 	for (auto const &bn : ccw) {
 		std::string label = "o";
-		if (&bn == &ccw[0]) label = "*";
+		if (&bn == &ccw[0]) label = "x";
 		assert(label.size() == needle_size);
 		if (bn.bed == BedNeedle::Front) {
 			for (uint32_t i = 0; i < label.size(); ++i) {
@@ -462,7 +463,7 @@ void dump_layout(std::vector< BedNeedle > const &ccw, std::vector< Slack > *slac
 };
 
 
-bool test_plan_transfers() {
+bool test_plan_transfers(std::string label) {
 	static std::mt19937 mt(0xdeadbeef);
 
 	Constraints constraints;
@@ -637,33 +638,33 @@ bool test_plan_transfers() {
 				assert(left_slack > 0 && right_slack > 0);
 				//both beds
 
-				std::cout << "left ofs/slack: " << left_offset << "/" << left_slack << " right ofs/slack: " << right_offset << "/" << right_slack << std::endl; //DEBUG
+				//std::cout << "left ofs/slack: " << left_offset << "/" << left_slack << " right ofs/slack: " << right_offset << "/" << right_slack << std::endl; //DEBUG
 
 				//currently, works at offset zero, right?
 				assert(std::abs(left_offset) <= left_slack);
 				assert(std::abs(right_offset) <= right_slack);
 
-				//see how far we can slide left and still have this work:
-				int32_t min_offset = 0;
-				while ( std::abs(min_offset - 1 + left_offset) < left_slack
-				     && std::abs(min_offset - 1 + right_offset) < right_slack ) {
-					min_offset -= 1;
+				//see how far we can slide and still have this work:
+				int32_t min_offset =-100;
+				int32_t max_offset = 100;
+				//want that |add_offset + left_offset| <= left_slack + max_racking
+				if (left_slack != SlackForNoYarn) {
+					min_offset = std::max(min_offset,-left_slack - left_offset);
+					max_offset = std::min(max_offset, left_slack - left_offset);
 				}
 
-				//see how far we can slide right and still have this work:
-				int32_t max_offset = 0;
-				while ( std::abs(max_offset + 1 + left_offset) < left_slack
-				     && std::abs(max_offset + 1 + right_offset) < right_slack ) {
-					max_offset += 1;
+				if (right_slack != SlackForNoYarn) {
+					min_offset = std::max(min_offset,-right_slack - right_offset);
+					max_offset = std::min(max_offset, right_slack - right_offset);
 				}
 
-				//remember that one can also force the machine to be racked at the start of the exercise:
-				// (can one?)
+				assert(min_offset <= max_offset);
+
 				min_offset -= int32_t(constraints.max_racking);
 				max_offset += int32_t(constraints.max_racking);
 
 				new_front_min = (mt() % 21) - 10;
-				new_back_min = new_front_min + (mt() % (max_offset - min_offset + 1) + min_offset);
+				new_back_min = (new_front_min - front_min) + back_min + (mt() % (max_offset - min_offset + 1) + min_offset);
 			}
 
 			for (auto &bn : ccw) {
@@ -739,6 +740,7 @@ bool test_plan_transfers() {
 	}
 
 
+	std::cout << " ====== " << label << " ===== \n";
 	std::cout << "From:\n";
 	dump_layout(from_ccw, &slack); //DEBUG
 	std::cout << "To:\n";
@@ -778,8 +780,9 @@ bool test_plan_transfers() {
 }
 
 int main(int argc, char **argv) {
-	for (uint32_t i = 0; i < 1000; ++i) {
-		if (!test_plan_transfers()) return 1;
+	constexpr uint32_t iters = 1000;
+	for (uint32_t i = 0; i < iters; ++i) {
+		if (!test_plan_transfers(std::to_string(i) + "/" + std::to_string(iters))) return 1;
 	}
 	return 0;
 }

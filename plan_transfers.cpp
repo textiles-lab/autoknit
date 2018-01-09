@@ -74,6 +74,7 @@ bool plan_transfers(
 				assert(0);
 			}
 		}
+		//std::cout << left_offset << "/" << int32_t(left_slack) << " , " << right_offset << "/" << int32_t(right_slack) << "  max_racking is " << constraints.max_racking << std::endl; //DEBUG
 		//there should be at least one valid racking:
 		bool has_valid = false;
 		for (int32_t r = -int32_t(constraints.max_racking); r <= int32_t(constraints.max_racking); ++r) {
@@ -102,7 +103,7 @@ bool plan_transfers(
 			uint32_t n = (i + 1 < cycle.size() ? i + 1 : 0);
 			if (cycle[i].bed == BedNeedle::Front) {
 				if (cycle[n].bed == BedNeedle::Front) {
-					if (cycle[i].needle <= cycle[i+1].needle) {
+					if (cycle[i].needle <= cycle[n].needle) {
 						//great!
 					} else {
 						//single-bed cycle, e.g.:
@@ -118,7 +119,7 @@ bool plan_transfers(
 				}
 			} else { assert(cycle[i].bed == BedNeedle::Back);
 				if (cycle[n].bed == BedNeedle::Back) {
-					if (cycle[i].needle >= cycle[i+1].needle) {
+					if (cycle[i].needle >= cycle[n].needle) {
 						//great!
 					} else {
 						//single-bed cycle, e.g.:
@@ -169,30 +170,7 @@ bool plan_transfers(
 	}
 	assert(winding.size() == Count);
 
-	auto minimize_winding = [](std::vector< int32_t > &winding) {
-		if (winding.empty()) return;
-		//pull out closest multiple of two to the median:
-		std::vector< int32_t > temp = winding;
-		std::sort(temp.begin(), temp.end());
-		int32_t twice_median = temp[temp.size()/2] + temp[(temp.size()+1)/2];
-		int32_t close_multiple = (twice_median / 4) * 2;
-		int32_t DEBUG_before = 0;
-		int32_t DEBUG_after = 0;
-		int32_t DEBUG_after_minus = 0;
-		int32_t DEBUG_after_plus = 0;
-		for (auto &w : winding) {
-			DEBUG_before += std::abs(w);
-			w -= close_multiple;
-			DEBUG_after += std::abs(w);
-			DEBUG_after_minus += std::abs(w - 2);
-			DEBUG_after_plus += std::abs(w + 2);
-		}
-		assert(DEBUG_after <= DEBUG_before);
-		assert(DEBUG_after <= DEBUG_after_minus);
-		assert(DEBUG_after <= DEBUG_after_plus);
-	};
-
-	minimize_winding(winding);
+	minimize_winding(&winding);
 
 	std::vector< NeedleRollGoal > rg;
 	rg.reserve(Count);
@@ -208,6 +186,11 @@ bool plan_transfers(
 		);
 		rg.back().can_stack_left = (to[i] == (from[i].bed == BedNeedle::Front ? to[p] : to[n]));
 		rg.back().can_stack_right = (to[i] == (from[i].bed == BedNeedle::Front ? to[n] : to[p]));
+		//can't stack stitches with themselves:
+		if (i == n) {
+			assert(i == p);
+			rg.back().can_stack_left = rg.back().can_stack_right = false;
+		}
 
 		//check to make sure roll/goal actually matches desired behavior:
 		assert((from[i].bed == to[i].bed) == (rg.back().roll % 2 == 0));
@@ -306,8 +289,8 @@ bool plan_transfers(
 		std::vector< NeedleRollGoal > best_front = front;
 		std::vector< NeedleRollGoal > best_back = back;
 		std::vector< Transfer > best_plan;
-		uint32_t best_penalty = penalty(shrunk_constraints, best_front, best_back);
-		uint32_t starting_penalty = best_penalty;
+		uint32_t best_penalty = std::numeric_limits< uint32_t >::max();
+		uint32_t starting_penalty = penalty(shrunk_constraints, best_front, best_back);
 		//DEBUG:
 		std::cout << " ------- [penalty: " << starting_penalty << "] -------\n";
 		draw_beds(BedNeedle::Back, back, BedNeedle::Front, front);
@@ -393,7 +376,10 @@ bool plan_transfers(
 				best_penalty = p;
 			}
 		}
-		assert(best_penalty < starting_penalty);
+		if (!(best_penalty < starting_penalty)) {
+			std::cout << "ERROR: penalty DID NOT DECREASE; you may be in for an infinite planning loop [...I think this happens because the code doesn't force zero-racking configurations after expand...]" << std::endl;
+			//assert(best_penalty < starting_penalty);
+		}
 
 		transfers.insert(transfers.end(), best_plan.begin(), best_plan.end());
 		front = best_front;
