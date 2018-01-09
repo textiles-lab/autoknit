@@ -275,7 +275,10 @@ void best_expand(
 		//if it is possible to finish, try the finishing move:
 		if (state.l < 0 && state.r >= int32_t(bottom.size())) {
 			assert(top_l >= 0 && top_r < int32_t(top.size()));
-			apply_action(Action(Action::Finish, 0), state, cost);
+			//only allow finish if zero offset is valid:
+			if (min_ofs <= 0 && 0 <= max_ofs) {
+				apply_action(Action(Action::Finish, 0), state, cost);
+			}
 		}
 
 		{ //left moves:
@@ -427,6 +430,7 @@ void best_expand(
 			assert(f->second.cost == cost);
 		}
 		//std::cout << "Considering " << state->to_string() << "  [penalty: " << cost.penalty << "]" << std::endl; //DEBUG
+
 		//if this is an ending state, end:
 		if (state->l < 0 && state->r >= int32_t(bottom.size()) && state->r - state->l > int32_t(top.size() + bottom.size())) {
 			best = state;

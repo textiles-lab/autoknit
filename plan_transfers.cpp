@@ -49,7 +49,7 @@ bool plan_transfers(
 
 
 	//PARANOIA: check consistency of inputs:
-	auto assert_valid_layout = [&](std::vector< BedNeedle > const &cycle) {
+	auto assert_valid_layout = [&](std::vector< BedNeedle > const &cycle, bool require_zero_ofs) {
 		Slack left_slack = SlackForNoYarn;
 		int32_t left_offset = 0;
 		Slack right_slack = SlackForNoYarn;
@@ -77,16 +77,20 @@ bool plan_transfers(
 		//std::cout << left_offset << "/" << int32_t(left_slack) << " , " << right_offset << "/" << int32_t(right_slack) << "  max_racking is " << constraints.max_racking << std::endl; //DEBUG
 		//there should be at least one valid racking:
 		bool has_valid = false;
+		bool has_valid_at_zero = false;
 		for (int32_t r = -int32_t(constraints.max_racking); r <= int32_t(constraints.max_racking); ++r) {
 			if (std::abs(left_offset + r) > left_slack) continue;
 			if (std::abs(right_offset + r) > right_slack) continue;
 			has_valid = true;
-			break;
+			if (r == 0) has_valid_at_zero = true;
+		}
+		if (require_zero_ofs) {
+			assert(has_valid_at_zero && "Must have valid layout at zero racking");
 		}
 		assert(has_valid && "Must have valid racking");
 	};
-	assert_valid_layout(from);
-	assert_valid_layout(to);
+	assert_valid_layout(from, false);
+	assert_valid_layout(to, true);
 
 	//can't split loops:
 	for (uint32_t i = 0; i < Count; ++i) {

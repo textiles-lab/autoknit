@@ -590,7 +590,7 @@ bool test_plan_transfers(std::string label) {
 		}
 
 		//pick random offsets for beds:
-		auto assign_random_offsets = [&constraints,&slack](std::vector< BedNeedle > &ccw) {
+		auto assign_random_offsets = [&constraints,&slack](std::vector< BedNeedle > &ccw, int32_t max_racking) {
 			assert(ccw.size() == slack.size());
 
 			int32_t front_min = std::numeric_limits< int32_t >::max();
@@ -660,8 +660,8 @@ bool test_plan_transfers(std::string label) {
 
 				assert(min_offset <= max_offset);
 
-				min_offset -= int32_t(constraints.max_racking);
-				max_offset += int32_t(constraints.max_racking);
+				min_offset -= max_racking;
+				max_offset += max_racking;
 
 				new_front_min = (mt() % 21) - 10;
 				new_back_min = (new_front_min - front_min) + back_min + (mt() % (max_offset - min_offset + 1) + min_offset);
@@ -675,8 +675,8 @@ bool test_plan_transfers(std::string label) {
 				}
 			}
 		};
-		assign_random_offsets(from_ccw);
-		assign_random_offsets(to_ccw);
+		assign_random_offsets(from_ccw, constraints.max_racking);
+		assign_random_offsets(to_ccw, 0);
 
 		{ //roll stitch arrays:
 			uint32_t roll = mt() % from_ccw.size();
