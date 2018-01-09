@@ -47,6 +47,14 @@ bool plan_transfers(
 	assert(to.size() == Count);
 	assert(slack.size() == Count);
 
+	//PARANOIA: we did actually eliminate duplicates, right?
+	if (from.size() > 1) {
+		for (uint32_t i = 0; i < from.size(); ++i) {
+			uint32_t n = (i + 1 < Count ? i + 1 : 0);
+			assert(!(from[i] == from[n]));
+		}
+	}
+
 
 	//PARANOIA: check consistency of inputs:
 	auto assert_valid_layout = [&](std::vector< BedNeedle > const &cycle, bool require_zero_ofs) {
@@ -204,7 +212,7 @@ bool plan_transfers(
 	//PARANOIA: make sure roll/goal matches on any overlapped needles:
 	for (uint32_t i = 0; i < Count; ++i) {
 		uint32_t n = (i + 1 < Count ? i + 1 : 0);
-		assert((from[i] == from[n]) == (rg[i].has_same_goal_as(rg[n])));
+		assert(!(from[i] == from[n]) || (rg[i].has_same_goal_as(rg[n])));
 	}
 
 	//(b) Get everything into left-to-right sorted beds:
