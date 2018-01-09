@@ -41,6 +41,8 @@ struct Constraints {
 };
 
 struct Transfer {
+	Transfer() = default;
+	Transfer(BedNeedle const &_from, BedNeedle const &_to) : from(_from), to(_to) { }
 	BedNeedle from;
 	BedNeedle to;
 };
