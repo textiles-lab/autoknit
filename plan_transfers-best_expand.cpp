@@ -58,6 +58,9 @@ void best_expand(
 			    && r_prev_needle == o.r_prev_needle
 			;
 		};
+		std::string to_string() const {
+			return std::to_string(l) + " " + std::to_string(l_next_needle) + "." + std::to_string(r_prev_needle) + " " + std::to_string(r);
+		}
 	};
 	#pragma pack(pop)
 	static_assert(sizeof(State) == 4*4, "expand's State is packed");
@@ -109,7 +112,7 @@ void best_expand(
 		StateInfo(Cost const &cost_, State const *source_, Action const &action_) : cost(cost_), source(source_), action(action_) { }
 	};
 
-	std::map< Cost, const State * > todo;
+	std::multimap< Cost, const State * > todo;
 	std::unordered_map< State, StateInfo, HashState > best_source;
 
 	auto queue_state = [&](State const &state, Cost const &cost, State const *from, Action const &action) {
@@ -125,7 +128,7 @@ void best_expand(
 
 
 	auto apply_action = [&queue_state,&top,&bottom,&constraints](Action const &action, State const &state, Cost const &cost) {
-		std::cout << "  doing '" << action.to_string() << "'" << std::endl; //DEBUG
+		//std::cout << "  doing '" << action.to_string() << "'" << std::endl; //DEBUG
 		State next_state = state;
 		Cost next_cost = cost;
 
@@ -161,6 +164,7 @@ void best_expand(
 		} else if (action.type == Action::MoveRight) {
 			if (state.r < int32_t(bottom.size())) {
 				//r is on bottom bed
+				assert(state.r >= 0);
 				next_cost.penalty += bottom[state.r].after_offset_and_roll(action.needle - bottom[state.r].needle, 0).penalty(constraints.min_free, constraints.max_free);
 
 				next_state.r += 1;
@@ -201,6 +205,8 @@ void best_expand(
 		} else {
 			assert(0 && "Invalid action type");
 		}
+		//std::cout << "     penalty " << next_cost.penalty  << " from " << cost.penalty << std::endl; //DEBUG
+		assert(next_cost.penalty >= cost.penalty);
 
 		queue_state(next_state, next_cost, &state, action);
 	};
@@ -251,7 +257,8 @@ void best_expand(
 		}
 
 		//if it is possible to finish, try the finishing move:
-		if (top_l >= 0 && top_r < int32_t(top.size())) {
+		if (state.l < 0 && state.r >= int32_t(bottom.size())) {
+			assert(top_l >= 0 && top_r < int32_t(top.size()));
 			apply_action(Action(Action::Finish, 0), state, cost);
 		}
 
@@ -305,6 +312,9 @@ void best_expand(
 					}
 				}
 			}
+
+			min = std::max(min, constraints.min_free);
+			max = std::min(max, constraints.max_free);
 
 			for (int32_t needle = min; needle <= max; ++needle) {
 				apply_action(Action(Action::MoveLeft, needle), state, cost);
@@ -362,6 +372,9 @@ void best_expand(
 				}
 			}
 
+			min = std::max(min, constraints.min_free);
+			max = std::min(max, constraints.max_free);
+
 			for (int32_t needle = min; needle <= max; ++needle) {
 				apply_action(Action(Action::MoveRight, needle), state, cost);
 			}
@@ -397,7 +410,7 @@ void best_expand(
 			if (f->second.cost < cost) continue;
 			assert(f->second.cost == cost);
 		}
-		std::cout << "Considering " << state->l << " " << state->l_next_needle << "." << state->r_prev_needle << " " << state->r << "  [penalty: " << cost.penalty << "]" << std::endl; //DEBUG
+		//std::cout << "Considering " << state->to_string() << "  [penalty: " << cost.penalty << "]" << std::endl; //DEBUG
 		//if this is an ending state, end:
 		if (state->l < 0 && state->r >= int32_t(bottom.size()) && state->r - state->l > int32_t(top.size() + bottom.size())) {
 			best = state;
@@ -412,7 +425,7 @@ void best_expand(
 	std::vector< Transfer > ops;
 	auto do_xfer = [&](BedNeedle const &from, BedNeedle const &to) {
 		ops.emplace_back(from, to);
-		std::cout << from.to_string() << " -> " << to.to_string() << "\n"; //DEBUG
+		std::cout << from.to_string() << " -> " << to.to_string(); //DEBUG
 	};
 
 
@@ -424,7 +437,7 @@ void best_expand(
 		if (f->second.source == nullptr) break;
 		State const &state = *f->second.source;
 		Action const &action = f->second.action;
-		std::cout << "    " << action.to_string() << ": "; //DEBUG
+		std::cout << "   " << state.to_string() << " " << action.to_string() << ": "; //DEBUG
 
 		int32_t top_l = -(state.l + 1);
 		int32_t top_r = int32_t(top.size()) - 1 - (state.r - int32_t(bottom.size()));
@@ -448,10 +461,12 @@ void best_expand(
 			}
 		} else if (action.type == Action::Finish) {
 			assert(is_first);
-			std::cout << " n/a\n"; //DEBUG
+			std::cout << " n/a"; //DEBUG
 		} else {
 			assert(0 && "Invalid action type.");
 		}
+
+		std::cout << " [penalty " << f->second.cost.penalty << "]\n"; //DEBUG
 
 		best = f->second.source;
 		is_first = false;
@@ -467,10 +482,10 @@ void best_expand(
 		to_top_bed, &to_top,
 		to_bottom_bed, &to_bottom);
 
-	std::cout << "Before:\n"; //DEBUG
+	std::cout << "Before Expand:\n"; //DEBUG
 	draw_beds(top_bed, top, bottom_bed, bottom); //DEBUG
 
-	std::cout << "After:\n"; //DEBUG
+	std::cout << "After Expand:\n"; //DEBUG
 	draw_beds(to_top_bed, to_top, to_bottom_bed, to_bottom); //DEBUG
 
 

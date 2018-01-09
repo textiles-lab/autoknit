@@ -308,6 +308,10 @@ bool plan_transfers(
 		std::vector< Transfer > best_plan;
 		uint32_t best_penalty = penalty(shrunk_constraints, best_front, best_back);
 		uint32_t starting_penalty = best_penalty;
+		//DEBUG:
+		std::cout << " ------- [penalty: " << starting_penalty << "] -------\n";
+		draw_beds(BedNeedle::Back, back, BedNeedle::Front, front);
+		std::cout << " --------------\n";
 		{ //collapse-to-back:
 			std::vector< Transfer > plan;
 			std::vector< NeedleRollGoal > collapsed_top, collapsed_bottom;
@@ -338,7 +342,10 @@ bool plan_transfers(
 				&plan
 			);
 			uint32_t p = penalty(shrunk_constraints, after_front, after_back);
-			//NOTE: not guaranteed until everything implemented... assert(p <= best_penalty);
+
+			std::cout << "-- -- -- (penalty: " << p << ") -- -- --\n";
+			draw_beds(BedNeedle::Back, after_back, BedNeedle::Front, after_front);
+			std::cout << "-- -- -- -- -- --\n";
 			if (p < best_penalty) {
 				best_front = after_front;
 				best_back = after_back;
@@ -376,7 +383,9 @@ bool plan_transfers(
 				&plan
 			);
 			uint32_t p = penalty(shrunk_constraints, after_front, after_back);
-			assert(p <= best_penalty);
+			std::cout << "-- -- -- (penalty: " << p << ") -- -- --\n";
+			draw_beds(BedNeedle::Back, after_back, BedNeedle::Front, after_front);
+			std::cout << "-- -- -- -- -- --\n";
 			if (p < best_penalty) {
 				best_front = after_front;
 				best_back = after_back;

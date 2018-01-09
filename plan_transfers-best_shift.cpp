@@ -55,7 +55,7 @@ void best_shift(
 			best_penalty = penalty;
 			best_ofs = ofs;
 		}
-		std::cout << "  offset " << ofs << " has penalty " << penalty << std::endl; //DEBUG
+		//std::cout << "  offset " << ofs << " has penalty " << penalty << std::endl; //DEBUG
 	};
 
 	for (int32_t ofs = 0; ofs < int32_t(constraints.max_racking); ++ofs) {
@@ -84,10 +84,10 @@ void best_shift(
 		to_bottom_bed, &to_bottom
 	);
 
-	std::cout << "Before:\n"; //DEBUG
+	std::cout << "Before Shift:\n"; //DEBUG
 	draw_beds(top_bed, top, bottom_bed, bottom); //DEBUG
 
-	std::cout << "After:\n"; //DEBUG
+	std::cout << "After Shift:\n"; //DEBUG
 	draw_beds(to_top_bed, to_top, to_bottom_bed, to_bottom); //DEBUG
 
 

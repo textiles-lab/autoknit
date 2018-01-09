@@ -123,7 +123,7 @@ void best_collapse(
 		StateInfo(Cost const &cost_, State const *source_, Action const &action_) : cost(cost_), source(source_), action(action_) { }
 	};
 
-	std::map< Cost, const State * > todo;
+	std::multimap< Cost, const State * > todo;
 	std::unordered_map< State, StateInfo, HashState > best_source;
 
 	auto queue_state = [&](State const &state, Cost const &cost, State const *from, Action const &action) {
@@ -139,7 +139,7 @@ void best_collapse(
 
 
 	auto apply_action = [&queue_state,&top,&bottom,&constraints](Action const &action, State const &state, Cost const &cost) {
-		std::cout << "  doing '" << action.to_string() << "'" << std::endl; //DEBUG
+		//std::cout << "  doing '" << action.to_string() << "'" << std::endl; //DEBUG
 		State next_state = state;
 		Cost next_cost = cost;
 		if        (action.type == Action::MoveLeft) {
@@ -252,8 +252,6 @@ void best_collapse(
 
 		assert(state.l_prev_roll <= State::Roll0);
 		assert(state.r_next_roll >= State::Roll0);
-
-		std::cout << "Expanding " << state.l_prev_needle << "r" << int32_t(state.l_prev_roll) << " [" << state.l << "," << state.r << "] " << state.r_next_needle << "r" << int32_t(state.r_next_roll) << std::endl; //DEBUG
 
 		//First, and most important range: what do the current bridges, constraints, and slack allow in terms of racking?
 		int32_t min_ofs = -int32_t(constraints.max_racking);
@@ -407,6 +405,8 @@ void best_collapse(
 			if (f->second.cost < cost) continue;
 			assert(f->second.cost == cost);
 		}
+		//std::cout << "Considering " << state->l_prev_needle << "r" << int32_t(state->l_prev_roll) << " [" << state->l << "," << state->r << "] " << state->r_next_needle << "r" << int32_t(state->r_next_roll) << std::endl; //DEBUG
+
 		//if this is an ending state, end:
 		if (state->l > state->r) {
 			best = state;
@@ -471,10 +471,10 @@ void best_collapse(
 		to_top_bed, &to_top,
 		to_bottom_bed, &to_bottom);
 
-	std::cout << "Before:\n"; //DEBUG
+	std::cout << "Before Collapse:\n"; //DEBUG
 	draw_beds(top_bed, top, bottom_bed, bottom); //DEBUG
 
-	std::cout << "After:\n"; //DEBUG
+	std::cout << "After Collapse:\n"; //DEBUG
 	draw_beds(to_top_bed, to_top, to_bottom_bed, to_bottom); //DEBUG
 
 

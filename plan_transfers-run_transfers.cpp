@@ -56,6 +56,8 @@ void run_transfers(
 		assert(t.from.bed == top_bed || t.from.bed == bottom_bed);
 		assert(t.to.bed == to_top_bed || t.to.bed == to_bottom_bed);
 
+		assert(constraints.min_free <= t.to.needle && t.to.needle <= constraints.max_free); //make sure the transfer goes to a valid needle
+
 		//POTENTIAL OPTIMIZATION: use a hash table to avoid visiting every stitch here:
 		uint32_t source = -1U;
 		uint32_t target = -1U;
