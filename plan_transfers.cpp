@@ -7,26 +7,46 @@
 
 bool plan_transfers(
 	Constraints const &constraints,
-	std::vector< BedNeedle > const &from,
-	std::vector< BedNeedle > const &to,
-	std::vector< Slack > const &slack,
+	std::vector< BedNeedle > const &from_,
+	std::vector< BedNeedle > const &to_,
+	std::vector< Slack > const &slack_,
 	std::vector< Transfer> *transfers_,
 	std::string *error
 ) {
 	assert(constraints.min_free < constraints.max_free);
 	assert(constraints.max_racking >= 1);
 
-	const uint32_t Count = from.size();
-	assert(from.size() == Count);
-	assert(to.size() == Count);
-	assert(slack.size() == Count);
+	assert(from_.size() == to_.size());
+	assert(from_.size() == slack_.size());
 	assert(transfers_);
 
 	auto &transfers = *transfers_;
 	transfers.clear();
 	if (error) *error = "";
 
-	if (Count == 0) return true; //empty cycle has empty plan
+	if (from_.empty()) return true; //empty cycle has empty plan
+
+	std::vector< BedNeedle > from = from_;
+	std::vector< BedNeedle > to = to_;
+	std::vector< Slack > slack = slack_;
+	//eliminate any stacked needles in 'from':
+	for (uint32_t i = 0; i < from.size(); /* later */) {
+		if (from.size() == 1) break;
+		uint32_t n = (i + 1 < from.size() ? i + 1 : 0);
+		if (from[i] == from[n]) {
+			assert(to[i] == to[n]);
+			from.erase(from.begin() + i);
+			to.erase(to.begin() + i);
+			slack.erase(slack.begin() + i);
+		} else {
+			++i;
+		}
+	}
+	const uint32_t Count = from.size();
+	assert(from.size() == Count);
+	assert(to.size() == Count);
+	assert(slack.size() == Count);
+
 
 	//PARANOIA: check consistency of inputs:
 	auto assert_valid_layout = [&](std::vector< BedNeedle > const &cycle) {
@@ -186,8 +206,8 @@ bool plan_transfers(
 			(from[i].bed == BedNeedle::Front ? slack[i] : slack[p]), //left slack
 			(from[i].bed == BedNeedle::Front ? slack[p] : slack[i]) //right slack
 		);
-		rg.back().can_stack_left = (to[p] == to[i]);
-		rg.back().can_stack_right = (to[i] == to[n]);
+		rg.back().can_stack_left = (to[i] == (from[i].bed == BedNeedle::Front ? to[p] : to[n]));
+		rg.back().can_stack_right = (to[i] == (from[i].bed == BedNeedle::Front ? to[n] : to[p]));
 
 		//check to make sure roll/goal actually matches desired behavior:
 		assert((from[i].bed == to[i].bed) == (rg.back().roll % 2 == 0));
