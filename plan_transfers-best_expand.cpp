@@ -313,6 +313,12 @@ void best_expand(
 				if (state.r < int32_t(bottom.size())) {
 					//can't move at all if pinned by bottom stitch:
 					bool pinned = false;
+					//    l --- o
+					//  r ...
+					if (bottom[state.r].needle <= top[top_l].needle) {
+						pinned = true;
+					}
+
 					//  l --- o
 					//     r ...
 					if (top_l + 1 < int32_t(top.size()) && top[top_l+1].needle > bottom[state.r].needle) {
@@ -373,6 +379,12 @@ void best_expand(
 				if (state.l >= 0) {
 					//can't move at all if pinned by bottom stitch:
 					bool pinned = false;
+					//  o --- r
+					//     .... l
+					if (bottom[state.l].needle >= top[top_r].needle) {
+						pinned = true;
+					}
+
 					//  o --- r
 					// ... l
 					if (top_r - 1 >= 0 && top[top_r-1].needle < bottom[state.l].needle) {
