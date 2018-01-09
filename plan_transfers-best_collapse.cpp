@@ -39,7 +39,7 @@ void best_collapse(
 		return;
 	}
 
-	//Otherwise, A*-style search for optimal sequence of moves:
+	//Otherwise, Dijkstra-style search for optimal sequence of moves:
 
 	//Search state:
 	#pragma pack(push,1)
