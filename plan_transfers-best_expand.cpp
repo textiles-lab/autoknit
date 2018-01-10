@@ -85,10 +85,10 @@ void best_expand(
 		Action(Type type_, int32_t needle_) : type(type_), needle(needle_) { }
 
 		std::string to_string() const {
-			if (type == None) return "None";
-			else if (type == MoveLeft) return "MoveLeft to " + std::to_string(needle);
-			else if (type == MoveRight) return "MoveRight to " + std::to_string(needle);
-			else if (type == Finish) return "Finish";
+			if (type == None) return "ENone";
+			else if (type == MoveLeft) return "EMoveLeft to " + std::to_string(needle);
+			else if (type == MoveRight) return "EMoveRight to " + std::to_string(needle);
+			else if (type == Finish) return "EFinish";
 			else assert(0 && "invalid move type");
 		}
 	};

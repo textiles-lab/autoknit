@@ -466,6 +466,7 @@ void dump_layout(std::vector< BedNeedle > const &ccw, std::vector< Slack > *slac
 
 std::map< uint32_t, uint32_t > count_histogram;
 std::map< uint32_t, uint32_t > transfers_histogram;
+std::map< std::string, uint32_t > moves_histogram;
 uint32_t cases_run = 0;
 
 void dump_stats() {
@@ -490,10 +491,29 @@ void dump_stats() {
 		std::cerr << "Test Case Size:\n";
 		draw_hist(count_histogram);
 	}
-	{ //moves histogram
+	{ //transfers histogram
 		std::cerr << "Transfers Per Stitch:\n";
 		draw_hist(transfers_histogram);
 	}
+	{ //various move type counts:
+		std::cerr << "Moves used:\n";
+		uint32_t max = 0;
+		uint32_t label_max = 1;
+		for (auto cc : moves_histogram) {
+			max = std::max(max, cc.second);
+			label_max = std::max< uint32_t >(label_max, cc.first.size());
+		}
+		uint32_t scale = std::min(max, 60U);
+		for (auto cc : moves_histogram) {
+			std::cerr << std::string(label_max - cc.first.size(), ' ');
+			std::cerr << cc.first << ' ';
+			std::cerr << std::string(cc.second * scale / max, '=');
+			std::cerr << ' ' << cc.second;
+			std::cerr << '\n';
+		}
+	};
+
+
 }
 
 std::mt19937 mt(0xdeadbeef);
@@ -810,8 +830,18 @@ bool test_plan_transfers(std::string label) {
 			return false;
 		}
 
+		//------ stats ------
+
 		uint32_t t = (transfers.size() + from_ccw.size() - 1) / from_ccw.size();
 		transfers_histogram.insert(std::make_pair(t, 0)).first->second += 1;
+
+		for (auto t : transfers) {
+			for (auto &cc : moves_histogram) {
+				if (t.why.find(cc.first) != std::string::npos) {
+					cc.second += 1;
+				}
+			}
+		}
 	}
 
 	cases_run += 1;
@@ -821,6 +851,18 @@ bool test_plan_transfers(std::string label) {
 }
 
 int main(int argc, char **argv) {
+	moves_histogram["CNone"] = 0;
+	moves_histogram["CMoveLeft"] = 0;
+	moves_histogram["CMoveRight"] = 0;
+	moves_histogram["CRollLeft"] = 0;
+	moves_histogram["CRollRight"] = 0;
+	moves_histogram["CRoll2Left"] = 0;
+	moves_histogram["CRoll2Right"] = 0;
+	moves_histogram["ENone"] = 0;
+	moves_histogram["EMoveLeft"] = 0;
+	moves_histogram["EMoveRight"] = 0;
+	moves_histogram["EFinish"] = 0;
+
 	if (argc == 2) {
 		if (argv[1] == std::string("stress")) {
 			std::cout << "Running random test cases forever." << std::endl;

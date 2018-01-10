@@ -100,13 +100,13 @@ void best_collapse(
 		Action(Type type_, int32_t needle_) : type(type_), needle(needle_) { }
 
 		std::string to_string() const {
-			if (type == None) return "None";
-			else if (type == MoveLeft) return "MoveLeft to " + std::to_string(needle);
-			else if (type == MoveRight) return "MoveRight to " + std::to_string(needle);
-			else if (type == RollLeft) return "RollLeft to " + std::to_string(needle);
-			else if (type == RollRight) return "RollRight to " + std::to_string(needle);
-			else if (type == Roll2Left) return "Roll2Left to " + std::to_string(needle);
-			else if (type == Roll2Right) return "Roll2Right to " + std::to_string(needle);
+			if (type == None) return "CNone";
+			else if (type == MoveLeft) return "CMoveLeft to " + std::to_string(needle);
+			else if (type == MoveRight) return "CMoveRight to " + std::to_string(needle);
+			else if (type == RollLeft) return "CRollLeft to " + std::to_string(needle);
+			else if (type == RollRight) return "CRollRight to " + std::to_string(needle);
+			else if (type == Roll2Left) return "CRoll2Left to " + std::to_string(needle);
+			else if (type == Roll2Right) return "CRoll2Right to " + std::to_string(needle);
 			else assert(0 && "invalid move type");
 		}
 	};
@@ -259,6 +259,8 @@ void best_collapse(
 		assert(state.l_prev_roll <= State::Roll0);
 		assert(state.r_next_roll >= State::Roll0);
 
+		std::vector< std::pair< int32_t, Action > > offset_action;
+
 		//First, and most important range: what do the current bridges, constraints, and slack allow in terms of racking?
 		int32_t min_ofs = -int32_t(constraints.max_racking);
 		int32_t max_ofs = int32_t(constraints.max_racking);
@@ -297,10 +299,32 @@ void best_collapse(
 			max = std::min(max, constraints.max_free);
 
 			for (int32_t needle = min; needle <= max; ++needle) {
-				apply_action(Action(Action::Roll2Left, needle), state, cost);
+				offset_action.emplace_back(needle - top[state.l].needle, Action(Action::Roll2Left, needle));
+				//apply_action(Action(Action::Roll2Left, needle), state, cost);
 			}
 		}
-		//TODO: roll2 moves for right stitch
+
+		{ //"roll2" moves for right stitch:
+			int32_t min = min_ofs + top[state.r].needle;
+			int32_t max = max_ofs + top[state.r].needle;
+			if (state.r_next_roll == State::LRollInvalid) {
+				//can roll2 to ~anywhere~
+			} else if (state.r_next_roll == State::RRoll2) {
+				min = std::max(min, state.l_prev_needle);
+				max = std::min(max, state.r_next_needle + (top[state.r].can_stack_right ? 0 : -1));
+			} else {
+				min = std::numeric_limits< int32_t >::max();
+				max = std::numeric_limits< int32_t >::min();
+			}
+
+			min = std::max(min, constraints.min_free);
+			max = std::min(max, constraints.max_free);
+
+			for (int32_t needle = min; needle <= max; ++needle) {
+				offset_action.emplace_back(needle - top[state.r].needle, Action(Action::Roll2Right, needle));
+				//apply_action(Action(Action::Roll2Right, needle), state, cost);
+			}
+		}
 
 		{ //"roll" moves for left stitch:
 			int32_t min = min_ofs + top[state.l].needle;
@@ -332,7 +356,8 @@ void best_collapse(
 			max = std::min(max, constraints.max_free);
 
 			for (int32_t needle = min; needle <= max; ++needle) {
-				apply_action(Action(Action::RollLeft, needle), state, cost);
+				offset_action.emplace_back(needle - top[state.l].needle, Action(Action::RollLeft, needle));
+				//apply_action(Action(Action::RollLeft, needle), state, cost);
 			}
 		}
 
@@ -367,7 +392,8 @@ void best_collapse(
 			max = std::min(max, constraints.max_free);
 
 			for (int32_t needle = min; needle <= max; ++needle) {
-				apply_action(Action(Action::RollRight, needle), state, cost);
+				offset_action.emplace_back(needle - top[state.r].needle, Action(Action::RollRight, needle));
+				//apply_action(Action(Action::RollRight, needle), state, cost);
 			}
 		}
 
@@ -398,7 +424,8 @@ void best_collapse(
 			max = std::min(max, constraints.max_free);
 
 			for (int32_t needle = min; needle <= max; ++needle) {
-				apply_action(Action(Action::MoveLeft, needle), state, cost);
+				offset_action.emplace_back(needle - top[state.l].needle, Action(Action::MoveLeft, needle));
+				//apply_action(Action(Action::MoveLeft, needle), state, cost);
 			}
 		}
 
@@ -429,8 +456,17 @@ void best_collapse(
 			max = std::min(max, constraints.max_free);
 
 			for (int32_t needle = min; needle <= max; ++needle) {
-				apply_action(Action(Action::MoveRight, needle), state, cost);
+				offset_action.emplace_back(needle - top[state.r].needle, Action(Action::MoveRight, needle));
+				//apply_action(Action(Action::MoveRight, needle), state, cost);
 			}
+		}
+
+		std::stable_sort(offset_action.begin(), offset_action.end(), [](std::pair< int32_t, Action > const &a, std::pair< int32_t, Action > const &b) -> bool {
+			return std::abs(a.first) < std::abs(b.first);
+		});
+
+		for (auto const &oa : offset_action) {
+			apply_action(oa.second, state, cost);
 		}
 	};
 
