@@ -62,7 +62,7 @@ void best_shift(
 		do_ofs(ofs);
 		if (ofs != 0) do_ofs(-ofs);
 	}
-	std::cout << "Best offset: " << best_ofs << std::endl; //DEBUG
+	//std::cout << "Best offset: " << best_ofs << std::endl; //DEBUG
 
 	assert(best_penalty < std::numeric_limits< uint32_t >::max());
 
@@ -76,6 +76,11 @@ void best_shift(
 		ops.emplace_back(BedNeedle(bottom_bed, nrg.needle), BedNeedle(to_bottom_bed, nrg.needle + best_ofs));
 	}
 
+/*
+	std::cout << "Before Shift:\n"; //DEBUG
+	draw_beds(top_bed, top, bottom_bed, bottom); //DEBUG
+*/
+
 	run_transfers(constraints,
 		top_bed, top,
 		bottom_bed, bottom,
@@ -84,13 +89,10 @@ void best_shift(
 		to_bottom_bed, &to_bottom
 	);
 
-	std::cout << "Before Shift:\n"; //DEBUG
-	draw_beds(top_bed, top, bottom_bed, bottom); //DEBUG
-
+/*
 	std::cout << "After Shift:\n"; //DEBUG
 	draw_beds(to_top_bed, to_top, to_bottom_bed, to_bottom); //DEBUG
-
-
+*/
 
 	plan.insert(plan.end(), ops.begin(), ops.end());
 

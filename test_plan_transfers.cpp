@@ -6,6 +6,8 @@
 #include <random>
 #include <algorithm>
 #include <iostream>
+#include <chrono>
+#include <map>
 
 //simulate_transfers applies the transfers in 'transfers' to the stitches in 'from_ccw'.
 // it will return 'true' if the transfers succeed in moving the stitches to 'to_ccw' without
@@ -228,7 +230,7 @@ bool simulate_transfers(
 
 	//walk through transfers one by one and check state:
 	for (auto const &t : transfers) {
-		std::cout << " checking: " << t.to_string() << std::endl; //DEBUG
+		//std::cout << " checking: " << t.to_string() << std::endl; //DEBUG
 
 		//find all stitches that are in the 'from' location:
 		std::vector< Stitch * > &from = stitches_on(t.from);
@@ -462,9 +464,40 @@ void dump_layout(std::vector< BedNeedle > const &ccw, std::vector< Slack > *slac
 	std::cout.flush();
 };
 
+std::map< uint32_t, uint32_t > count_histogram;
+std::map< uint32_t, uint32_t > transfers_histogram;
+uint32_t cases_run = 0;
 
+void dump_stats() {
+	auto draw_hist = [](std::map< uint32_t, uint32_t > const &hist) {
+		uint32_t max = 0;
+		for (auto cc : hist) {
+			max = std::max(max, cc.second);
+		}
+		uint32_t scale = std::min(max, 60U);
+		for (auto cc : hist) {
+			if (cc.first < 100) std::cerr << ' ';
+			if (cc.first < 10) std::cerr << ' ';
+			std::cerr << cc.first << ' ';
+			std::cerr << std::string(cc.second * scale / max, '=');
+			std::cerr << ' ' << cc.second;
+			std::cerr << '\n';
+		}
+	};
+
+
+	{ //counts histogram
+		std::cerr << "Test Case Size:\n";
+		draw_hist(count_histogram);
+	}
+	{ //moves histogram
+		std::cerr << "Transfers Per Stitch:\n";
+		draw_hist(transfers_histogram);
+	}
+}
+
+std::mt19937 mt(0xdeadbeef);
 bool test_plan_transfers(std::string label) {
-	static std::mt19937 mt(0xdeadbeef);
 
 	Constraints constraints;
 	//pick max racking in range [1,20]; generally pick 4 which is a realistic value.
@@ -483,8 +516,10 @@ bool test_plan_transfers(std::string label) {
 		} else {
 			//...and larger sizes with some sort of decaying probability:
 			float amt = (val - mt.max()/2) / float(mt.max()/2);
-			count = 10 + std::floor(100.0f * (1.0f - std::pow(1.0f / 100.0f, amt)));
+			count = 11 + std::floor(std::pow(100.0f, 1.0f - amt));
 		}
+		uint32_t c = (count / 5) * 5;
+		count_histogram.insert(std::make_pair(c, 0)).first->second += 1;
 	}
 
 
@@ -774,16 +809,39 @@ bool test_plan_transfers(std::string label) {
 			std::cerr << "ERROR: result of plan_transfers failed checks:\n" << error << std::endl;
 			return false;
 		}
+
+		uint32_t t = (transfers.size() + from_ccw.size() - 1) / from_ccw.size();
+		transfers_histogram.insert(std::make_pair(t, 0)).first->second += 1;
 	}
+
+	cases_run += 1;
+	if (cases_run % 100 == 0) dump_stats();
 
 	return true;
 }
 
 int main(int argc, char **argv) {
-	constexpr uint32_t iters = 100000;
+	if (argc == 2) {
+		if (argv[1] == std::string("stress")) {
+			std::cout << "Running random test cases forever." << std::endl;
+			mt.seed(std::chrono::high_resolution_clock::now().time_since_epoch().count());
+			uint32_t count = 0;
+			while (1) {
+				++count;
+				if (!test_plan_transfers("Test run " + std::to_string(count))) return 1;
+			}
+			return 0;
+		} else {
+			std::cerr << "Unrecognized Argument" << std::endl;
+			return 1;
+		}
+	}
+
+	constexpr uint32_t iters = 1000;
 	for (uint32_t i = 0; i < iters; ++i) {
 		if (!test_plan_transfers(std::to_string(i) + "/" + std::to_string(iters))) return 1;
 	}
+	dump_stats();
 	std::cout << "Passed " << iters << " random test cases." << std::endl;
 	return 0;
 }

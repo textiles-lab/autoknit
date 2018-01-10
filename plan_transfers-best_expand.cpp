@@ -509,19 +509,20 @@ void best_expand(
 	std::cout.flush(); //DEBUG
 */
 
+/*
 	std::cout << "Before Expand:\n"; //DEBUG
 	draw_beds(top_bed, top, bottom_bed, bottom); //DEBUG
-
+*/
 	run_transfers(constraints,
 		top_bed, top,
 		bottom_bed, bottom,
 		ops,
 		to_top_bed, &to_top,
 		to_bottom_bed, &to_bottom);
-
+/*
 	std::cout << "After Expand:\n"; //DEBUG
 	draw_beds(to_top_bed, to_top, to_bottom_bed, to_bottom); //DEBUG
-
+*/
 
 	plan.insert(plan.end(), ops.begin(), ops.end());
 
