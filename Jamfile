@@ -20,32 +20,32 @@ if $(OS) = NT {
 	C++ = clang++ ;
 	C++FLAGS =
 		-std=c++14 -g -Wall -Werror
-		-I$(KIT_LIBS)/libpng/include                           #libpng
+#		-I$(KIT_LIBS)/libpng/include                           #libpng
 		-I$(KIT_LIBS)/glm/include                              #glm
-		`PATH=$(KIT_LIBS)/SDL2/bin:$PATH sdl2-config --cflags` #SDL2
+#		`PATH=$(KIT_LIBS)/SDL2/bin:$PATH sdl2-config --cflags` #SDL2
 		;
 	LINK = clang++ ;
 	LINKFLAGS = -std=c++14 -g -Wall -Werror ;
 	LINKLIBS =
-		-L$(KIT_LIBS)/libpng/lib -lpng                      #libpng
-		-L$(KIT_LIBS)/zlib/lib -lz                          #zlib
-		`PATH=$(KIT_LIBS)/SDL2/bin:$PATH sdl2-config --static-libs` -framework OpenGL #SDL2
+#		-L$(KIT_LIBS)/libpng/lib -lpng                      #libpng
+#		-L$(KIT_LIBS)/zlib/lib -lz                          #zlib
+#		`PATH=$(KIT_LIBS)/SDL2/bin:$PATH sdl2-config --static-libs` -framework OpenGL #SDL2
 		;
 } else if $(OS) = LINUX {
 	KIT_LIBS = kit-libs-linux ;
 	C++ = g++ ;
 	C++FLAGS =
 		-std=c++11 -g -Wall -Werror
-		-I$(KIT_LIBS)/libpng/include                           #libpng
+#		-I$(KIT_LIBS)/libpng/include                           #libpng
 		-I$(KIT_LIBS)/glm/include                              #glm
-		`PATH=$(KIT_LIBS)/SDL2/bin:$PATH sdl2-config --cflags` #SDL2
+#		`PATH=$(KIT_LIBS)/SDL2/bin:$PATH sdl2-config --cflags` #SDL2
 		;
 	LINK = g++ ;
 	LINKFLAGS = -std=c++11 -g -Wall -Werror ;
 	LINKLIBS =
-		-L$(KIT_LIBS)/libpng/lib -lpng                      #libpng
-		-L$(KIT_LIBS)/zlib/lib -lz                          #zlib
-		`PATH=$(KIT_LIBS)/SDL2/bin:$PATH sdl2-config --static-libs` -lGL #SDL2
+#		-L$(KIT_LIBS)/libpng/lib -lpng                      #libpng
+#		-L$(KIT_LIBS)/zlib/lib -lz                          #zlib
+#		`PATH=$(KIT_LIBS)/SDL2/bin:$PATH sdl2-config --static-libs` -lGL #SDL2
 		;
 }
 
