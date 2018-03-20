@@ -1,0 +1,3 @@
+[submodule "kit"]
+	path = kit
+	url = git@github.com:ixchow/kit
