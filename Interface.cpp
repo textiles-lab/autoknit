@@ -40,7 +40,7 @@ kit::Load< GLProgram > model_draw(kit::LoadTagDefault, [](){
 		"	vec3 n = normalize(normal);\n"
 		"	vec3 l = vec3(0.0, 0.0, 1.0);\n"
 		"	float nl = dot(n, l) * 0.5 + 0.5;\n"
-		"	fragColor = vec4(nl * (0.5 * normal + 0.5), 1.0);\n"
+		"	fragColor = vec4(nl * vec3(1.0), 1.0);\n"
 		"	fragID = id;\n"
 		"}\n"
 	);
@@ -53,6 +53,60 @@ kit::Load< GLProgram > model_draw(kit::LoadTagDefault, [](){
 });
 
 //------------------------------------
+
+GLuint marker_draw_p2c = -1U;
+GLuint marker_draw_p2l = -1U;
+GLuint marker_draw_n2l = -1U;
+
+GLuint marker_draw_id = -1U;
+GLuint marker_draw_color = -1U;
+
+kit::Load< GLProgram > marker_draw(kit::LoadTagDefault, [](){
+	GLProgram *ret = new GLProgram(
+		"#version 330\n"
+		"#line " STR(__LINE__) "\n"
+		"uniform mat4 p2c;\n" //position to clip space
+		"uniform mat4x3 p2l;\n" //position to light space
+		"uniform mat3 n2l;\n" //normal to light space
+		"in vec4 Position;\n"
+		"in vec3 Normal;\n"
+		"out vec3 normal;\n"
+		"out vec3 position;\n"
+		"void main() {\n"
+		"	gl_Position = p2c * Position;\n"
+		"	position = p2l * Position;\n"
+		"	normal = n2l * Normal;\n"
+		"}\n"
+		,
+		"#version 330\n"
+		"#line " STR(__LINE__) "\n"
+		"uniform vec3 color;\n"
+		"uniform vec4 id;\n"
+		"in vec3 normal;\n"
+		"in vec3 position;\n"
+		"layout(location = 0) out vec4 fragColor;\n"
+		"layout(location = 1) out vec4 fragID;\n"
+		"void main() {\n"
+		"	vec3 n = normalize(normal);\n"
+		"	vec3 l = vec3(0.0, 0.0, 1.0);\n"
+		"	float nl = dot(n, l) * 0.5 + 0.5;\n"
+		"	fragColor = vec4(nl * color, 1.0);\n"
+		"	fragID = id;\n"
+		"}\n"
+	);
+
+	marker_draw_p2c = ret->getUniformLocation("p2c", GLProgram::MissingIsError);
+	marker_draw_p2l = ret->getUniformLocation("p2l", GLProgram::MissingIsWarning);
+	marker_draw_n2l = ret->getUniformLocation("n2l", GLProgram::MissingIsWarning);
+
+	marker_draw_color = ret->getUniformLocation("color", GLProgram::MissingIsWarning);
+	marker_draw_id = ret->getUniformLocation("id", GLProgram::MissingIsWarning);
+
+	return ret;
+});
+
+//------------------------------------
+
 
 kit::Load< GLProgram > copy_fb(kit::LoadTagDefault, [](){
 	GLProgram *ret = new GLProgram(
@@ -109,6 +163,53 @@ kit::Load< GLProgram > copy_fb(kit::LoadTagDefault, [](){
 
 //------------------------------------
 
+//layout: (position)
+kit::Load< GLAttribBuffer< glm::vec3 > > sphere_tristrip(kit::LoadTagInit, [](){
+	GLAttribBuffer< glm::vec3 > *ret = new GLAttribBuffer< glm::vec3 >();
+	const uint32_t Rings = 10;
+	const uint32_t Slices = 16;
+
+	std::vector< glm::vec2 > circle;
+	circle.reserve(Slices + 1);
+	for (uint32_t a = 0; a < Slices; ++a) {
+		float ang = a / float(Slices) * M_PI * 2.0f;
+		circle.emplace_back(std::cos(ang), std::sin(ang));
+	}
+	circle.emplace_back(circle[0]);
+
+	std::vector< GLAttribBuffer< glm::vec3 >::Vertex > attribs;
+	attribs.reserve((Rings) * 2 * (Slices+1));
+
+	glm::vec2 prev(0.0f, -1.0f);
+	for (uint32_t a = 1; a <= Rings; ++a) {
+		glm::vec2 next;
+		if (a == Rings) {
+			next = glm::vec2(0.0f, 1.0f);
+		} else {
+			float ang = (a / float(Rings) - 0.5f) * M_PI;
+			next = glm::vec2(std::cos(ang), std::sin(ang));
+		}
+
+		for (auto const &c : circle) {
+			attribs.emplace_back(glm::vec3(prev.x * c.x, prev.x * c.y, prev.y));
+			attribs.emplace_back(glm::vec3(next.x * c.x, next.x * c.y, next.y));
+		}
+
+		prev = next;
+	}
+
+	ret->set(attribs, GL_STATIC_DRAW);
+
+	return ret;
+});
+
+kit::Load< GLVertexArray > sphere_tristrip_for_marker_draw(kit::LoadTagDefault, [](){
+	return new GLVertexArray(GLVertexArray::make_binding(marker_draw->program, {
+		{marker_draw->getAttribLocation("Position", GLProgram::MissingIsError), (*sphere_tristrip)[0]},
+		{marker_draw->getAttribLocation("Normal", GLProgram::MissingIsError), (*sphere_tristrip)[0]}
+	}));
+});
+
 kit::Load< GLVertexArray > empty_vertex_array(kit::LoadTagDefault);
 
 
@@ -160,26 +261,71 @@ void Interface::draw() {
 
 	glEnable(GL_DEPTH_TEST);
 
-	//Position-to-clip matrix:
-	glm::mat4 p2c = camera.mvp();
-	//Position-to-light matrix:
-	glm::mat4x3 p2l = glm::mat4(1.0f);
-	//Normal-to-light matrix:
-	glm::mat3 n2l = glm::inverse(glm::transpose(glm::mat3(p2l)));
 
-	glUseProgram(model_draw->program);
+	{ //draw the model:
+		glUseProgram(model_draw->program);
 
-	glUniformMatrix4fv(model_draw_p2c, 1, GL_FALSE, glm::value_ptr(p2c));
-	glUniformMatrix4x3fv(model_draw_p2l, 1, GL_FALSE, glm::value_ptr(p2l));
-	glUniformMatrix3fv(model_draw_n2l, 1, GL_FALSE, glm::value_ptr(n2l));
+		//Position-to-clip matrix:
+		glm::mat4 p2c = camera.mvp();
+		//Position-to-light matrix:
+		glm::mat4x3 p2l = glm::mat4(1.0f);
+		//Normal-to-light matrix:
+		glm::mat3 n2l = glm::inverse(glm::transpose(glm::mat3(p2l)));
 
-	glBindVertexArray(model_triangles_for_model_draw.array);
+		glUniformMatrix4fv(model_draw_p2c, 1, GL_FALSE, glm::value_ptr(p2c));
+		glUniformMatrix4x3fv(model_draw_p2l, 1, GL_FALSE, glm::value_ptr(p2l));
+		glUniformMatrix3fv(model_draw_n2l, 1, GL_FALSE, glm::value_ptr(n2l));
 
-	glDrawArrays(GL_TRIANGLES, 0, model_triangles.count);
+		glBindVertexArray(model_triangles_for_model_draw.array);
 
-	glBindVertexArray(0);
+		glDrawArrays(GL_TRIANGLES, 0, model_triangles.count);
 
-	glUseProgram(0);
+		glBindVertexArray(0);
+
+		glUseProgram(0);
+	}
+
+	{ //draw marker spheres:
+		glUseProgram(marker_draw->program);
+		glBindVertexArray(sphere_tristrip_for_marker_draw->array);
+
+		auto sphere = [&](glm::vec3 const &at, float r, glm::vec3 const &color, glm::u8vec4 const &id) {
+			//Position-to-light matrix:
+			glm::mat4x3 p2l = glm::mat4x3(
+				glm::vec3(r, 0.0f, 0.0f),
+				glm::vec3(0.0f, r, 0.0f),
+				glm::vec3(0.0f, 0.0f, r),
+				glm::vec3(at)
+			);
+			//Normal-to-light matrix:
+			glm::mat3 n2l = glm::inverse(glm::transpose(glm::mat3(p2l)));
+			//Position-to-clip matrix:
+			glm::mat4 p2c = camera.mvp() * glm::mat4(p2l);
+
+			glUniformMatrix4fv(marker_draw_p2c, 1, GL_FALSE, glm::value_ptr(p2c));
+			glUniformMatrix4x3fv(marker_draw_p2l, 1, GL_FALSE, glm::value_ptr(p2l));
+			glUniformMatrix3fv(marker_draw_n2l, 1, GL_FALSE, glm::value_ptr(n2l));
+
+			glUniform4f(marker_draw_id, id.r / 255.0f, id.g / 255.0f, id.b / 255.0f, id.a / 255.0f);
+			glUniform3fv(marker_draw_color, 1, glm::value_ptr(color));
+
+			glDrawArrays(GL_TRIANGLE_STRIP, 0, sphere_tristrip->count);
+		};
+
+		//mouse cursor sphere (don't draw into ID buffer):
+		glColorMaski(1, GL_FALSE, GL_FALSE, GL_FALSE, GL_FALSE);
+		if (hovered.tri < model.triangles.size()) {
+			glm::vec3 const &a = model.vertices[model.triangles[hovered.tri].x];
+			glm::vec3 const &b = model.vertices[model.triangles[hovered.tri].y];
+			glm::vec3 const &c = model.vertices[model.triangles[hovered.tri].z];
+			glm::vec3 at = (a + b + c) / 3.0f;
+			sphere(at, 0.2f, glm::vec3(1.0f, 0.0f, 0.0f), glm::u8vec4(0x00));
+		}
+		glColorMaski(1, GL_TRUE, GL_TRUE, GL_TRUE, GL_TRUE);
+
+		glBindVertexArray(0);
+		glUseProgram(0);
+	}
 
 	GL_ERRORS();
 
@@ -248,44 +394,26 @@ void Interface::pointer_action(kit::PointerID pointer, kit::PointerAction action
 
 void Interface::update_hovered() {
 	hovered.clear();
-	/*
-	//this is a silly and potentially lacking-in-robustness approach
-	//I should just rasterize.
 
-	//trace ray into model:
-	glm::vec3 root;
-	glm::vec3 dir;
-	glm::vec3 p1, p2;
-	{
-		glm::mat4 imvp = glm::inverse(camera.mvp());
-		glm::vec4 temp = imvp * glm::vec4(mouse.at.x, mouse.at.y, 0.0f, 1.0f);
-		root = glm::vec4(temp) / temp.w;
-		dir = glm::normalize(imvp * glm::vec4(0.0f, 0.0f, -1.0f, 0.0f));
-		if (std::abs(dir.x) <= std::abs(dir.y) && std::abs(dir.x) <= std::abs(dir.z)) {
-			p1 = glm::vec3(1.0f, 0.0f, 0.0f);
-		} else if (std::abs(dir.y) <= std::abs(dir.z)) {
-			p1 = glm::vec3(0.0f, 1.0f, 0.0f);
-		} else {
-			p1 = glm::vec3(0.0f, 0.0f, 1.0f);
+	glm::vec2 px(0.5f * (mouse.at.x + 1.0f) * fb_size.x, 0.5f * (mouse.at.y + 1.0f) * fb_size.y);
+
+	if (px.x < 0 || px.x >= fb_size.x || px.y < 0 || px.y >= fb_size.y) return;
+
+	glBindFramebuffer(GL_FRAMEBUFFER, color_id_fb);
+	glReadBuffer(GL_COLOR_ATTACHMENT1);
+	glm::u8vec4 col;
+	glReadPixels(px.x, px.y, 1, 1, GL_RGBA, GL_UNSIGNED_BYTE, &col);
+
+	std::cout << int(col.r) << " " << int(col.g) << " " << int(col.b) << " " << int(col.a) << std::endl; //DEBUG
+
+	if (col.r == 1) {
+		uint32_t idx = uint32_t(col.a) | (uint32_t(col.b) << 8) | (uint32_t(col.g) << 16);
+		if (idx < model.triangles.size()) {
+			hovered.tri = idx;
 		}
-		p1 = glm::normalize(p1 - glm::dot(p1, dir) * dir);
-		p2 = glm::cross(p1, dir);
 	}
 
-	std::vector< glm::vec3 > xv;
-	xv.reserve(model.vertices.size());
-	for (auto const &v : model.vertices) {
-		xv.emplace_back(glm::dot(v - root, p1), glm::dot(v - root, p2), glm::dot(v - root, dir));
-	}
-
-	for (auto const &t : model.triangles) {
-		glm::vec3 const &a = xv[t.x];
-		glm::vec3 const &b = xv[t.y];
-		glm::vec3 const &c = xv[t.z];
-		float c1 = glm::vec2(a.y
-
-	}
-	*/
+	glBindFramebuffer(GL_FRAMEBUFFER, 0);
 }
 
 void Interface::alloc_fbs() {
@@ -304,7 +432,7 @@ void Interface::alloc_fbs() {
 
 	if (id_tex == 0) glGenTextures(1, &id_tex);
 	glBindTexture(GL_TEXTURE_2D, id_tex);
-	glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB8, fb_size.x, fb_size.y, 0, GL_RGBA, GL_UNSIGNED_BYTE, NULL);
+	glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA8, fb_size.x, fb_size.y, 0, GL_RGBA, GL_UNSIGNED_BYTE, NULL);
 	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
 	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
 	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
