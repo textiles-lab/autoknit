@@ -14,6 +14,16 @@ struct Interface : public kit::Mode {
 	virtual void draw() override;
 	virtual void pointer_action(kit::PointerID pointer, kit::PointerAction action, kit::Pointer const &old_state, kit::Pointer const &new_state) override;
 
+	//framebuffers + textures
+	glm::uvec2 fb_size = glm::uvec2(0);
+
+	GLuint color_id_fb = 0; //(color_tex, id_tex) + depth_tex
+	GLuint color_tex = 0;
+	GLuint id_tex = 0;
+	GLuint depth_tex = 0; //depth values (for soft edges)
+
+	void alloc_fbs(); //(re-)allocate framebuffers given current display size
+
 	//camera:
 	struct Camera {
 		glm::vec3 center = glm::vec3(0.0f);
@@ -40,6 +50,9 @@ struct Interface : public kit::Mode {
 				glm::dot(-at, right), glm::dot(-at, up), glm::dot(-at, out), 1.0f
 			);
 		}
+		glm::mat4 mvp() const {
+			return glm::infinitePerspective(fovy, kit::display.aspect, 0.1f) * mv();
+		}
 	} camera;
 
 	//mouse tracking:
@@ -50,10 +63,26 @@ struct Interface : public kit::Mode {
 	};
 	Drag drag = DragNone;
 
+	struct {
+		glm::vec2 at = glm::vec2(std::numeric_limits< float >::quiet_NaN());
+		bool moved = false;
+	} mouse;
+
+	struct {
+		glm::vec3 point = glm::vec3(std::numeric_limits< float >::quiet_NaN());
+		uint32_t tri = -1U;
+
+		void clear() {
+			tri = -1U;
+		}
+	} hovered;
+
+	void update_hovered();
+
 	//original model:
 	Model model;
-	//model buffer: (vertices, normals)
-	GLAttribBuffer< glm::vec3, glm::vec3 > model_triangles;
+	//model buffer: (vertices, normals, ids)
+	GLAttribBuffer< glm::vec3, glm::vec3, glm::u8vec4 > model_triangles;
 	GLVertexArray model_triangles_for_model_draw;
 	void set_model(Model const &new_model);
 
