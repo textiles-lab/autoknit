@@ -2,6 +2,7 @@
 #include "Interface.hpp"
 
 #include <kit/kit.hpp>
+#include <kit/Load.hpp>
 
 kit::Config kit_config() {
 	kit::Config config;
@@ -11,8 +12,12 @@ kit::Config kit_config() {
 }
 
 std::shared_ptr< kit::Mode > kit_mode() {
-	std::string model = "";
+	kit::call_load_functions();
+
+	std::string obj_file = "";
 	for (auto const &arg : kit::args) {
+		if (&arg == &kit::args[0]) continue;
+
 		std::string tag = arg;
 		std::string value = "";
 		for (uint32_t i = 0; i < tag.size(); ++i) {
@@ -22,20 +27,31 @@ std::shared_ptr< kit::Mode > kit_mode() {
 				break;
 			}
 		}
-		if (tag == "model") {
-			model = value;
+		if (tag == "obj") {
+			obj_file = value;
 		} else {
 			std::cerr << "Unrecognized tag:value argument pair '" << tag << ':' << value << "'." << std::endl;
 			return nullptr;
 		}
 	}
 
-	if (model == "") {
-		std::cerr << "Please pass a model:file.obj parameter." << std::endl;
+	if (obj_file == "") {
+		std::cerr << "Please pass an obj:file.obj parameter." << std::endl;
+		return nullptr;
 	}
+	Model model;
+	load_obj(obj_file, &model);
+
+	if (model.triangles.empty()) {
+		std::cerr << "ERROR: model is empty." << std::endl;
+		return nullptr;
+	}
+
+
 
 	std::shared_ptr< Interface > interface = std::make_shared< Interface >();
 
-	return std::make_shared< Interface >(model);
+	interface->set_model(model);
 
+	return interface;
 }

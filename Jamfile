@@ -26,6 +26,7 @@ NAMES =
 AUTOKNIT_NAMES =
 	init
 	Interface
+	load_obj
 	;
 
 #if $(OS) = NT {

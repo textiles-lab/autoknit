@@ -2,6 +2,9 @@
 
 #include <glm/glm.hpp>
 
+#include <vector>
+#include <string>
+
 // The autoknit pipeline in data formats and transformation functions.
 
 // Input model: vertices and triangles, loaded from an .obj file:
@@ -11,6 +14,8 @@ struct Model {
 	std::vector< glm::uvec3 > triangles;
 };
 
+//Load an object file into a Model structure.
+//NOTE: throws on error
 void load_obj(
 	std::string const &file, //in: file to load
 	Model *model //out: model to fill with loaded data
