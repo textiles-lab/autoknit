@@ -80,11 +80,11 @@ struct Interface : public kit::Mode {
 	void update_hovered();
 
 	//original model:
-	Model model;
+	ak::Model model;
 	//model buffer: (vertices, normals, ids)
 	GLAttribBuffer< glm::vec3, glm::vec3, glm::u8vec4 > model_triangles;
 	GLVertexArray model_triangles_for_model_draw;
-	void set_model(Model const &new_model);
+	void set_model(ak::Model const &new_model);
 
 	//place camera to view whole model:
 	void reset_camera();

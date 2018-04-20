@@ -466,7 +466,7 @@ void Interface::alloc_fbs() {
 	GL_ERRORS();
 }
 
-void Interface::set_model(Model const &new_model) {
+void Interface::set_model(ak::Model const &new_model) {
 	model = new_model;
 
 	std::vector< GLAttribBuffer< glm::vec3, glm::vec3, glm::u8vec4 >::Vertex > attribs;

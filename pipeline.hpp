@@ -7,6 +7,8 @@
 
 // The autoknit pipeline in data formats and transformation functions.
 
+namespace ak {
+
 // Input model: vertices and triangles, loaded from an .obj file:
 
 struct Model {
@@ -64,8 +66,8 @@ enum Flag : int8_t {
 void find_first_active_chains(
 	std::vector< glm::uvec3 > const &triangles, //in: list of model triangles
 	std::vector< float > const &times,          //in: time field (times @ vertices)
-	std::vector< std::vector< EmbeddedVertex > > *active_chains //out: all mesh boundaries that contain a minimum
-	std::vector< std::vector< LinkFlag > > *active_flags //out: all mesh boundaries that contain a minimum
+	std::vector< std::vector< EmbeddedVertex > > *active_chains, //out: all mesh boundaries that contain a minimum
+	std::vector< std::vector< Flag > > *active_flags //out: all mesh boundaries that contain a minimum
 );
 
 void peel_chains(
@@ -73,7 +75,7 @@ void peel_chains(
 	std::vector< glm::uvec3 > const &triangles, //in: list of model triangles
 	std::vector< float > const &times,          //in: time field (times @ vertices)
 	std::vector< std::vector< EmbeddedVertex > > const &active_chains, //in: current active chains
-	std::vector< std::vector< EmbeddedVertex > > *next_chains, //out: next chains (may be different size than active_chains)
+	std::vector< std::vector< EmbeddedVertex > > *next_chains //out: next chains (may be different size than active_chains)
 );
 
 struct Link {
@@ -86,11 +88,11 @@ void link_chains(
 	std::vector< glm::uvec3 > const &triangles, //in: list of model triangles
 	std::vector< float > const &times,          //in: time field (times @ vertices)
 	std::vector< std::vector< EmbeddedVertex > > const &active_chains, //in: current active chains
-	std::vector< std::vector< LinkFlag > > const &active_flags, //in: stitches
+	std::vector< std::vector< Flag > > const &active_flags, //in: stitches
 	std::vector< std::vector< EmbeddedVertex > > const &next_chains, //in: next chains
 	std::vector< std::vector< EmbeddedVertex > > *linked_next_chains, //out: next chains
-	std::vector< std::vector< LinkFlag > > *linked_next_flags, //out: flags indicating status of vertices on next chains
-	std::vector< Link > *links, //out: active_chains[from_chain][from_vertex] -> linked_next_chains[to_chain][to_vertex] links
+	std::vector< std::vector< Flag > > *linked_next_flags, //out: flags indicating status of vertices on next chains
+	std::vector< Link > *links //out: active_chains[from_chain][from_vertex] -> linked_next_chains[to_chain][to_vertex] links
 );
 
 //maybe:
@@ -98,12 +100,12 @@ void link_chains(
 
 void build_next_active_chains(
 	std::vector< std::vector< EmbeddedVertex > > const &active_chains, //in: current active chains
-	std::vector< std::vector< LinkFlag > > const &active_flags, //in: flags for current active
+	std::vector< std::vector< Flag > > const &active_flags, //in: flags for current active
 	std::vector< std::vector< EmbeddedVertex > > const &next_chains, //in: next chains
-	std::vector< std::vector< LinkFlag > > const &next_flags, //in: flags for next active
+	std::vector< std::vector< Flag > > const &next_flags, //in: flags for next active
 	std::vector< Link > const &links, //in: links between active and next
 	std::vector< std::vector< EmbeddedVertex > > *next_active_chains, //out: next active chains
-	std::vector< std::vector< LinkFlag > > *next_active_flags, //out: next stitch flags
+	std::vector< std::vector< Flag > > *next_active_flags //out: next stitch flags
 );
 
 //probably is in driver code (different cases for build_first and build_next):
@@ -134,3 +136,5 @@ void schedule_stitches(
 	//in: list of stitches
 	//out: knitout-ish
 );
+
+} //namespace ak

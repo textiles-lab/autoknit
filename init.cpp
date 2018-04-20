@@ -39,8 +39,8 @@ std::shared_ptr< kit::Mode > kit_mode() {
 		std::cerr << "Please pass an obj:file.obj parameter." << std::endl;
 		return nullptr;
 	}
-	Model model;
-	load_obj(obj_file, &model);
+	ak::Model model;
+	ak::load_obj(obj_file, &model);
 
 	if (model.triangles.empty()) {
 		std::cerr << "ERROR: model is empty." << std::endl;

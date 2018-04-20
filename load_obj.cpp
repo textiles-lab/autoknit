@@ -4,9 +4,9 @@
 #include <fstream>
 #include <sstream>
 
-void load_obj(
+void ak::load_obj(
 	std::string const &file,
-	Model *model_
+	ak::Model *model_
 ) {
 	assert(model_);
 	auto &model = *model_;
