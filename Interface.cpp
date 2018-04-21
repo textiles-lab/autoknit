@@ -268,7 +268,7 @@ void Interface::draw() {
 		//Position-to-clip matrix:
 		glm::mat4 p2c = camera.mvp();
 		//Position-to-light matrix:
-		glm::mat4x3 p2l = glm::mat4(1.0f);
+		glm::mat4x3 p2l = camera.mv(); //glm::mat4(1.0f);
 		//Normal-to-light matrix:
 		glm::mat3 n2l = glm::inverse(glm::transpose(glm::mat3(p2l)));
 
@@ -318,8 +318,10 @@ void Interface::draw() {
 			glm::vec3 const &a = model.vertices[model.triangles[hovered.tri].x];
 			glm::vec3 const &b = model.vertices[model.triangles[hovered.tri].y];
 			glm::vec3 const &c = model.vertices[model.triangles[hovered.tri].z];
-			glm::vec3 at = (a + b + c) / 3.0f;
-			sphere(at, 0.2f, glm::vec3(1.0f, 0.0f, 0.0f), glm::u8vec4(0x00));
+			sphere(a, 0.02f, glm::vec3(1.0f, 0.0f, 0.0f), glm::u8vec4(0x00));
+			sphere(b, 0.02f, glm::vec3(0.0f, 1.0f, 0.0f), glm::u8vec4(0x00));
+			sphere(c, 0.02f, glm::vec3(0.0f, 0.0f, 1.0f), glm::u8vec4(0x00));
+			sphere(hovered.point, 0.04f, glm::vec3(0.4f, 0.4f, 0.4f), glm::u8vec4(0x00));
 		}
 		glColorMaski(1, GL_TRUE, GL_TRUE, GL_TRUE, GL_TRUE);
 
@@ -404,12 +406,53 @@ void Interface::update_hovered() {
 	glm::u8vec4 col;
 	glReadPixels(px.x, px.y, 1, 1, GL_RGBA, GL_UNSIGNED_BYTE, &col);
 
-	std::cout << int(col.r) << " " << int(col.g) << " " << int(col.b) << " " << int(col.a) << std::endl; //DEBUG
+	//std::cout << int(col.r) << " " << int(col.g) << " " << int(col.b) << " " << int(col.a) << std::endl; //DEBUG
 
 	if (col.r == 1) {
 		uint32_t idx = uint32_t(col.a) | (uint32_t(col.b) << 8) | (uint32_t(col.g) << 16);
 		if (idx < model.triangles.size()) {
 			hovered.tri = idx;
+			//find barycentric coords that project to mouse ray.
+			glm::vec3 const &a = model.vertices[model.triangles[hovered.tri].x];
+			glm::vec3 const &b = model.vertices[model.triangles[hovered.tri].y];
+			glm::vec3 const &c = model.vertices[model.triangles[hovered.tri].z];
+			glm::vec3 norm = glm::normalize(glm::cross(b-a, c-a));
+
+			glm::vec3 from = camera.at();
+			glm::vec3 dir = glm::normalize(glm::inverse(glm::mat3(camera.mvp())) * glm::vec3(mouse.at, 1.0f));
+
+			//want t such that t * (dir * norm) = (a - from) * norm
+			float dn = glm::dot(dir, norm);
+			glm::vec3 pt;
+			if (std::abs(dn) < 1e-6) {
+				pt = (a + b + c) / 3.0f;
+			} else {
+				pt = (glm::dot(a - from, norm) / dn) * dir + from;
+			}
+			//hovered.point = pt;
+
+			float cc = glm::dot(pt-a, glm::cross(b-a,norm));
+			float ca = glm::dot(pt-b, glm::cross(c-b,norm));
+			float cb = glm::dot(pt-c, glm::cross(a-c,norm));
+
+			float sum = ca + cb + cc;
+			if (std::abs(sum) < 1e-6) {
+				ca = cb = cc = 1.0f / 3.0f;
+			} else {
+				ca /= sum;
+				cb /= sum;
+				cc /= sum;
+				//clamp to triangle:
+				ca = glm::clamp(ca, 0.0f, 1.0f);
+				cb = glm::clamp(cb, 0.0f, 1.0f);
+				cc = glm::clamp(cc, 0.0f, 1.0f);
+				float r = 1.0f - ca - cb - cc;
+				ca += r / 3.0f;
+				cb += r / 3.0f;
+				cc += r / 3.0f;
+			}
+			hovered.point = ca * a + cb * b + cc * c;
+			hovered.coords = glm::vec3(ca, cb, cc);
 		}
 	}
 

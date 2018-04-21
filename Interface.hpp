@@ -33,6 +33,15 @@ struct Interface : public kit::Mode {
 		float elevation = glm::radians(45.0f);
 		float fovy = glm::radians(60.0f);
 
+		glm::vec3 at() const {
+			float ca = std::cos(azimuth);
+			float sa = std::sin(azimuth);
+			float ce = std::cos(elevation);
+			float se = std::sin(elevation);
+			glm::vec3 out   = glm::vec3( ce * ca, ce * sa, se);
+			glm::vec3 at = out * radius;
+			return at;
+		}
 		//matrix that takes positions to camera space:
 		glm::mat4 mv() const {
 			float ca = std::cos(azimuth);
@@ -71,9 +80,12 @@ struct Interface : public kit::Mode {
 	struct {
 		glm::vec3 point = glm::vec3(std::numeric_limits< float >::quiet_NaN());
 		uint32_t tri = -1U;
+		glm::vec3 coords = glm::vec3(std::numeric_limits< float >::quiet_NaN());
 
 		void clear() {
+			point = glm::vec3(std::numeric_limits< float >::quiet_NaN());
 			tri = -1U;
+			coords = glm::vec3(std::numeric_limits< float >::quiet_NaN());
 		}
 	} hovered;
 
