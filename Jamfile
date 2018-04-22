@@ -1,3 +1,5 @@
+KIT_RAW_SDL_EVENTS = 1 ;
+
 SubDir TOP ;
 SubInclude TOP kit ;
 

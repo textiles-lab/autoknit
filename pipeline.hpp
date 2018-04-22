@@ -23,23 +23,26 @@ void load_obj(
 	Model *model //out: model to fill with loaded data
 );
 
-/*
-// Constraints: [chains of] points on the model's surface.
-
+// Constraints, stored as [chains of] points on the model's surface.
 struct Constraints {
-	std::vector< glm::vec3 > points;
-	std::vector< float > point_values;
-	std::vector< glm::uvec2 > geodesics; //geodesics between points may also be constrained
+	std::vector< glm::vec4 > constraints; //w is value
+	std::vector< glm::uvec2 > paths; //paths between points may also be constrained (to interpolate their values)
 };
 
+/*
 void embed_constraints(
-	Model const &model, //in: model to embed constraints on
-	Constraints const &constraints, //in: constraints to embed
-	Model *constrained_model, //out: model, re-triangulated with vertices at each of the constraint points
-	std::vector< uint32_t > *constrainted_indices,
-	std::vector< float > *constrainted_values
+	Model const &model,
+	Constraints const &constraints,
+	Model *constrained_model,
+	std::vector< float > *constrained_values //same size as out_model's vertices
 );
 */
+
+void interpolate_values(
+	Model const &model, //in: model to embed constraints on
+	std::vector< float > const &constraints, //same size as model.vertices; if non-NaN, fixes value
+	std::vector< float > *values //smooth interpolation of (non-NaN) constraints
+);
 
 //make time field:
 void interpolate_constraints(
