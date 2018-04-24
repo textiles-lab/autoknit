@@ -29,6 +29,7 @@ AUTOKNIT_NAMES =
 	init
 	Interface
 	load_obj
+	ak-load_constraints
 	;
 
 #if $(OS) = NT {

@@ -70,8 +70,17 @@ struct Interface : public kit::Mode {
 		DragCamera,
 		DragCameraFlipX, //for dragging when upside-down
 		DragCameraPan,
+		DragConsPt,
 	};
 	Drag drag = DragNone;
+	struct {
+		uint32_t cons = -1U;
+		uint32_t cons_pt = -1U;
+		void clear() {
+			cons = -1U;
+			cons_pt = -1U;
+		}
+	} dragging;
 
 	struct {
 		glm::vec2 at = glm::vec2(std::numeric_limits< float >::quiet_NaN());
@@ -85,6 +94,7 @@ struct Interface : public kit::Mode {
 		uint32_t vert = -1U;
 
 		uint32_t cons = -1U;
+		uint32_t cons_pt = -1U;
 
 		void clear() {
 			point = glm::vec3(std::numeric_limits< float >::quiet_NaN());
@@ -92,6 +102,7 @@ struct Interface : public kit::Mode {
 			coords = glm::vec3(std::numeric_limits< float >::quiet_NaN());
 			vert = -1U;
 			cons = -1U;
+			cons_pt = -1U;
 		}
 	} hovered;
 
@@ -106,9 +117,9 @@ struct Interface : public kit::Mode {
 	GLVertexArray model_triangles_for_model_draw;
 
 	//constraints:
-	//ak::Constraints constraints;
-	void set_constraints(ak::Constraints const &constraints);
-	std::vector< std::pair< uint32_t, float > > constrained_vertices;
+	std::vector< ak::Constraint > constraints;
+	//void set_constraints(ak::Constraints const &constraints);
+	//std::vector< std::pair< uint32_t, float > > constrained_vertices;
 	//std::vector< std::vector< std::pair< uint32_t, float > > > constrained_paths;
 	/*
 	//constrained model:

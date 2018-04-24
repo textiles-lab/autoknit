@@ -342,21 +342,24 @@ void Interface::draw() {
 			sphere(a, 0.02f, glm::vec3(1.0f, 0.0f, 0.0f), glm::u8vec4(0x00));
 			sphere(b, 0.02f, glm::vec3(0.0f, 1.0f, 0.0f), glm::u8vec4(0x00));
 			sphere(c, 0.02f, glm::vec3(0.0f, 0.0f, 1.0f), glm::u8vec4(0x00));
-			sphere(hovered.point, 0.04f, glm::vec3(0.4f, 0.4f, 0.4f), glm::u8vec4(0x00));
+			sphere(hovered.point, 0.02f, glm::vec3(0.4f, 0.4f, 0.4f), glm::u8vec4(0x00));
 		}
 		glColorMaski(1, GL_TRUE, GL_TRUE, GL_TRUE, GL_TRUE);
 
 		//constrained vertices (do draw into ID buffer):
 		float min_time = -1.0f;
 		float max_time = 1.0f;
-		for (auto const &iv : constrained_vertices) {
-			min_time = glm::min(min_time, iv.second);
-			max_time = glm::max(max_time, iv.second);
+		for (auto const &c : constraints) {
+			min_time = glm::min(min_time, c.value);
+			max_time = glm::max(max_time, c.value);
 		}
-		for (auto const &iv : constrained_vertices) {
-			uint32_t idx = &iv - &constrained_vertices[0];
-			glm::u8vec4 id(2, (idx >> 16) & 0xff, (idx >> 8) & 0xff, idx & 0xff);
-			sphere(model.vertices[iv.first], 0.04f, time_color((iv.second - min_time) / (max_time - min_time)), id);
+		for (auto const &c : constraints) {
+			uint32_t idx = &c - &constraints[0];
+			glm::vec3 color = time_color((c.value - min_time) / (max_time - min_time));
+			for (uint32_t i = 0; i < c.chain.size(); ++i) {
+				glm::u8vec4 id(2, i, (idx >> 8) & 0xff, idx & 0xff);
+				sphere(model.vertices[c.chain[i]], 0.04f, color, id);
+			}
 		}
 
 		glBindVertexArray(0);
@@ -411,11 +414,28 @@ void Interface::handle_event(SDL_Event const &evt) {
 			glm::vec2 d = mouse.at - old_at;
 			glm::mat3 frame = glm::transpose(glm::mat3(camera.mv()));
 			camera.center -= 0.5f * (d.x * frame[0] + d.y * frame[1]) * camera.radius;
+		} else if (drag == DragConsPt) {
+			if (dragging.cons < constraints.size() && dragging.cons_pt < constraints[dragging.cons].chain.size()) {
+				if (hovered.vert < model.vertices.size()) {
+					constraints[dragging.cons].chain[dragging.cons_pt] = hovered.vert;
+				}
+			} else {
+				drag = DragNone;
+				dragging.clear();
+			}
 		}
 	} else if (evt.type == SDL_MOUSEBUTTONDOWN) {
 		mouse.at = glm::vec2( MAPX(evt.button.x), MAPY(evt.button.y) );
 		mouse.moved = true;
-		if (evt.button.button == SDL_BUTTON_RIGHT) {
+		if (evt.button.button == SDL_BUTTON_LEFT) {
+			if (drag == DragNone) {
+				if (hovered.cons < constraints.size() && hovered.cons_pt < constraints[hovered.cons].chain.size()) {
+					drag = DragConsPt;
+					dragging.cons = hovered.cons;
+					dragging.cons_pt = hovered.cons_pt;
+				}
+			}
+		} else if (evt.button.button == SDL_BUTTON_RIGHT) {
 			if (drag == DragNone) {
 				if (SDL_GetModState() & KMOD_SHIFT) {
 					drag = DragCameraPan;
@@ -431,7 +451,12 @@ void Interface::handle_event(SDL_Event const &evt) {
 	} else if (evt.type == SDL_MOUSEBUTTONUP) {
 		mouse.at = glm::vec2( MAPX(evt.button.x), MAPY(evt.button.y) );
 		mouse.moved = true;
-		if (evt.button.button == SDL_BUTTON_RIGHT) {
+		if (evt.button.button == SDL_BUTTON_LEFT) {
+			if (drag == DragConsPt) {
+				drag = DragNone;
+				dragging.clear();
+			}
+		} else if (evt.button.button == SDL_BUTTON_RIGHT) {
 			if (drag == DragCamera || drag == DragCameraFlipX || drag == DragCameraPan) {
 				drag = DragNone;
 			}
@@ -441,18 +466,36 @@ void Interface::handle_event(SDL_Event const &evt) {
 		if (camera.radius < 0.1f) camera.radius = 0.1f;
 	} else if (evt.type == SDL_KEYDOWN) {
 		if (evt.key.keysym.scancode == SDL_SCANCODE_C) {
-			if (hovered.cons < constrained_vertices.size()) {
-				constrained_vertices.erase(constrained_vertices.begin() + hovered.cons);
+			if (hovered.cons < constraints.size()) {
+				if (drag == DragNone) {
+					auto &cons = constraints[hovered.cons];
+					cons.chain.insert(cons.chain.begin() + hovered.cons_pt, cons.chain[hovered.cons_pt]);
+					drag = DragConsPt;
+					dragging.cons = hovered.cons;
+					dragging.cons_pt = hovered.cons_pt + 1;
+				}
 			} else if (hovered.vert < model.vertices.size()) {
-				constrained_vertices.emplace_back(std::make_pair(hovered.vert, 0.0f));
+				constraints.emplace_back();
+				constraints.back().chain.emplace_back(hovered.vert);
 			}
+		} else if (evt.key.keysym.scancode == SDL_SCANCODE_X) {
+			if (hovered.cons < constraints.size() && hovered.cons_pt < constraints[hovered.cons].chain.size()) {
+				auto &cons = constraints[hovered.cons];
+				cons.chain.erase(
+					cons.chain.begin() + hovered.cons_pt
+				);
+				if (cons.chain.empty()) {
+					constraints.erase(constraints.begin() + hovered.cons);
+				}
+			}
+			
 		} else if (evt.key.keysym.scancode == SDL_SCANCODE_EQUALS || evt.key.keysym.scancode == SDL_SCANCODE_KP_PLUS) {
-			if (hovered.cons < constrained_vertices.size()) {
-				constrained_vertices[hovered.cons].second += 0.1f;
+			if (hovered.cons < constraints.size()) {
+				constraints[hovered.cons].value += 0.1f;
 			}
 		} else if (evt.key.keysym.scancode == SDL_SCANCODE_MINUS || evt.key.keysym.scancode == SDL_SCANCODE_KP_MINUS) {
-			if (hovered.cons < constrained_vertices.size()) {
-				constrained_vertices[hovered.cons].second -= 0.1f;
+			if (hovered.cons < constraints.size()) {
+				constraints[hovered.cons].value -= 0.1f;
 			}
 		}
 	}
@@ -527,9 +570,11 @@ void Interface::update_hovered() {
 			}
 		}
 	} else if (col.r == 2) {
-		uint32_t idx = uint32_t(col.a) | (uint32_t(col.b) << 8) | (uint32_t(col.g) << 16);
-		if (idx < constrained_vertices.size()) {
+		uint32_t idx = uint32_t(col.a) | (uint32_t(col.b) << 8);
+		uint32_t pt = uint32_t(col.g);
+		if (idx < constraints.size() && pt < constraints[idx].chain.size()) {
 			hovered.cons = idx;
+			hovered.cons_pt = pt;
 		}
 	}
 
@@ -620,7 +665,7 @@ void Interface::update_model_triangles() {
 	model_triangles.set(attribs, GL_STATIC_DRAW);
 }
 
-void Interface::set_constraints(ak::Constraints const &constraints) {
+/*void Interface::set_constraints(ak::Constraints const &constraints) {
 	constrained_vertices.clear();
 	//constrained_paths.clear();
 
@@ -641,7 +686,7 @@ void Interface::set_constraints(ak::Constraints const &constraints) {
 	}
 	//TODO: paths!
 
-}
+}*/
 
 /*
 void Interface::update_constrained_model() {

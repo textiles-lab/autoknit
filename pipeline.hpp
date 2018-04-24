@@ -23,21 +23,37 @@ void load_obj(
 	Model *model //out: model to fill with loaded data
 );
 
-// Constraints, stored as [chains of] points on the model's surface.
-struct Constraints {
-	std::vector< glm::vec4 > constraints; //w is value
-	std::vector< glm::uvec2 > paths; //paths between points may also be constrained (to interpolate their values)
+// Constraint, stored as [chain of] points on the model's surface.
+struct Constraint {
+	std::vector< uint32_t > chain;
+	float value = 0.0f;
+	float radius = 0.0f;
 };
 
-/*
+//Load list of constraints from a file
+//NOTE: throws on error
+void load_constraints(
+	Model const &model, //in: model for vertex lookup
+	std::string const &file, //in: file to load
+	std::vector< Constraint > *constraints //out: list of constraints
+);
+
+//Save list of constraints to a file:
+void save_constraints(
+	Model const &model, //in: model for vertex lookup
+	std::vector< Constraint > const &constraints, //in: list of constraints
+	std::string const &file //in: file name to save to
+);
+
+//Given list of constraints, properly trim and constrain a model:
 void embed_constraints(
 	Model const &model,
-	Constraints const &constraints,
+	std::vector< Constraint > const &constraints,
 	Model *constrained_model,
 	std::vector< float > *constrained_values //same size as out_model's vertices
 );
-*/
 
+//Given list of values, fill missing with as-smooth-as-possible interpolation:
 void interpolate_values(
 	Model const &model, //in: model to embed constraints on
 	std::vector< float > const &constraints, //same size as model.vertices; if non-NaN, fixes value
