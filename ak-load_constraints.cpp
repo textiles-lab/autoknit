@@ -32,7 +32,7 @@ void read_eof(std::istream &in, std::string const &name) {
 	}
 }
 
-void load_constraints(
+void ak::load_constraints(
 	ak::Model const &model, //in: model for vertex lookup
 	std::string const &filename, //in: file to load
 	std::vector< ak::Constraint > *_constraints //out: list of constraints

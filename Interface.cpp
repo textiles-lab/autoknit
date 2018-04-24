@@ -263,6 +263,10 @@ void Interface::update(float elapsed) {
 		update_hovered();
 		mouse.moved = false;
 	}
+	if (constraints_dirty) {
+		constraints_dirty = false;
+		ak::embed_constraints(model, constraints, &constrained_model, &constrained_values, &DEBUG_constraint_paths);
+	}
 }
 
 void Interface::draw() {
@@ -346,6 +350,18 @@ void Interface::draw() {
 		}
 		glColorMaski(1, GL_TRUE, GL_TRUE, GL_TRUE, GL_TRUE);
 
+		//constrained path spheres (don't draw into ID buffer):
+		glColorMaski(1, GL_FALSE, GL_FALSE, GL_FALSE, GL_FALSE);
+		glDepthMask(GL_FALSE);
+		for (auto const &path : DEBUG_constraint_paths) {
+			for (auto const &v : path) {
+				sphere(v, 0.02f, glm::vec3(0.4f, 0.4f, 0.4f), glm::u8vec4(0x00));
+			}
+		}
+		glColorMaski(1, GL_TRUE, GL_TRUE, GL_TRUE, GL_TRUE);
+		glDepthMask(GL_TRUE);
+
+
 		//constrained vertices (do draw into ID buffer):
 		float min_time = -1.0f;
 		float max_time = 1.0f;
@@ -418,6 +434,7 @@ void Interface::handle_event(SDL_Event const &evt) {
 			if (dragging.cons < constraints.size() && dragging.cons_pt < constraints[dragging.cons].chain.size()) {
 				if (hovered.vert < model.vertices.size()) {
 					constraints[dragging.cons].chain[dragging.cons_pt] = hovered.vert;
+					constraints_dirty = true; //TODO: only set when vert has changed.
 				}
 			} else {
 				drag = DragNone;
@@ -477,6 +494,7 @@ void Interface::handle_event(SDL_Event const &evt) {
 			} else if (hovered.vert < model.vertices.size()) {
 				constraints.emplace_back();
 				constraints.back().chain.emplace_back(hovered.vert);
+				constraints_dirty = true;
 			}
 		} else if (evt.key.keysym.scancode == SDL_SCANCODE_X) {
 			if (hovered.cons < constraints.size() && hovered.cons_pt < constraints[hovered.cons].chain.size()) {
@@ -487,15 +505,18 @@ void Interface::handle_event(SDL_Event const &evt) {
 				if (cons.chain.empty()) {
 					constraints.erase(constraints.begin() + hovered.cons);
 				}
+				constraints_dirty = true;
 			}
 			
 		} else if (evt.key.keysym.scancode == SDL_SCANCODE_EQUALS || evt.key.keysym.scancode == SDL_SCANCODE_KP_PLUS) {
 			if (hovered.cons < constraints.size()) {
 				constraints[hovered.cons].value += 0.1f;
+				constraints_dirty = true;
 			}
 		} else if (evt.key.keysym.scancode == SDL_SCANCODE_MINUS || evt.key.keysym.scancode == SDL_SCANCODE_KP_MINUS) {
 			if (hovered.cons < constraints.size()) {
 				constraints[hovered.cons].value -= 0.1f;
+				constraints_dirty = true;
 			}
 		}
 	}

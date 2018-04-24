@@ -118,9 +118,10 @@ struct Interface : public kit::Mode {
 
 	//constraints:
 	std::vector< ak::Constraint > constraints;
-	//void set_constraints(ak::Constraints const &constraints);
-	//std::vector< std::pair< uint32_t, float > > constrained_vertices;
-	//std::vector< std::vector< std::pair< uint32_t, float > > > constrained_paths;
+	bool constraints_dirty = true;
+	std::vector< std::vector< glm::vec3 > > DEBUG_constraint_paths;
+	ak::Model constrained_model;
+	std::vector< float > constrained_values;
 	/*
 	//constrained model:
 	void update_constrained_model();
