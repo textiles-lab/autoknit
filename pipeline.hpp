@@ -51,7 +51,8 @@ void embed_constraints(
 	std::vector< Constraint > const &constraints,
 	Model *constrained_model,
 	std::vector< float > *constrained_values, //same size as out_model's vertices
-	std::vector< std::vector< glm::vec3 > > *DEBUG_chain_paths = nullptr //out, optional: paths computed for each constraint chain
+	std::vector< std::vector< glm::vec3 > > *DEBUG_chain_paths = nullptr, //out, optional: paths computed for each constraint chain
+	std::vector< std::vector< glm::vec3 > > *DEBUG_chain_loops = nullptr //out, optional: loops around the paths computed for radius-based trimming
 );
 
 //Given list of values, fill missing with as-smooth-as-possible interpolation:

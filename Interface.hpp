@@ -126,6 +126,7 @@ struct Interface : public kit::Mode {
 	std::vector< ak::Constraint > constraints;
 	bool constraints_dirty = true;
 	std::vector< std::vector< glm::vec3 > > DEBUG_constraint_paths;
+	std::vector< std::vector< glm::vec3 > > DEBUG_constraint_loops;
 	ak::Model constrained_model;
 	std::vector< float > constrained_values;
 
@@ -133,6 +134,12 @@ struct Interface : public kit::Mode {
 	//position, normal, color:
 	GLAttribBuffer< glm::vec3, glm::vec3, glm::u8vec4 > DEBUG_constraint_paths_tristrip;
 	GLVertexArray DEBUG_constraint_paths_tristrip_for_path_draw;
+
+	void update_DEBUG_constraint_loops_tristrip();
+	//position, normal, color:
+	GLAttribBuffer< glm::vec3, glm::vec3, glm::u8vec4 > DEBUG_constraint_loops_tristrip;
+	GLVertexArray DEBUG_constraint_loops_tristrip_for_path_draw;
+
 
 	void update_constrained_model_triangles();
 	//constrained model buffer: position, normal, id

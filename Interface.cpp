@@ -301,6 +301,13 @@ Interface::Interface() {
 		{path_draw->getAttribLocation("Color", GLProgram::MissingIsWarning), DEBUG_constraint_paths_tristrip[2]}
 	});
 
+	DEBUG_constraint_loops_tristrip_for_path_draw = GLVertexArray::make_binding(path_draw->program, {
+		{path_draw->getAttribLocation("Position", GLProgram::MissingIsError), DEBUG_constraint_loops_tristrip[0]},
+		{path_draw->getAttribLocation("Normal", GLProgram::MissingIsWarning), DEBUG_constraint_loops_tristrip[1]},
+		{path_draw->getAttribLocation("Color", GLProgram::MissingIsWarning), DEBUG_constraint_loops_tristrip[2]}
+	});
+
+
 	constrained_model_triangles_for_model_draw = GLVertexArray::make_binding(model_draw->program, {
 		{model_draw->getAttribLocation("Position", GLProgram::MissingIsError), constrained_model_triangles[0]},
 		{model_draw->getAttribLocation("Normal", GLProgram::MissingIsWarning), constrained_model_triangles[1]},
@@ -333,8 +340,9 @@ void Interface::update(float elapsed) {
 	}
 	if (constraints_dirty) {
 		constraints_dirty = false;
-		ak::embed_constraints(model, constraints, &constrained_model, &constrained_values, &DEBUG_constraint_paths);
+		ak::embed_constraints(model, constraints, &constrained_model, &constrained_values, &DEBUG_constraint_paths, &DEBUG_constraint_loops);
 		update_DEBUG_constraint_paths_tristrip();
+		update_DEBUG_constraint_loops_tristrip();
 		update_constrained_model_triangles();
 	}
 }
@@ -502,6 +510,37 @@ void Interface::draw() {
 		glBindVertexArray(0);
 		glUseProgram(0);
 	}
+
+	//draw constraint loops:
+	if (DEBUG_constraint_loops_tristrip.count) {
+
+		//Position-to-clip matrix:
+		glm::mat4 p2c = camera.mvp();
+		//Position-to-light matrix:
+		glm::mat4x3 p2l = camera.mv();
+		//Normal-to-light matrix:
+		glm::mat3 n2l = glm::inverse(glm::transpose(glm::mat3(p2l)));
+
+		glUseProgram(path_draw->program);
+		glBindVertexArray(DEBUG_constraint_loops_tristrip_for_path_draw.array);
+
+		glUniformMatrix4fv(path_draw_p2c, 1, GL_FALSE, glm::value_ptr(p2c));
+		glUniformMatrix4x3fv(path_draw_p2l, 1, GL_FALSE, glm::value_ptr(p2l));
+		glUniformMatrix3fv(path_draw_n2l, 1, GL_FALSE, glm::value_ptr(n2l));
+
+		glUniform4f(path_draw_id, 0 / 255.0f, 0 / 255.0f, 0 / 255.0f, 0 / 255.0f);
+
+		//don't draw into ID array:
+		glColorMaski(1, GL_FALSE, GL_FALSE, GL_FALSE, GL_FALSE);
+
+		glDrawArrays(GL_TRIANGLE_STRIP, 0, DEBUG_constraint_loops_tristrip.count);
+
+		glColorMaski(1, GL_TRUE, GL_TRUE, GL_TRUE, GL_TRUE);
+
+		glBindVertexArray(0);
+		glUseProgram(0);
+	}
+
 
 	GL_ERRORS();
 
@@ -886,6 +925,66 @@ void Interface::update_DEBUG_constraint_paths_tristrip() {
 
 	DEBUG_constraint_paths_tristrip.set(attribs, GL_STATIC_DRAW);
 }
+
+void Interface::update_DEBUG_constraint_loops_tristrip() {
+	assert(DEBUG_constraint_loops.size() == constraints.size());
+
+	std::vector< GLAttribBuffer< glm::vec3, glm::vec3, glm::u8vec4 >::Vertex > attribs;
+
+	static std::vector< glm::vec2 > circle = [](){
+		const constexpr uint32_t Angles = 16;
+		std::vector< glm::vec2 > ret;
+		ret.reserve(Angles);
+		for (uint32_t a = 0; a < Angles; ++a) {
+			float ang = a / float(Angles) * 2.0f * float(M_PI);
+			ret.emplace_back(std::cos(ang), std::sin(ang));
+		}
+		return ret;
+	}();
+
+	float min_time = -1.0f;
+	float max_time = 1.0f;
+	for (auto const &c : constraints) {
+		min_time = glm::min(min_time, c.value);
+		max_time = glm::max(max_time, c.value);
+	}
+
+	for (auto const &path : DEBUG_constraint_loops) {
+		glm::vec3 color = time_color((constraints[&path - &DEBUG_constraint_loops[0]].value - min_time) / (max_time - min_time));
+		glm::u8vec4 color8 = glm::u8vec4(255 * color.r, 255 * color.g, 255 * color.b, 255);
+		//generate some sort of path thing (from uncapped tubes, for now):
+		for (uint32_t pi = 0; pi + 1 < path.size(); ++pi) {
+			glm::vec3 a = path[pi];
+			glm::vec3 b = path[pi+1];
+			glm::vec3 along = glm::normalize(b-a);
+			glm::vec3 p1,p2;
+			if (std::abs(along.x) <= std::abs(along.y) && std::abs(along.x) <= std::abs(along.z)) {
+				p1 = glm::vec3(1.0f, 0.0f, 0.0f);
+			} else if (std::abs(along.y) <= std::abs(along.z)) {
+				p1 = glm::vec3(0.0f, 1.0f, 0.0f);
+			} else {
+				p1 = glm::vec3(0.0f, 0.0f, 1.0f);
+			}
+			p1 = glm::normalize(p1 - glm::dot(along, p1) * along);
+			p2 = glm::cross(along, p1);
+			glm::mat2x3 xy = glm::mat2x3(p1, p2);
+
+			constexpr const float r = 0.01f;
+
+			attribs.emplace_back(a + xy * (r * circle.back()), xy * circle.back(), color8);
+			attribs.emplace_back(attribs.back());
+			attribs.emplace_back(b + xy * (r * circle.back()), xy * circle.back(), color8);
+			for (auto const &c : circle) {
+				attribs.emplace_back(a + xy * (r * c), xy * c, color8);
+				attribs.emplace_back(b + xy * (r * c), xy * c, color8);
+			}
+			attribs.emplace_back(attribs.back());
+		}
+	}
+
+	DEBUG_constraint_loops_tristrip.set(attribs, GL_STATIC_DRAW);
+}
+
 
 void Interface::update_constrained_model_triangles() {
 	std::vector< GLAttribBuffer< glm::vec3, glm::vec3, glm::u8vec4 >::Vertex > attribs;
