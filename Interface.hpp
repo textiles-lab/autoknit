@@ -124,11 +124,16 @@ struct Interface : public kit::Mode {
 
 	//constraints:
 	std::vector< ak::Constraint > constraints;
+	void set_constraints(std::vector< ak::Constraint > const &constraints);
+	void update_constraints();
 	bool constraints_dirty = true;
 	std::vector< std::vector< glm::vec3 > > DEBUG_constraint_paths;
 	std::vector< std::vector< glm::vec3 > > DEBUG_constraint_loops;
 	ak::Model constrained_model;
 	std::vector< float > constrained_values;
+
+	std::string save_constraints_file = ""; //if not "", will save constraints to this file after every change
+	void save_constraints();
 
 	void update_DEBUG_constraint_paths_tristrip();
 	//position, normal, color:

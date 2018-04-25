@@ -15,6 +15,8 @@ std::shared_ptr< kit::Mode > kit_mode() {
 	kit::call_load_functions();
 
 	std::string obj_file = "";
+	std::string load_constraints_file = "";
+	std::string save_constraints_file = "";
 	for (auto const &arg : kit::args) {
 		if (&arg == &kit::args[0]) continue;
 
@@ -29,6 +31,10 @@ std::shared_ptr< kit::Mode > kit_mode() {
 		}
 		if (tag == "obj") {
 			obj_file = value;
+		} else if (tag == "load-constraints") {
+			load_constraints_file = value;
+		} else if (tag == "save-constraints") {
+			save_constraints_file = value;
 		} else {
 			std::cerr << "Unrecognized tag:value argument pair '" << tag << ':' << value << "'." << std::endl;
 			return nullptr;
@@ -47,11 +53,17 @@ std::shared_ptr< kit::Mode > kit_mode() {
 		return nullptr;
 	}
 
-
+	std::vector< ak::Constraint > constraints;
+	if (load_constraints_file != "") {
+		ak::load_constraints(model, load_constraints_file, &constraints);
+	}
 
 	std::shared_ptr< Interface > interface = std::make_shared< Interface >();
 
+	interface->save_constraints_file = save_constraints_file;
+
 	interface->set_model(model);
+	interface->set_constraints(constraints);
 
 	return interface;
 }

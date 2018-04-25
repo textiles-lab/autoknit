@@ -6,10 +6,27 @@
 #include <fstream>
 
 template< typename S >
+void write_scalar(std::ostream &out, S const &s, std::string const &name) {
+	if (!out.write(reinterpret_cast< const char * >(&s), sizeof(S))) {
+		throw std::runtime_error("Failed to write scalar " + name);
+	}
+}
+
+
+template< typename S >
 void read_scalar(std::istream &in, S *_out, std::string const &name) {
 	assert(_out);
 	if (!in.read(reinterpret_cast< char * >(_out), sizeof(S))) {
 		throw std::runtime_error("Failed to read scalar " + name);
+	}
+}
+
+template< typename S >
+void write_vector(std::ostream &out, std::vector< S > const &vs, std::string const &name) {
+	uint32_t count = vs.size();
+	write_scalar(out, count, name + " count");
+	if (!out.write(reinterpret_cast< const char * >(vs.data()), sizeof(S) * vs.size())) {
+		throw std::runtime_error("Failed to write vector data for " + name);
 	}
 }
 
@@ -32,6 +49,12 @@ void read_eof(std::istream &in, std::string const &name) {
 	}
 }
 
+struct StoredConstraint {
+	uint32_t verts_count;
+	float value;
+	float radius;
+};
+
 void ak::load_constraints(
 	ak::Model const &model, //in: model for vertex lookup
 	std::string const &filename, //in: file to load
@@ -42,11 +65,6 @@ void ak::load_constraints(
 	constraints.clear();
 
 	std::vector< glm::vec3 > verts;
-	struct StoredConstraint {
-		uint32_t verts_count;
-		float value;
-		float radius;
-	};
 	std::vector< StoredConstraint > stored_constraints;
 
 	{ //read file:
@@ -86,11 +104,40 @@ void ak::load_constraints(
 					constraints.back().chain.emplace_back(closest);
 				}
 			}
+			begin_vert = end_vert;
 			if (constraints.back().chain.empty()) constraints.pop_back();
 		}
 	}
 
 	if (missing_verts) {
 		std::cerr << "WARNING: had " << missing_verts << " missing verts loading constraints from '" << filename << "'" << std::endl;
+	}
+}
+
+
+void ak::save_constraints(
+	ak::Model const &model, //in: model for vertex lookup
+	std::vector< ak::Constraint > const &constraints, //in: list of constraints
+	std::string const &filename //in: file name to save to
+) {
+	std::vector< glm::vec3 > verts;
+	std::vector< StoredConstraint > stored_constraints;
+	stored_constraints.reserve(constraints.size());
+
+	for (auto const &c : constraints) {
+		stored_constraints.emplace_back();
+		auto &sc = stored_constraints.back();
+		sc.radius = c.radius;
+		sc.value = c.value;
+		sc.verts_count = c.chain.size();
+		for (uint32_t i : c.chain) {
+			verts.emplace_back(model.vertices[i]);
+		}
+	}
+
+	{ //write to file:
+		std::ofstream out(filename, std::ios::binary);
+		write_vector(out, verts, "verts");
+		write_vector(out, stored_constraints, "constraints");
 	}
 }

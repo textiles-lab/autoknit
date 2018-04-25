@@ -339,11 +339,7 @@ void Interface::update(float elapsed) {
 		mouse.moved = false;
 	}
 	if (constraints_dirty) {
-		constraints_dirty = false;
-		ak::embed_constraints(model, constraints, &constrained_model, &constrained_values, &DEBUG_constraint_paths, &DEBUG_constraint_loops);
-		update_DEBUG_constraint_paths_tristrip();
-		update_DEBUG_constraint_loops_tristrip();
-		update_constrained_model_triangles();
+		update_constraints();
 	}
 }
 
@@ -865,6 +861,27 @@ void Interface::update_model_triangles() {
 	}
 
 	model_triangles.set(attribs, GL_STATIC_DRAW);
+}
+
+void Interface::set_constraints(std::vector< ak::Constraint > const &new_constraints) {
+	constraints = new_constraints;
+	constraints_dirty = true;
+	update_constraints();
+}
+
+void Interface::update_constraints() {
+	constraints_dirty = false;
+	save_constraints();
+
+	ak::embed_constraints(model, constraints, &constrained_model, &constrained_values, &DEBUG_constraint_paths, &DEBUG_constraint_loops);
+	update_DEBUG_constraint_paths_tristrip();
+	update_DEBUG_constraint_loops_tristrip();
+	update_constrained_model_triangles();
+}
+
+void Interface::save_constraints() {
+	if (save_constraints_file == "") return;
+	ak::save_constraints(model, constraints, save_constraints_file);
 }
 
 void Interface::update_DEBUG_constraint_paths_tristrip() {
