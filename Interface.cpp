@@ -301,6 +301,13 @@ Interface::Interface() {
 		{path_draw->getAttribLocation("Color", GLProgram::MissingIsWarning), DEBUG_constraint_paths_tristrip[2]}
 	});
 
+	constrained_model_triangles_for_model_draw = GLVertexArray::make_binding(model_draw->program, {
+		{model_draw->getAttribLocation("Position", GLProgram::MissingIsError), constrained_model_triangles[0]},
+		{model_draw->getAttribLocation("Normal", GLProgram::MissingIsWarning), constrained_model_triangles[1]},
+		{model_draw->getAttribLocation("ID", GLProgram::MissingIsWarning), constrained_model_triangles[2]}
+	});
+
+
 }
 
 Interface::~Interface() {
@@ -328,6 +335,7 @@ void Interface::update(float elapsed) {
 		constraints_dirty = false;
 		ak::embed_constraints(model, constraints, &constrained_model, &constrained_values, &DEBUG_constraint_paths);
 		update_DEBUG_constraint_paths_tristrip();
+		update_constrained_model_triangles();
 	}
 }
 
@@ -349,7 +357,7 @@ void Interface::draw() {
 	glEnable(GL_DEPTH_TEST);
 
 
-	{ //draw the model:
+	if (show == ShowModel) { //draw the model:
 		glUseProgram(model_draw->program);
 
 		//Position-to-clip matrix:
@@ -371,6 +379,30 @@ void Interface::draw() {
 
 		glUseProgram(0);
 	}
+
+	if (show == ShowConstrainedModel) { //draw the constrained model:
+		glUseProgram(model_draw->program);
+
+		//Position-to-clip matrix:
+		glm::mat4 p2c = camera.mvp();
+		//Position-to-light matrix:
+		glm::mat4x3 p2l = camera.mv(); //glm::mat4(1.0f);
+		//Normal-to-light matrix:
+		glm::mat3 n2l = glm::inverse(glm::transpose(glm::mat3(p2l)));
+
+		glUniformMatrix4fv(model_draw_p2c, 1, GL_FALSE, glm::value_ptr(p2c));
+		glUniformMatrix4x3fv(model_draw_p2l, 1, GL_FALSE, glm::value_ptr(p2l));
+		glUniformMatrix3fv(model_draw_n2l, 1, GL_FALSE, glm::value_ptr(n2l));
+
+		glBindVertexArray(constrained_model_triangles_for_model_draw.array);
+
+		glDrawArrays(GL_TRIANGLES, 0, constrained_model_triangles.count);
+
+		glBindVertexArray(0);
+
+		glUseProgram(0);
+	}
+
 
 	{ //draw marker spheres:
 		glUseProgram(marker_draw->program);
@@ -529,6 +561,16 @@ void Interface::handle_event(SDL_Event const &evt) {
 				drag = DragNone;
 				dragging.clear();
 			}
+		} else if (drag == DragConsRadius) {
+			if (dragging.cons < constraints.size() && dragging.cons_pt < constraints[dragging.cons].chain.size()) {
+				if (hovered.tri < model.triangles.size()) {
+					constraints[dragging.cons].radius = glm::length(hovered.point - model.vertices[constraints[dragging.cons].chain[dragging.cons_pt]]);
+					constraints_dirty = true;
+				}
+			} else {
+				drag = DragNone;
+				dragging.clear();
+			}
 		}
 	} else if (evt.type == SDL_MOUSEBUTTONDOWN) {
 		mouse.at = glm::vec2( MAPX(evt.button.x), MAPY(evt.button.y) );
@@ -558,7 +600,7 @@ void Interface::handle_event(SDL_Event const &evt) {
 		mouse.at = glm::vec2( MAPX(evt.button.x), MAPY(evt.button.y) );
 		mouse.moved = true;
 		if (evt.button.button == SDL_BUTTON_LEFT) {
-			if (drag == DragConsPt) {
+			if (drag == DragConsPt || drag == DragConsRadius) {
 				drag = DragNone;
 				dragging.clear();
 			}
@@ -571,7 +613,10 @@ void Interface::handle_event(SDL_Event const &evt) {
 		camera.radius *= std::pow(0.5f, evt.wheel.y / 10.0f);
 		if (camera.radius < 0.1f) camera.radius = 0.1f;
 	} else if (evt.type == SDL_KEYDOWN) {
-		if (evt.key.keysym.scancode == SDL_SCANCODE_C) {
+		if (evt.key.keysym.scancode == SDL_SCANCODE_S) {
+			if (show == ShowModel) show = ShowConstrainedModel;
+			else if (show == ShowConstrainedModel) show = ShowModel;
+		} else if (evt.key.keysym.scancode == SDL_SCANCODE_C) {
 			if (hovered.cons < constraints.size()) {
 				if (drag == DragNone) {
 					auto &cons = constraints[hovered.cons];
@@ -584,6 +629,14 @@ void Interface::handle_event(SDL_Event const &evt) {
 				constraints.emplace_back();
 				constraints.back().chain.emplace_back(hovered.vert);
 				constraints_dirty = true;
+			}
+		} else if (evt.key.keysym.scancode == SDL_SCANCODE_R) {
+			if (hovered.cons < constraints.size()) {
+				if (drag == DragNone) {
+					drag = DragConsRadius;
+					dragging.cons = hovered.cons;
+					dragging.cons_pt = hovered.cons_pt;
+				}
 			}
 		} else if (evt.key.keysym.scancode == SDL_SCANCODE_X) {
 			if (hovered.cons < constraints.size() && hovered.cons_pt < constraints[hovered.cons].chain.size()) {
@@ -833,6 +886,35 @@ void Interface::update_DEBUG_constraint_paths_tristrip() {
 
 	DEBUG_constraint_paths_tristrip.set(attribs, GL_STATIC_DRAW);
 }
+
+void Interface::update_constrained_model_triangles() {
+	std::vector< GLAttribBuffer< glm::vec3, glm::vec3, glm::u8vec4 >::Vertex > attribs;
+	attribs.reserve(3 * constrained_model.triangles.size());
+
+	for (auto const &t : constrained_model.triangles) {
+		glm::vec3 const &a = constrained_model.vertices[t.x];
+		glm::vec3 const &b = constrained_model.vertices[t.y];
+		glm::vec3 const &c = constrained_model.vertices[t.z];
+
+		glm::vec3 n = glm::normalize(glm::cross(b-a, c-a));
+
+		uint32_t idx = &t - &constrained_model.triangles[0];
+		glm::u8vec4 id = glm::u8vec4(
+			0x3,
+			(idx >> 16) & 0xff,
+			(idx >> 8) & 0xff,
+			idx & 0xff
+		);
+
+		glm::vec3 m = (a + b + c) / 3.0f;
+		attribs.emplace_back(glm::mix(a, m, 0.1f), n, id);
+		attribs.emplace_back(glm::mix(b, m, 0.1f), n, id);
+		attribs.emplace_back(glm::mix(c, m, 0.1f), n, id);
+	}
+
+	constrained_model_triangles.set(attribs, GL_STATIC_DRAW);
+}
+
 
 
 /*void Interface::set_constraints(ak::Constraints const &constraints) {

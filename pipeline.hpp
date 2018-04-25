@@ -72,6 +72,19 @@ void interpolate_constraints(
 struct EmbeddedVertex {
 	glm::uvec3 vertices;
 	glm::vec3 weights;
+	EmbeddedVertex() = default;
+	EmbeddedVertex(glm::uvec3 const &vertices_, glm::vec3 const &weights_) : vertices(vertices_), weights(weights_) { }
+
+	static EmbeddedVertex on_vertex(uint32_t a) {
+		return EmbeddedVertex(glm::uvec3(a, -1U, -1U), glm::vec3(1.0f, 0.0f, 0.0f));
+	}
+	static EmbeddedVertex on_edge(uint32_t a, uint32_t b, float mix) {
+		if (a > b) {
+			std::swap(a,b);
+			mix = 1.0f - mix;
+		}
+		return EmbeddedVertex(glm::uvec3(a, b, -1U), glm::vec3(1.0f - mix, mix, 0.0f));
+	}
 };
 
 //NOTE: chains represented as [a,b,c,d,a] if a loop, [a,b,c,d] if a chain. Always represented in CCW order.

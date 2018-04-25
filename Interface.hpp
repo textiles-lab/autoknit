@@ -71,6 +71,7 @@ struct Interface : public kit::Mode {
 		DragCameraFlipX, //for dragging when upside-down
 		DragCameraPan,
 		DragConsPt,
+		DragConsRadius,
 	};
 	Drag drag = DragNone;
 	struct {
@@ -81,6 +82,11 @@ struct Interface : public kit::Mode {
 			cons_pt = -1U;
 		}
 	} dragging;
+
+	enum {
+		ShowModel,
+		ShowConstrainedModel,
+	} show = ShowModel;
 
 	struct {
 		glm::vec2 at = glm::vec2(std::numeric_limits< float >::quiet_NaN());
@@ -128,17 +134,10 @@ struct Interface : public kit::Mode {
 	GLAttribBuffer< glm::vec3, glm::vec3, glm::u8vec4 > DEBUG_constraint_paths_tristrip;
 	GLVertexArray DEBUG_constraint_paths_tristrip_for_path_draw;
 
-	/*
-	//constrained model:
-	void update_constrained_model();
-	ak::Model constrained_model;
-	std::vector< float > constrained_values;
-	//constrained model buffer: (vertices [w is value], normals, ids)
 	void update_constrained_model_triangles();
-	GLAttribBuffer< glm::vec4, glm::vec3, glm::u8vec4 > constrained_model_triangles;
+	//constrained model buffer: position, normal, id
+	GLAttribBuffer< glm::vec3, glm::vec3, glm::u8vec4 > constrained_model_triangles;
 	GLVertexArray constrained_model_triangles_for_model_draw;
-	*/
-
 
 	//place camera to view whole model:
 	void reset_camera();
