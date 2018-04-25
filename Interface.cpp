@@ -128,6 +128,60 @@ kit::Load< GLProgram > marker_draw(kit::LoadTagDefault, [](){
 
 //------------------------------------
 
+GLuint path_draw_p2c = -1U;
+GLuint path_draw_p2l = -1U;
+GLuint path_draw_n2l = -1U;
+
+GLuint path_draw_id = -1U;
+
+kit::Load< GLProgram > path_draw(kit::LoadTagDefault, [](){
+	GLProgram *ret = new GLProgram(
+		"#version 330\n"
+		"#line " STR(__LINE__) "\n"
+		"uniform mat4 p2c;\n" //position to clip space
+		"uniform mat4x3 p2l;\n" //position to light space
+		"uniform mat3 n2l;\n" //normal to light space
+		"in vec4 Position;\n"
+		"in vec3 Normal;\n"
+		"in vec3 Color;\n"
+		"out vec3 normal;\n"
+		"out vec3 position;\n"
+		"out vec3 color;\n"
+		"void main() {\n"
+		"	gl_Position = p2c * Position;\n"
+		"	position = p2l * Position;\n"
+		"	normal = n2l * Normal;\n"
+		"	color = Color;\n"
+		"}\n"
+		,
+		"#version 330\n"
+		"#line " STR(__LINE__) "\n"
+		"uniform vec4 id;\n"
+		"in vec3 normal;\n"
+		"in vec3 position;\n"
+		"in vec3 color;\n"
+		"layout(location = 0) out vec4 fragColor;\n"
+		"layout(location = 1) out vec4 fragID;\n"
+		"void main() {\n"
+		"	vec3 n = normalize(normal);\n"
+		"	vec3 l = vec3(0.0, 0.0, 1.0);\n"
+		"	float nl = dot(n, l) * 0.5 + 0.5;\n"
+		"	fragColor = vec4(nl * color, 1.0);\n"
+		"	fragID = id;\n"
+		"}\n"
+	);
+
+	path_draw_p2c = ret->getUniformLocation("p2c", GLProgram::MissingIsError);
+	path_draw_p2l = ret->getUniformLocation("p2l", GLProgram::MissingIsWarning);
+	path_draw_n2l = ret->getUniformLocation("n2l", GLProgram::MissingIsWarning);
+
+	path_draw_id = ret->getUniformLocation("id", GLProgram::MissingIsWarning);
+
+	return ret;
+});
+
+//------------------------------------
+
 
 kit::Load< GLProgram > copy_fb(kit::LoadTagDefault, [](){
 	GLProgram *ret = new GLProgram(
@@ -240,6 +294,13 @@ Interface::Interface() {
 		{model_draw->getAttribLocation("Normal", GLProgram::MissingIsWarning), model_triangles[1]},
 		{model_draw->getAttribLocation("ID", GLProgram::MissingIsWarning), model_triangles[2]}
 	});
+
+	DEBUG_constraint_paths_tristrip_for_path_draw = GLVertexArray::make_binding(path_draw->program, {
+		{path_draw->getAttribLocation("Position", GLProgram::MissingIsError), DEBUG_constraint_paths_tristrip[0]},
+		{path_draw->getAttribLocation("Normal", GLProgram::MissingIsWarning), DEBUG_constraint_paths_tristrip[1]},
+		{path_draw->getAttribLocation("Color", GLProgram::MissingIsWarning), DEBUG_constraint_paths_tristrip[2]}
+	});
+
 }
 
 Interface::~Interface() {
@@ -266,6 +327,7 @@ void Interface::update(float elapsed) {
 	if (constraints_dirty) {
 		constraints_dirty = false;
 		ak::embed_constraints(model, constraints, &constrained_model, &constrained_values, &DEBUG_constraint_paths);
+		update_DEBUG_constraint_paths_tristrip();
 	}
 }
 
@@ -337,30 +399,7 @@ void Interface::draw() {
 			glDrawArrays(GL_TRIANGLE_STRIP, 0, sphere_tristrip->count);
 		};
 
-		//mouse cursor sphere (don't draw into ID buffer):
-		glColorMaski(1, GL_FALSE, GL_FALSE, GL_FALSE, GL_FALSE);
-		if (hovered.tri < model.triangles.size()) {
-			glm::vec3 const &a = model.vertices[model.triangles[hovered.tri].x];
-			glm::vec3 const &b = model.vertices[model.triangles[hovered.tri].y];
-			glm::vec3 const &c = model.vertices[model.triangles[hovered.tri].z];
-			sphere(a, 0.02f, glm::vec3(1.0f, 0.0f, 0.0f), glm::u8vec4(0x00));
-			sphere(b, 0.02f, glm::vec3(0.0f, 1.0f, 0.0f), glm::u8vec4(0x00));
-			sphere(c, 0.02f, glm::vec3(0.0f, 0.0f, 1.0f), glm::u8vec4(0x00));
-			sphere(hovered.point, 0.02f, glm::vec3(0.4f, 0.4f, 0.4f), glm::u8vec4(0x00));
-		}
-		glColorMaski(1, GL_TRUE, GL_TRUE, GL_TRUE, GL_TRUE);
-
-		//constrained path spheres (don't draw into ID buffer):
-		glColorMaski(1, GL_FALSE, GL_FALSE, GL_FALSE, GL_FALSE);
-		glDepthMask(GL_FALSE);
-		for (auto const &path : DEBUG_constraint_paths) {
-			for (auto const &v : path) {
-				sphere(v, 0.02f, glm::vec3(0.4f, 0.4f, 0.4f), glm::u8vec4(0x00));
-			}
-		}
-		glColorMaski(1, GL_TRUE, GL_TRUE, GL_TRUE, GL_TRUE);
-		glDepthMask(GL_TRUE);
-
+	
 
 		//constrained vertices (do draw into ID buffer):
 		float min_time = -1.0f;
@@ -377,6 +416,56 @@ void Interface::draw() {
 				sphere(model.vertices[c.chain[i]], 0.04f, color, id);
 			}
 		}
+
+		//mouse cursor sphere (don't draw into ID buffer):
+		glColorMaski(1, GL_FALSE, GL_FALSE, GL_FALSE, GL_FALSE);
+		if (hovered.tri < model.triangles.size()) {
+			glm::vec3 const &a = model.vertices[model.triangles[hovered.tri].x];
+			glm::vec3 const &b = model.vertices[model.triangles[hovered.tri].y];
+			glm::vec3 const &c = model.vertices[model.triangles[hovered.tri].z];
+			sphere(a, 0.02f, glm::vec3(1.0f, 0.0f, 0.0f), glm::u8vec4(0x00));
+			sphere(b, 0.02f, glm::vec3(0.0f, 1.0f, 0.0f), glm::u8vec4(0x00));
+			sphere(c, 0.02f, glm::vec3(0.0f, 0.0f, 1.0f), glm::u8vec4(0x00));
+			sphere(hovered.point, 0.02f, glm::vec3(0.4f, 0.4f, 0.4f), glm::u8vec4(0x00));
+		}
+
+		//constrained path spheres (don't draw into ID buffer):
+		for (auto const &path : DEBUG_constraint_paths) {
+			for (auto const &v : path) {
+				sphere(v, 0.02f, glm::vec3(0.4f, 0.4f, 0.4f), glm::u8vec4(0x00));
+			}
+		}
+		glColorMaski(1, GL_TRUE, GL_TRUE, GL_TRUE, GL_TRUE);
+
+		glBindVertexArray(0);
+		glUseProgram(0);
+	}
+
+	//draw constraint paths:
+	if (DEBUG_constraint_paths_tristrip.count) {
+
+		//Position-to-clip matrix:
+		glm::mat4 p2c = camera.mvp();
+		//Position-to-light matrix:
+		glm::mat4x3 p2l = camera.mv();
+		//Normal-to-light matrix:
+		glm::mat3 n2l = glm::inverse(glm::transpose(glm::mat3(p2l)));
+
+		glUseProgram(path_draw->program);
+		glBindVertexArray(DEBUG_constraint_paths_tristrip_for_path_draw.array);
+
+		glUniformMatrix4fv(path_draw_p2c, 1, GL_FALSE, glm::value_ptr(p2c));
+		glUniformMatrix4x3fv(path_draw_p2l, 1, GL_FALSE, glm::value_ptr(p2l));
+		glUniformMatrix3fv(path_draw_n2l, 1, GL_FALSE, glm::value_ptr(n2l));
+
+		glUniform4f(path_draw_id, 0 / 255.0f, 0 / 255.0f, 0 / 255.0f, 0 / 255.0f);
+
+		//don't draw into ID array:
+		glColorMaski(1, GL_FALSE, GL_FALSE, GL_FALSE, GL_FALSE);
+
+		glDrawArrays(GL_TRIANGLE_STRIP, 0, DEBUG_constraint_paths_tristrip.count);
+
+		glColorMaski(1, GL_TRUE, GL_TRUE, GL_TRUE, GL_TRUE);
 
 		glBindVertexArray(0);
 		glUseProgram(0);
@@ -685,6 +774,66 @@ void Interface::update_model_triangles() {
 
 	model_triangles.set(attribs, GL_STATIC_DRAW);
 }
+
+void Interface::update_DEBUG_constraint_paths_tristrip() {
+	assert(DEBUG_constraint_paths.size() == constraints.size());
+
+	std::vector< GLAttribBuffer< glm::vec3, glm::vec3, glm::u8vec4 >::Vertex > attribs;
+
+	static std::vector< glm::vec2 > circle = [](){
+		const constexpr uint32_t Angles = 16;
+		std::vector< glm::vec2 > ret;
+		ret.reserve(Angles);
+		for (uint32_t a = 0; a < Angles; ++a) {
+			float ang = a / float(Angles) * 2.0f * float(M_PI);
+			ret.emplace_back(std::cos(ang), std::sin(ang));
+		}
+		return ret;
+	}();
+
+	float min_time = -1.0f;
+	float max_time = 1.0f;
+	for (auto const &c : constraints) {
+		min_time = glm::min(min_time, c.value);
+		max_time = glm::max(max_time, c.value);
+	}
+
+	for (auto const &path : DEBUG_constraint_paths) {
+		glm::vec3 color = time_color((constraints[&path - &DEBUG_constraint_paths[0]].value - min_time) / (max_time - min_time));
+		glm::u8vec4 color8 = glm::u8vec4(255 * color.r, 255 * color.g, 255 * color.b, 255);
+		//generate some sort of path thing (from uncapped tubes, for now):
+		for (uint32_t pi = 0; pi + 1 < path.size(); ++pi) {
+			glm::vec3 a = path[pi];
+			glm::vec3 b = path[pi+1];
+			glm::vec3 along = glm::normalize(b-a);
+			glm::vec3 p1,p2;
+			if (std::abs(along.x) <= std::abs(along.y) && std::abs(along.x) <= std::abs(along.z)) {
+				p1 = glm::vec3(1.0f, 0.0f, 0.0f);
+			} else if (std::abs(along.y) <= std::abs(along.z)) {
+				p1 = glm::vec3(0.0f, 1.0f, 0.0f);
+			} else {
+				p1 = glm::vec3(0.0f, 0.0f, 1.0f);
+			}
+			p1 = glm::normalize(p1 - glm::dot(along, p1) * along);
+			p2 = glm::cross(along, p1);
+			glm::mat2x3 xy = glm::mat2x3(p1, p2);
+
+			constexpr const float r = 0.02f;
+
+			attribs.emplace_back(a + xy * (r * circle.back()), xy * circle.back(), color8);
+			attribs.emplace_back(attribs.back());
+			attribs.emplace_back(b + xy * (r * circle.back()), xy * circle.back(), color8);
+			for (auto const &c : circle) {
+				attribs.emplace_back(a + xy * (r * c), xy * c, color8);
+				attribs.emplace_back(b + xy * (r * c), xy * c, color8);
+			}
+			attribs.emplace_back(attribs.back());
+		}
+	}
+
+	DEBUG_constraint_paths_tristrip.set(attribs, GL_STATIC_DRAW);
+}
+
 
 /*void Interface::set_constraints(ak::Constraints const &constraints) {
 	constrained_vertices.clear();
