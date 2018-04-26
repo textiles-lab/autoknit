@@ -3,6 +3,9 @@
 #include <iostream>
 #include <fstream>
 #include <sstream>
+#include <unordered_set>
+
+#include <glm/gtx/hash.hpp>
 
 void ak::load_obj(
 	std::string const &file,
@@ -102,4 +105,35 @@ void ak::load_obj(
 			t[i] -= 1;
 		}
 	}
+
+	//PARANOIA: degenerate triangle check.
+	uint32_t topologically_degenerate = 0;
+	uint32_t numerically_degenerate = 0;
+	for (auto const &tri : model.triangles) {
+		glm::vec3 const &x = model.vertices[tri.x];
+		glm::vec3 const &y = model.vertices[tri.y];
+		glm::vec3 const &z = model.vertices[tri.z];
+		if (tri.x == tri.y || tri.x == tri.z || tri.y == tri.z) {
+			++topologically_degenerate;
+		}
+		if (x == y || x == z || y == z) {
+			++numerically_degenerate;
+		}
+	}
+	if (topologically_degenerate || numerically_degenerate) {
+		std::cerr << "WARNING: have " << topologically_degenerate << " topologically degenerate and " << numerically_degenerate << " numerically degenerate triangles. This is likely to mess things up!" << std::endl;
+	}
+
+	//PARANOIA: manifold + oriented
+	uint32_t nonmanifold = 0;
+	std::unordered_set< glm::uvec2 > oriented_edges;
+	for (auto const &tri : model.triangles) {
+		if (!oriented_edges.insert(glm::uvec2(tri.x, tri.y)).second) ++nonmanifold;
+		if (!oriented_edges.insert(glm::uvec2(tri.y, tri.z)).second) ++nonmanifold;
+		if (!oriented_edges.insert(glm::uvec2(tri.z, tri.x)).second) ++nonmanifold;
+	}
+	if (nonmanifold) {
+		std::cerr << "WARNING: have " << nonmanifold << " oriented edges that appear more than once; this means the mesh is probably not an orientable manifold, which is likely to mess things up!" << std::endl;
+	}
+
 }

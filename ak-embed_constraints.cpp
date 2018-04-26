@@ -100,6 +100,16 @@ void ak::embed_constraints(
 
 	std::vector< glm::vec3 > verts = model.vertices;
 	std::vector< glm::uvec3 > tris = model.triangles;
+
+	//PARANOIA: no degenerate triangles, please
+	for (auto const &tri : tris) {
+		glm::vec3 const &x = verts[tri.x];
+		glm::vec3 const &y = verts[tri.y];
+		glm::vec3 const &z = verts[tri.z];
+		assert(tri.x != tri.y && tri.x != tri.z && tri.y != tri.z);
+		assert(x != y && x != z && y != z);
+	}
+
 	/*
 	std::vector< EmbeddedVertex > everts;
 	everts.reserve(verts.size());
@@ -273,6 +283,15 @@ void ak::embed_constraints(
 	}
 	//std::cout << "After division, have " << tris.size() << " triangles on " << verts.size() << " vertices." << std::endl;
 
+	//PARANOIA: no degenerate triangles, please?
+	for (auto const &tri : tris) {
+		glm::vec3 const &x = verts[tri.x];
+		glm::vec3 const &y = verts[tri.y];
+		glm::vec3 const &z = verts[tri.z];
+		assert(tri.x != tri.y && tri.x != tri.z && tri.y != tri.z);
+		assert(x != y && x != z && y != z);
+	}
+
 	if (DEBUG_chain_paths) {
 		for (auto const &path : paths) {
 			auto &DEBUG_chain_path = (*DEBUG_chain_paths)[&path - &paths[0]];
@@ -297,6 +316,169 @@ void ak::embed_constraints(
 		}
 	}
 
+	std::unordered_map< glm::uvec2, uint32_t > opposite; //vertex opposite each [oriented] triangle edge
+	opposite.reserve(tris.size() * 3);
+	for (auto const &tri : tris) {
+		auto ret_xy = opposite.insert(std::make_pair(glm::uvec2(tri.x, tri.y), tri.z));
+		assert(ret_xy.second);
+		auto ret_yz = opposite.insert(std::make_pair(glm::uvec2(tri.y, tri.z), tri.x));
+		assert(ret_yz.second);
+		auto ret_zx = opposite.insert(std::make_pair(glm::uvec2(tri.z, tri.x), tri.y));
+		assert(ret_zx.second);
+	}
+
+	{ //build (+ add to adj) extra "shortcut" edges by unwrapping triangle neighborhoods:
+		std::unordered_map< glm::uvec2, float > min_dis;
+		auto get_dis = [&](uint32_t a, uint32_t b) -> float & {
+			if (a > b) std::swap(a,b);
+			return min_dis.insert(std::make_pair(glm::uvec2(a,b), std::numeric_limits< float >::infinity())).first->second;
+		};
+		for (auto const &tri : tris) {
+			glm::vec2 flat_x, flat_y, flat_z; //original verts
+			{
+				glm::vec3 const &x = verts[tri.x];
+				glm::vec3 const &y = verts[tri.y];
+				glm::vec3 const &z = verts[tri.z];
+				flat_x = glm::vec2(0.0f, 0.0f);
+				flat_y = glm::vec2(glm::length(y-x), 0.0f);
+
+				glm::vec3 xy = glm::normalize(y-x);
+				glm::vec3 perp_xy = glm::normalize(glm::cross(glm::cross(y-x, z-x), y-x));
+				float along = glm::dot(z-x, xy);
+				float perp = glm::dot(z-x, perp_xy);
+
+				flat_z = glm::vec2(along, perp);
+
+				//std::cout << "x: (" << x.x << ", " << x.y << ", " << x.z << ") -> (" << flat_x.x << ", " << flat_x.y << ")" << std::endl; //DEBUG
+				//std::cout << "y: (" << y.x << ", " << y.y << ", " << y.z << ") -> (" << flat_y.x << ", " << flat_y.y << ")" << std::endl; //DEBUG
+				//std::cout << "z: (" << z.x << ", " << z.y << ", " << z.z << ") -> (" << flat_z.x << ", " << flat_z.y << ")" << std::endl; //DEBUG
+
+			}
+
+			//look through edge [ai,bi] from point [root], where edge [ai,bi] is ccw oriented.
+
+			auto is_ccw = [](glm::vec2 const &a, glm::vec2 const &b, glm::vec2 const &c) {
+				return glm::dot(glm::vec2(-(b.y-a.y),(b.x-a.x)), c-a) > 0.0f;
+			};
+
+			std::function< void(uint32_t, uint32_t, glm::vec2 const &, uint32_t, glm::vec2 const &, uint32_t, glm::vec2 const &, glm::vec2 const &, glm::vec2 const &) > unfold = [&](uint32_t depth, uint32_t root, glm::vec2 const &flat_root, uint32_t ai, glm::vec2 const &flat_a, uint32_t bi, glm::vec2 const &flat_b, glm::vec2 const &limit_a, glm::vec2 const &limit_b) {
+				//std::cout << "r: " << root << ": (" << flat_root.x << ", " << flat_root.y << ")" << std::endl; //DEBUG
+				//std::cout << "a: " << ai << ": (" << flat_a.x << ", " << flat_a.y << ")" << std::endl; //DEBUG
+				//std::cout << "b: " << bi << ": (" << flat_b.x << ", " << flat_b.y << ")" << std::endl; //DEBUG
+				assert(is_ccw(flat_root, flat_a, flat_b));
+				//should go 'a - limit_a - limit_b - b':
+				//assert(flat_a == limit_a || is_ccw(flat_root, flat_a, limit_a));
+				assert(is_ccw(flat_root, limit_a, limit_b));
+				//assert(flat_b == limit_b || is_ccw(flat_root, limit_b, flat_b));
+
+				uint32_t ci;
+				glm::vec2 flat_c;
+				{ //if there is a triangle over the ai->bi edge, find other vertex and flatten it:
+					auto f = opposite.find(glm::uvec2(bi, ai));
+					if (f == opposite.end()) return;
+					ci = f->second;
+					//figure out c's position along ab and distance from ab:
+					glm::vec3 const &a = verts[ai];
+					glm::vec3 const &b = verts[bi];
+					glm::vec3 const &c = verts[ci];
+
+					glm::vec3 ab = glm::normalize(b-a);
+					float along = glm::dot(c-a, ab);
+					float perp = -glm::length(c-a - ab*along);
+
+					glm::vec2 flat_ab = glm::normalize(flat_b - flat_a);
+					glm::vec2 flat_perp_ab = glm::vec2(-flat_ab.y, flat_ab.x);
+
+					flat_c = flat_a + flat_ab * along + flat_perp_ab * perp;
+				}
+
+				//std::cout << "c: " << ci << ": (" << flat_c.x << ", " << flat_c.y << ")" << std::endl; //DEBUG
+
+				//flat_a and flat_b should always be outside limit, it seems like we need to test anyway (thanks, numerics)
+
+				bool ccw_rac = is_ccw(flat_root, limit_a, flat_c) && is_ccw(flat_root, flat_a, flat_c);
+				bool ccw_rcb = is_ccw(flat_root, flat_c, limit_b) && is_ccw(flat_root, flat_c, flat_b);
+
+				if (ccw_rac && ccw_rcb) {
+					float &dis = get_dis(root, ci);
+					dis = std::min(dis, glm::length(flat_root - flat_c));
+
+					//PARANOIA:
+					float dis3 = glm::length(verts[root] - verts[ci]);
+					if (dis3 > dis + 1e-6) {
+						std::cerr << "dis3: " << dis3 << " vs flat dis " << dis << " seems bad!" << std::endl;
+						std::cerr << "  ra3: " << glm::length(verts[root] - verts[ai]) << " vs ra: " << glm::length(flat_root - flat_a) << std::endl;
+						std::cerr << "  rb3: " << glm::length(verts[root] - verts[bi]) << " vs rb: " << glm::length(flat_root - flat_b) << std::endl;
+						std::cerr << "  ab3: " << glm::length(verts[ai] - verts[bi]) << " vs ab: " << glm::length(flat_a - flat_b) << std::endl;
+						std::cerr << "  ac3: " << glm::length(verts[ai] - verts[ci]) << " vs ac: " << glm::length(flat_a - flat_c) << std::endl;
+						std::cerr << "  bc3: " << glm::length(verts[bi] - verts[ci]) << " vs bc: " << glm::length(flat_b - flat_c) << std::endl;
+						assert(dis3 < dis + 1e-6);
+					}
+
+					if (depth > 1) {
+						assert(is_ccw(flat_root, flat_a, flat_c));
+						unfold(depth - 1, root, flat_root, ai, flat_a, ci, flat_c, limit_a, flat_c);
+						assert(is_ccw(flat_root, flat_c, flat_b));
+						unfold(depth - 1, root, flat_root, ci, flat_c, bi, flat_b, flat_c, limit_b);
+					}
+				} else if (ccw_rac && !ccw_rcb) {
+					if (depth > 1) {
+						//assert(!is_ccw(flat_root, flat_c, limit_b)); //DEBUG
+						//assert(is_ccw(flat_root, limit_b, flat_c)); //DEBUG -- fails sometimes [thanks, numerics]
+						assert(is_ccw(flat_root, flat_a, flat_c));
+						unfold(depth - 1, root, flat_root, ai, flat_a, ci, flat_c, limit_a, limit_b);
+					}
+				} else if (!ccw_rac && ccw_rcb) {
+					if (depth > 1) {
+						assert(is_ccw(flat_root, flat_c, flat_b));
+						unfold(depth - 1, root, flat_root, ci, flat_c, bi, flat_b, limit_a, limit_b);
+					}
+				}
+			};
+
+			const constexpr uint32_t D = 3; //depth to unfold triangles to for more adjacency information; makes slightly nicer geodesics at the expense of increased compute time.
+
+			if (D > 0) {
+				unfold(D, tri.x, flat_x, tri.y, flat_y, tri.z, flat_z, flat_y, flat_z);
+				unfold(D, tri.y, flat_y, tri.z, flat_z, tri.x, flat_x, flat_z, flat_x);
+				unfold(D, tri.z, flat_z, tri.x, flat_x, tri.y, flat_y, flat_x, flat_y);
+			}
+		}
+		for (uint32_t x = 0; x < verts.size(); ++x) {
+			for (auto const &yd : adj[x]) {
+				float &dis = get_dis(x, yd.first);
+				dis = std::min(dis, yd.second);
+			}
+		}
+
+		//clear adj + re-create from min_dis:
+		uint32_t old_adj = 0;
+		for (auto const &a : adj) {
+			old_adj += a.size();
+		}
+
+		adj.assign(verts.size(), std::vector< std::pair< uint32_t, float > >());
+
+		for (auto const &xyd : min_dis) {
+			assert(xyd.first.x != xyd.first.y);
+			adj[xyd.first.x].emplace_back(xyd.first.y, xyd.second);
+			adj[xyd.first.y].emplace_back(xyd.first.x, xyd.second);
+		}
+
+		uint32_t new_adj = 0;
+		for (auto const &a : adj) {
+			new_adj += a.size();
+		}
+
+		//std::cout << "Went from " << old_adj << " to " << new_adj << " by unfolding triangles." << std::endl;
+
+		//for consistency:
+		for (auto &a : adj) {
+			std::sort(a.begin(), a.end());
+		}
+	}
+
+	//uint32_t used_edges = 0;
 
 	for (auto const &cons : constraints) {
 		auto const &path = paths[&cons - &constraints[0]];
@@ -317,6 +499,26 @@ void ak::embed_constraints(
 		for (uint32_t i = 0; i < path.size(); ++i) {
 			visit(path[i], -cons.radius);
 		}
+		/*auto do_edge = [&](uint32_t ai, uint32_t bi) {
+			auto f = opposite.find(glm::uvec2(ai, bi));
+			if (f == opposite.end()) return;
+			uint32_t ci = f->second;
+			glm::vec3 const &a = verts[ai];
+			glm::vec3 const &b = verts[bi];
+			glm::vec3 const &c = verts[ci];
+			float along = glm::dot(c - a, b - a);
+			if (along <= 0.0f) return;
+			float lim = glm::dot(b - a, b - a);
+			if (along >= lim) return;
+			//++used_edges;
+			glm::vec3 close = glm::mix(a, b, along / lim);
+			visit(ci, glm::length(c - close) - cons.radius);
+		};
+		for (uint32_t i = 1; i < path.size(); ++i) {
+			do_edge(path[i-1], path[i]);
+			do_edge(path[i], path[i-1]);
+		}*/
+
 		while (!todo.empty()) {
 			std::pop_heap(todo.begin(), todo.end(), std::greater< std::pair< float, uint32_t > >());
 			auto at = todo.back();
@@ -408,6 +610,8 @@ void ak::embed_constraints(
 
 
 	}
+
+	//std::cout << "Used " << used_edges << " edges." << std::endl; //DEBUG
 
 	//TODO: split at distance field level set
 	//TODO: constrain values at distance field border
