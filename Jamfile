@@ -31,6 +31,7 @@ AUTOKNIT_NAMES =
 	load_obj
 	ak-load_constraints
 	ak-embed_constraints
+	ak-interpolate_values
 	;
 
 #if $(OS) = NT {
