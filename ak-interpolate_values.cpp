@@ -2,6 +2,9 @@
 
 #include <Eigen/SparseQR>
 
+#include <iostream>
+#include <map>
+
 void ak::interpolate_values(
 	Model const &model,
 	std::vector< float > const &constraints,
@@ -10,7 +13,6 @@ void ak::interpolate_values(
 	assert(constraints.size() == model.vertices.size());
 	assert(values_);
 	auto &values = *values_;
-	values = constraints;
 
 	std::vector< uint32_t > dofs;
 	dofs.reserve(constraints.size());
@@ -26,7 +28,7 @@ void ak::interpolate_values(
 		throw std::runtime_error("Cannot interpolate from no constraints.");
 	}
 
-	std::unordered_map< glm::uvec2, float > edge_weights;
+	std::map< std::pair< uint32_t, uint32_t >, float > edge_weights;
 
 	for (const auto &tri : model.triangles) {
 		const glm::vec3 &a = model.vertices[tri.x];
@@ -37,12 +39,60 @@ void ak::interpolate_values(
 		float weight_bc = glm::dot(b-a, c-a) / glm::length(glm::cross(b-a, c-a));
 		float weight_ca = glm::dot(c-b, a-b) / glm::length(glm::cross(c-b, a-b));
 
-		//<---- I WAS HERE
+		edge_weights.insert(std::make_pair(std::minmax(tri.x, tri.y), 0.0f)).first->second += weight_ab;
+		edge_weights.insert(std::make_pair(std::minmax(tri.y, tri.z), 0.0f)).first->second += weight_bc;
+		edge_weights.insert(std::make_pair(std::minmax(tri.z, tri.x), 0.0f)).first->second += weight_ca;
 	}
 
-	std::vector< Eigen:Triplet< double > > coefficients;
+	//turn edge weights vector into adjacency lists:
+	std::vector< std::vector< std::pair< uint32_t, float > > > adj(model.vertices.size());
+	for (const auto &ew : edge_weights) {
+		adj[ew.first.first].emplace_back(ew.first.second, ew.second);
+		adj[ew.first.second].emplace_back(ew.first.first, ew.second);
+	}
+
+
+	std::vector< Eigen::Triplet< double > > coefficients;
 	coefficients.reserve(model.triangles.size()*3); //more than is needed
+	Eigen::VectorXd rhs(total_dofs);
+
+	for (uint32_t i = 0; i < dofs.size(); ++i) {
+		if (dofs[i] == -1U) continue;
+		//sum adj[x] + one * 1 - c * x = 0.0f
+		float coef = 0.0f;
+		float one = 0.0f;
+		for (auto a : adj[i]) {
+			if (dofs[a.first] == -1U) {
+				one += a.second;
+			} else {
+				coefficients.emplace_back(dofs[i], dofs[a.first], a.second);
+			}
+			coef -= a.second;
+		}
+		coefficients.emplace_back(dofs[i], dofs[i], -coef);
+		rhs[dofs[i]] = -one;
+	}
+
+	Eigen::SparseMatrix< double > A(total_dofs, total_dofs);
+	A.setFromTriplets(coefficients.begin(), coefficients.end());
+	A.makeCompressed(); //redundant?
+
+	Eigen::SparseQR< Eigen::SparseMatrix< double >, Eigen::COLAMDOrdering< int > > solver;
+	solver.compute(A);
+	if (solver.info() != Eigen::Success) {
+		std::cerr << "Decomposition failed." << std::endl;
+		exit(1);
+	}
+	Eigen::VectorXd x = solver.solve(rhs);
+	if (solver.info() != Eigen::Success) {
+		std::cerr << "Solving failed." << std::endl;
+		exit(1);
+	}
 
 
+	values = constraints;
+	for (uint32_t i = 0; i < dofs.size(); ++i) {
+		if (dofs[i] != -1U) values[i] = x[dofs[i]];
+	}
 
 }

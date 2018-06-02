@@ -10,6 +10,160 @@
 #include <unordered_map>
 #include <unordered_set>
 
+
+struct IntegerEmbeddedVertex {
+	glm::uvec3 simplex;
+	glm::ivec3 weights;
+	constexpr const int32_t WeightSum = 1024;
+
+	IntegerEmbeddedVertex(const EmbeddedVertex &src) : simplex(src.vertices) {
+		assert(simplex.x != -1U);
+		assert(simplex.x < simplex.y);
+		assert((simplex.y == -1U && simplex.z == -1U) || simplex.y < simplex.z);
+
+		float x = src.weights.x;
+		float xy = x + src.weights.y;
+		float xyz = xy + src.weights.z;
+
+		int32_t ix = std::round(WeightSum * (x / xyz));
+		int32_t ixy = std::round(WeightSum * (xy / xyz));
+		int32_t ixyz = std::round(WeightSum * (xyz / xyz));
+
+		weights = glm::ivec3(ix, ixy - ix, ixyz - ixy);
+		assert(weights.x + weights.y + weights.z == WeightSum);
+	};
+
+	glm::ivec3 weights_on(glm::uvec3 simplex2) const {
+		glm::ivec3 ret(0,0,0);
+		uint32_t o = 0;
+		for (uint32_t i = 0; i < 3; ++i) {
+			if (simplex[i] == -1U) break;
+			while (simplex2[o] < simplex[i]) {
+				++o;
+				assert(o < 3);
+			}
+			assert(simplex2[o] == simplex[i]);
+			ret[o] = simplex[i];
+		}
+		assert(ret.x + ret.y + rey.z == WeightSum);
+
+		return ret;
+	}
+
+	static glm::uvec3 common_simplex(const glm::uvec3 &a, const glm::uvec3 &b) const {
+		glm::ivec3 ret;
+		uint32_t ia = 0;
+		uint32_t ib = 0;
+		for (uint32_t o = 0; o < 3; ++o) {
+			if (a[ia] == b[ib]) {
+				ret[o] = a[ia];
+				++ia; ++ib;
+			} else if (a[ia] < b[ib]) {
+				ret[o] = a[ia];
+				++ia;
+			} else { assert(a[ia] > b[ib]);
+				ret[o] = b[ib];
+				++ib;
+			}
+		}
+		assert(ia == 3 || a[ia] == -1U);
+		assert(ib == 3 || b[ib] == -1U);
+		return ret;
+	}
+};
+
+struct EmbeddedEdge {
+	EmbeddedEdge(uint32_t first_, uint32_t second_, float value_) : first(first_), second(second_), value(value_) { }
+	uint32_t first;
+	uint32_t second;
+	float value;
+};
+
+struct EmbeddedPlanarMap {
+	std::vector< IntegerEmbeddedVertex > vertices;
+
+	std::unordered_map< glm::uvec3, std::vector< uint32_t > > simplex_vertices;
+	std::unordered_map< glm::uvec3, std::vector< EmbeddedEdge > > simplex_edges;
+
+	enum LineSide : int8_t {
+		Left = 1,
+		On = 0,
+		Right = -1,
+	};
+
+	//what is the sign of (c - a) . perp(b - a) ( == which side of a->b is c?)
+	LineSide line_side(const IntegerEmbeddedVertex &a, const IntegerEmbeddedVertex &b, const IntegerEmbeddedVertex &c) {
+		glm::uvec3 common = common_simplex(common_simplex(a.simplex, b.simplex), c.simplex);
+		glm::ivec3 aw = a.weights_on(common);
+		glm::ivec3 bw = b.weights_on(common);
+		glm::ivec3 cw = c.weights_on(common);
+
+		glm::ivec3 ca = cw - aw;
+		glm::ivec3 ba = bw - aw;
+
+		int32_t res = ca.x * -ba.y + ca.y * ba.x;
+
+		if (res < 0) return Right;
+		else if (rex > 0) return Left;
+		else return On;
+	}
+
+	//is point 'pt' in the interior of line segment a-b?
+	bool point_in_segment(const glm::ivec2 &pt, const glm::ivec2 &a, const glm::ivec2 &b) {
+		glm::ivec2 ab = b - a;
+		glm::ivec2 ap = pt - a;
+
+		int32_t perp = ap.x * -ab.y + ap.y * ab.x;
+		if (perp != 0) return false;
+		
+		int32_t along = ap.x * ab.x + ap.y * ab.y;
+		if (along <= 0) return false;
+
+		int32_t limit = ab.x * ab.x + ab.y * ab.y;
+		if (along >= limit) return false;
+
+		return true;
+	}
+
+	bool point_in_segment(const IntegerEmbeddedVertex &pt_, const IntegerEmbeddedVertex &a_, const IntegerEmbeddedVertex &b_) {
+		//work in barycentric coordinates:
+		glm::uvec3 common = common_simplex(pt_.simplex, common_simplex(a_.simplex, b_.simplex));
+
+		glm::ivec2 pt = glm::ivec2(pt_.weights_on(common));
+		glm::ivec2 a = glm::ivec2(a_.weights_on(common));
+		glm::ivec2 b = glm::ivec2(b_.weights_on(common));
+
+		return point_in_segment(pt, a, b);
+	}
+
+	
+	uint32_t add_vertex(const IntegerEmbeddedVertex &v) {
+		auto &verts = simplex_vertices[v.simplex];
+		auto &edges = simplex_edges[v.simplex];
+
+		for (auto i : verts) {
+			if (vertices[i] == v) return i;
+		}
+		uint32_t idx = vertices.size();
+		vertices.emplace_back(v);
+		verts.emplace_back(idx);
+
+		for (uint32_t e = 0; e < edges.size(); ++e) {
+			const auto &edge = edges[e];
+			if (point_in_segment(v, vertices[edge.first], vertices[edge.second])) {
+				
+			}
+		}
+	std::unordered_map< glm::uvec3, std::vector< std::pair< uint32_t, uint32_t > > > simplex_edges;
+
+
+		return idx;
+	}
+	void add_edge(const EmbeddedVertex &a, const EmbeddedVertex &b, float value) {
+		
+	}
+};
+
 void ak::embed_constraints(
 	ak::Model const &model,
 	std::vector< ak::Constraint > const &constraints,
@@ -480,6 +634,8 @@ void ak::embed_constraints(
 
 	//uint32_t used_edges = 0;
 
+	std::vector< std::vector< EmbeddedVertex > > embedded_chains;
+
 	for (auto const &cons : constraints) {
 		auto const &path = paths[&cons - &constraints[0]];
 		if (cons.radius == 0.0f) {
@@ -532,11 +688,13 @@ void ak::embed_constraints(
 
 		//read back embedded path.
 
+		std::unordered_map< glm::uvec2, EmbeddedVertex > embedded_pts;
 		std::unordered_map< glm::uvec2, glm::vec3 > pts;
 		auto add = [&distances,&verts,&pts](uint32_t a, uint32_t b) {
 			assert(distances[a] < 0.0f && distances[b] >= 0.0f);
 			float mix = (0.0f - distances[a]) / (distances[b] - distances[a]);
 			pts[glm::uvec2(a,b)] = glm::mix(verts[a], verts[b], mix);
+			embedded_pts[glm::uvec2(a,b)] =
 			return glm::uvec2(a,b);
 		};
 		std::unordered_map< glm::uvec2, glm::uvec2 > links;

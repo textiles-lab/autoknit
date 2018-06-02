@@ -62,19 +62,13 @@ void interpolate_values(
 	std::vector< float > *values //smooth interpolation of (non-NaN) constraints
 );
 
-//make time field:
-void interpolate_constraints(
-	//in: mesh, embedded constraints(?)
-	//out: time field
-);
-
 //peel/link to create embedded row/column meshes:
 
 struct EmbeddedVertex {
-	glm::uvec3 vertices;
+	glm::uvec3 simplex;
 	glm::vec3 weights;
 	EmbeddedVertex() = default;
-	EmbeddedVertex(glm::uvec3 const &vertices_, glm::vec3 const &weights_) : vertices(vertices_), weights(weights_) { }
+	EmbeddedVertex(glm::uvec3 const &simplex_, glm::vec3 const &weights_) : simplex(simplex_), weights(weights_) { }
 
 	static EmbeddedVertex on_vertex(uint32_t a) {
 		return EmbeddedVertex(glm::uvec3(a, -1U, -1U), glm::vec3(1.0f, 0.0f, 0.0f));

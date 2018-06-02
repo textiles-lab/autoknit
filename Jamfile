@@ -38,6 +38,8 @@ AUTOKNIT_NAMES =
 #	NAMES += gl_shims ;
 #}
 
+ObjectC++Flags ak-interpolate_values.o : -I/usr/include/eigen3 ;
+
 LOCATE_TARGET = objs ; #put objects in 'objs' directory
 Objects $(NAMES:S=.cpp) test_plan_transfers.cpp ;
 

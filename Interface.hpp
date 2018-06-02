@@ -132,6 +132,10 @@ struct Interface : public kit::Mode {
 	ak::Model constrained_model;
 	std::vector< float > constrained_values;
 
+	//interpolation (also computed by update_constraints):
+	std::vector< float > interpolated_values;
+
+
 	std::string save_constraints_file = ""; //if not "", will save constraints to this file after every change
 	void save_constraints();
 
@@ -147,9 +151,9 @@ struct Interface : public kit::Mode {
 
 
 	void update_constrained_model_triangles();
-	//constrained model buffer: position, normal, id
-	GLAttribBuffer< glm::vec3, glm::vec3, glm::u8vec4 > constrained_model_triangles;
-	GLVertexArray constrained_model_triangles_for_model_draw;
+	//constrained model buffer: position, normal, id, texcoord
+	GLAttribBuffer< glm::vec3, glm::vec3, glm::u8vec4, glm::vec2 > constrained_model_triangles;
+	GLVertexArray constrained_model_triangles_for_textured_draw;
 
 	//place camera to view whole model:
 	void reset_camera();
