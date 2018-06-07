@@ -2,7 +2,10 @@
 
 //#include <Eigen/SparseQR>
 #include <Eigen/SparseCholesky>
+//#pragma GCC diagnostic push
+//#pragma GCC diagnostic ignored "-Wmaybe-uninitialized"
 //#include <Eigen/IterativeLinearSolvers>
+//#pragma GCC diagnostic pop
 
 #include <iostream>
 #include <map>
@@ -41,9 +44,6 @@ void ak::interpolate_values(
 		float weight_bc = glm::dot(b-a, c-a) / glm::length(glm::cross(b-a, c-a));
 		float weight_ca = glm::dot(c-b, a-b) / glm::length(glm::cross(c-b, a-b));
 
-		//DEBUG:
-		weight_ab = weight_bc = weight_ca = 1.0f;
-
 		edge_weights.insert(std::make_pair(std::minmax(tri.x, tri.y), 0.0f)).first->second += weight_ab;
 		edge_weights.insert(std::make_pair(std::minmax(tri.y, tri.z), 0.0f)).first->second += weight_bc;
 		edge_weights.insert(std::make_pair(std::minmax(tri.z, tri.x), 0.0f)).first->second += weight_ca;
@@ -64,7 +64,7 @@ void ak::interpolate_values(
 	for (uint32_t i = 0; i < dofs.size(); ++i) {
 		if (dofs[i] == -1U) continue;
 		//sum adj[x] + one * 1 - c * x = 0.0f
-		float coef = 0.0f;
+		float sum = 0.0f;
 		float one = 0.0f;
 		for (auto a : adj[i]) {
 			if (dofs[a.first] == -1U) {
@@ -72,19 +72,21 @@ void ak::interpolate_values(
 			} else {
 				coefficients.emplace_back(dofs[i], dofs[a.first], a.second);
 			}
-			coef -= a.second;
+			sum += a.second;
 		}
-		coefficients.emplace_back(dofs[i], dofs[i], -coef);
+		coefficients.emplace_back(dofs[i], dofs[i], -sum);
 		rhs[dofs[i]] = -one;
 	}
 
 	Eigen::SparseMatrix< double > A(total_dofs, total_dofs);
 	A.setFromTriplets(coefficients.begin(), coefficients.end());
+	//A = A * A.transpose();
 	A.makeCompressed(); //redundant?
 
+	//Eigen::SparseLU< Eigen::SparseMatrix< double > > solver;
 	//Eigen::SparseQR< Eigen::SparseMatrix< double >, Eigen::COLAMDOrdering< int > > solver;
 	Eigen::SimplicialLDLT< Eigen::SparseMatrix< double > > solver;
-	//Eigen::ConjugateGradient< Eigen::SparseMatrix< double >, Eigen::Upper | Eigen::Lower > solver;
+	//Eigen::ConjugateGradient< Eigen::SparseMatrix< double > > solver;
 	solver.compute(A);
 	if (solver.info() != Eigen::Success) {
 		std::cerr << "Decomposition failed." << std::endl;
@@ -95,7 +97,8 @@ void ak::interpolate_values(
 		std::cerr << "Solving failed." << std::endl;
 		exit(1);
 	}
-
+	//std::cout << solver.iterations() << " interations later..." << std::endl; //DEBUG
+	//std::cout << solver.error() << " (estimated error)..." << std::endl; //DEBUG
 
 	values = constraints;
 	for (uint32_t i = 0; i < dofs.size(); ++i) {
