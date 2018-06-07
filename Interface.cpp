@@ -961,7 +961,7 @@ void Interface::update_constraints() {
 	update_DEBUG_constraint_paths_tristrip();
 	update_DEBUG_constraint_loops_tristrip();
 
-	ak::interpolate_values(model, constrained_values, &interpolated_values);
+	ak::interpolate_values(constrained_model, constrained_values, &interpolated_values);
 
 	update_constrained_model_triangles();
 }

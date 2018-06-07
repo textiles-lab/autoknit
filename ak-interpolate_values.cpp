@@ -1,6 +1,8 @@
 #include "pipeline.hpp"
 
-#include <Eigen/SparseQR>
+//#include <Eigen/SparseQR>
+#include <Eigen/SparseCholesky>
+//#include <Eigen/IterativeLinearSolvers>
 
 #include <iostream>
 #include <map>
@@ -39,6 +41,9 @@ void ak::interpolate_values(
 		float weight_bc = glm::dot(b-a, c-a) / glm::length(glm::cross(b-a, c-a));
 		float weight_ca = glm::dot(c-b, a-b) / glm::length(glm::cross(c-b, a-b));
 
+		//DEBUG:
+		weight_ab = weight_bc = weight_ca = 1.0f;
+
 		edge_weights.insert(std::make_pair(std::minmax(tri.x, tri.y), 0.0f)).first->second += weight_ab;
 		edge_weights.insert(std::make_pair(std::minmax(tri.y, tri.z), 0.0f)).first->second += weight_bc;
 		edge_weights.insert(std::make_pair(std::minmax(tri.z, tri.x), 0.0f)).first->second += weight_ca;
@@ -63,7 +68,7 @@ void ak::interpolate_values(
 		float one = 0.0f;
 		for (auto a : adj[i]) {
 			if (dofs[a.first] == -1U) {
-				one += a.second;
+				one += a.second * constraints[a.first];
 			} else {
 				coefficients.emplace_back(dofs[i], dofs[a.first], a.second);
 			}
@@ -77,7 +82,9 @@ void ak::interpolate_values(
 	A.setFromTriplets(coefficients.begin(), coefficients.end());
 	A.makeCompressed(); //redundant?
 
-	Eigen::SparseQR< Eigen::SparseMatrix< double >, Eigen::COLAMDOrdering< int > > solver;
+	//Eigen::SparseQR< Eigen::SparseMatrix< double >, Eigen::COLAMDOrdering< int > > solver;
+	Eigen::SimplicialLDLT< Eigen::SparseMatrix< double > > solver;
+	//Eigen::ConjugateGradient< Eigen::SparseMatrix< double >, Eigen::Upper | Eigen::Lower > solver;
 	solver.compute(A);
 	if (solver.info() != Eigen::Success) {
 		std::cerr << "Decomposition failed." << std::endl;

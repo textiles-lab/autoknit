@@ -14,9 +14,13 @@
 struct IntegerEmbeddedVertex {
 	glm::uvec3 simplex;
 	glm::ivec3 weights;
-	constexpr const int32_t WeightSum = 1024;
+	static constexpr const int32_t WeightSum = 1024;
 
-	IntegerEmbeddedVertex(const EmbeddedVertex &src) : simplex(src.vertices) {
+	IntegerEmbeddedVertex(const glm::uvec3 &simplex_, const glm::ivec3 &weights_) : simplex(simplex_), weights(weights_) {
+		assert(weights.x + weights.y + weights.z == WeightSum);
+	}
+
+	IntegerEmbeddedVertex(const ak::EmbeddedVertex &src) : simplex(src.simplex) {
 		assert(simplex.x != -1U);
 		assert(simplex.x < simplex.y);
 		assert((simplex.y == -1U && simplex.z == -1U) || simplex.y < simplex.z);
@@ -33,6 +37,10 @@ struct IntegerEmbeddedVertex {
 		assert(weights.x + weights.y + weights.z == WeightSum);
 	};
 
+	bool operator==(const IntegerEmbeddedVertex &o) const {
+		return simplex == o.simplex && weights == o.weights;
+	}
+
 	glm::ivec3 weights_on(glm::uvec3 simplex2) const {
 		glm::ivec3 ret(0,0,0);
 		uint32_t o = 0;
@@ -43,14 +51,14 @@ struct IntegerEmbeddedVertex {
 				assert(o < 3);
 			}
 			assert(simplex2[o] == simplex[i]);
-			ret[o] = simplex[i];
+			ret[o] = weights[i];
 		}
-		assert(ret.x + ret.y + rey.z == WeightSum);
+		assert(ret.x + ret.y + ret.z == WeightSum);
 
 		return ret;
 	}
 
-	static glm::uvec3 common_simplex(const glm::uvec3 &a, const glm::uvec3 &b) const {
+	static glm::uvec3 common_simplex(const glm::uvec3 &a, const glm::uvec3 &b) {
 		glm::ivec3 ret;
 		uint32_t ia = 0;
 		uint32_t ib = 0;
@@ -91,22 +99,53 @@ struct EmbeddedPlanarMap {
 		Right = -1,
 	};
 
-	//what is the sign of (c - a) . perp(b - a) ( == which side of a->b is c?)
-	LineSide line_side(const IntegerEmbeddedVertex &a, const IntegerEmbeddedVertex &b, const IntegerEmbeddedVertex &c) {
-		glm::uvec3 common = common_simplex(common_simplex(a.simplex, b.simplex), c.simplex);
-		glm::ivec3 aw = a.weights_on(common);
-		glm::ivec3 bw = b.weights_on(common);
-		glm::ivec3 cw = c.weights_on(common);
+	//is there a point in the interior of both a-b and a2-b2?
+	bool segments_intersect(const glm::ivec2 &a, const glm::ivec2 &b, const glm::ivec2 &a2, const glm::ivec2 &b2) {
+		if (a == b) return false;
+		if (a2 == b2) return false;
 
-		glm::ivec3 ca = cw - aw;
-		glm::ivec3 ba = bw - aw;
+		int32_t perp_a2 = (a2 - a).x * -(b - a).y + (a2 - a).y * (b - a).x;
+		int32_t perp_b2 = (b2 - a).x * -(b - a).y + (b2 - a).y * (b - a).x;
 
-		int32_t res = ca.x * -ba.y + ca.y * ba.x;
+		if (perp_a2 == 0 && perp_b2 == 0) {
+			//annoying (colinear) special case
+			int32_t along_a2 = (a2 - a).x * (b - a).x + (a2 - a).y * (b - a).y;
+			int32_t along_b2 = (b2 - a).x * (b - a).x + (b2 - a).y * (b - a).y;
+			int32_t limit = (b - a).x * (b - a).x + (b - a).y * (b - a).y;
 
-		if (res < 0) return Right;
-		else if (rex > 0) return Left;
-		else return On;
+			if (along_a2 <= 0 && along_b2 <= 0) return false;
+			if (along_a2 >= limit && along_b2 >= limit) return false;
+			return true;
+		}
+
+		if (perp_a2 <= 0 && perp_b2 <= 0) return false;
+		if (perp_a2 >= 0 && perp_b2 >= 0) return false;
+
+		int32_t perp_a = (a - a2).x * -(b2 - a2).y + (a - a2).y * (b2 - a2).x;
+		int32_t perp_b = (b - a2).x * -(b2 - a2).y + (b - a2).y * (b2 - a2).x;
+
+		assert(!(perp_a == 0 && perp_b == 0)); //should have been handled above
+
+		if (perp_a <= 0 && perp_b <= 0) return false;
+		if (perp_a >= 0 && perp_b >= 0) return false;
+
+		return true;
 	}
+
+	glm::ivec2 rounded_intersection(const glm::ivec2 &a, const glm::ivec2 &b, const glm::ivec2 &a2, const glm::ivec2 &b2) {
+		//NOTE: should call only when actually intersecting.
+		//NOTE2: should ~probably~ use the 2x2 matrix inverse formulation here
+		int32_t perp_a2 = (a2 - a).x * -(b - a).y + (a2 - a).y * (b - a).x;
+		int32_t perp_b2 = (b2 - a).x * -(b - a).y + (b2 - a).y * (b - a).x;
+		assert(perp_a2 != perp_b2);
+
+		double t = double(0 - perp_a2) / double(perp_b2 - perp_a2);
+		return glm::ivec2(
+			std::round((b.x - a.x) * t + double(a.x)),
+			std::round((b.y - a.y) * t + double(a.y))
+		);
+	}
+
 
 	//is point 'pt' in the interior of line segment a-b?
 	bool point_in_segment(const glm::ivec2 &pt, const glm::ivec2 &a, const glm::ivec2 &b) {
@@ -127,7 +166,7 @@ struct EmbeddedPlanarMap {
 
 	bool point_in_segment(const IntegerEmbeddedVertex &pt_, const IntegerEmbeddedVertex &a_, const IntegerEmbeddedVertex &b_) {
 		//work in barycentric coordinates:
-		glm::uvec3 common = common_simplex(pt_.simplex, common_simplex(a_.simplex, b_.simplex));
+		glm::uvec3 common = IntegerEmbeddedVertex::common_simplex(pt_.simplex, IntegerEmbeddedVertex::common_simplex(a_.simplex, b_.simplex));
 
 		glm::ivec2 pt = glm::ivec2(pt_.weights_on(common));
 		glm::ivec2 a = glm::ivec2(a_.weights_on(common));
@@ -148,19 +187,99 @@ struct EmbeddedPlanarMap {
 		vertices.emplace_back(v);
 		verts.emplace_back(idx);
 
-		for (uint32_t e = 0; e < edges.size(); ++e) {
-			const auto &edge = edges[e];
-			if (point_in_segment(v, vertices[edge.first], vertices[edge.second])) {
-				
+		uint32_t old_size = edges.size();
+
+		for (uint32_t e = 0; e < old_size; ++e) {
+			if (point_in_segment(v, vertices[edges[e].first], vertices[edges[e].second])) {
+				auto second_half = edges[e];
+				second_half.first = idx;
+				edges[e].second = idx;
+				edges.emplace_back(second_half);
 			}
 		}
-	std::unordered_map< glm::uvec3, std::vector< std::pair< uint32_t, uint32_t > > > simplex_edges;
-
-
 		return idx;
 	}
-	void add_edge(const EmbeddedVertex &a, const EmbeddedVertex &b, float value) {
-		
+
+	void add_edge(uint32_t ai, uint32_t bi, float value) {
+		assert(ai < vertices.size() && bi < vertices.size());
+
+		if (ai == bi) return;
+
+		const auto &a_ = vertices[ai];
+		const auto &b_ = vertices[bi];
+		glm::uvec3 common = IntegerEmbeddedVertex::common_simplex(a_.simplex, b_.simplex);
+
+		glm::ivec2 a = glm::ivec2(a_.weights_on(common));
+		glm::ivec2 b = glm::ivec2(b_.weights_on(common));
+
+		//split edge at any vertices in simplex:
+		auto &verts = simplex_vertices[common];
+		for (auto vi : verts) {
+			assert(vi < vertices.size());
+			glm::ivec2 v = glm::vec2(vertices[vi].weights_on(common));
+			if (point_in_segment(v, a, b)) {
+				add_edge(ai, vi, value);
+				add_edge(vi, bi, value);
+				return;
+			}
+		}
+
+		//split edge (and add new vertex) if there is an intersection:
+		auto &edges = simplex_edges[common];
+		for (uint32_t e = 0; e < edges.size(); ++e) {
+
+			//if it matches the edge, over-write value & done!
+			if ((edges[e].first == ai && edges[e].second == bi) || (edges[e].first == bi && edges[e].second == ai)) {
+				edges[e].value = value;
+				return;
+			}
+
+			glm::ivec2 a2 = glm::ivec2(vertices[edges[e].first].weights_on(common));
+			glm::ivec2 b2 = glm::ivec2(vertices[edges[e].second].weights_on(common));
+
+			//if endpoints are interior to an existing edge, split existing edge:
+			if (point_in_segment(a, a2, b2)) {
+				auto second_half = edges[e];
+				second_half.first = ai;
+				edges.emplace_back(second_half);
+				edges[e].second = ai;
+				b2 = a;
+			}
+			if (point_in_segment(b, a2, b2)) {
+				auto second_half = edges[e];
+				second_half.first = bi;
+				edges.emplace_back(second_half);
+				edges[e].second = bi;
+				b2 = b;
+			}
+
+			//if edges cross, remove, add intersection, and re-insert:
+			if (segments_intersect(a,b, a2,b2)) {
+				glm::ivec3 pt = glm::ivec3(rounded_intersection(a,b,a2,b2), 0);
+				pt.z = IntegerEmbeddedVertex::WeightSum - pt.x - pt.y;
+				uint32_t pti = add_vertex(IntegerEmbeddedVertex(common, pt));
+
+				float ai2 = edges[e].first;
+				float bi2 = edges[e].second;
+				float value2 = edges[e].value;
+				edges.erase(edges.begin() + e);
+
+				add_edge(ai2, pti, value2);
+				add_edge(pti, bi2, value2);
+				add_edge(ai, pti, value);
+				add_edge(pti, bi, value);
+
+				return;
+			}
+			
+		}
+
+
+	}
+	void add_edge(const ak::EmbeddedVertex &a, const ak::EmbeddedVertex &b, float value) {
+		uint32_t ai = add_vertex(a);
+		uint32_t bi = add_vertex(b);
+		add_edge(ai, bi, value);
 	}
 };
 
@@ -637,9 +756,15 @@ void ak::embed_constraints(
 	std::vector< std::vector< EmbeddedVertex > > embedded_chains;
 
 	for (auto const &cons : constraints) {
+		embedded_chains.emplace_back();
+
 		auto const &path = paths[&cons - &constraints[0]];
 		if (cons.radius == 0.0f) {
 			//add directly to embedded constrained edges.
+			for (auto v : path) {
+				assert(v < model.vertices.size());
+				embedded_chains.back().emplace_back(EmbeddedVertex::on_vertex(v));
+			}
 			break;
 		}
 		//generate distance field from constraint:
@@ -690,11 +815,11 @@ void ak::embed_constraints(
 
 		std::unordered_map< glm::uvec2, EmbeddedVertex > embedded_pts;
 		std::unordered_map< glm::uvec2, glm::vec3 > pts;
-		auto add = [&distances,&verts,&pts](uint32_t a, uint32_t b) {
+		auto add = [&distances,&verts,&pts,&embedded_pts](uint32_t a, uint32_t b) {
 			assert(distances[a] < 0.0f && distances[b] >= 0.0f);
 			float mix = (0.0f - distances[a]) / (distances[b] - distances[a]);
 			pts[glm::uvec2(a,b)] = glm::mix(verts[a], verts[b], mix);
-			embedded_pts[glm::uvec2(a,b)] =
+			embedded_pts[glm::uvec2(a,b)] = EmbeddedVertex::on_edge(a,b,mix);
 			return glm::uvec2(a,b);
 		};
 		std::unordered_map< glm::uvec2, glm::uvec2 > links;
@@ -755,6 +880,12 @@ void ak::embed_constraints(
 				}
 			}
 
+			for (glm::uvec2 e : loop) {
+				auto f = embedded_pts.find(e);
+				assert(f != embedded_pts.end());
+				embedded_chains.back().emplace_back(f->second);
+			}
+
 			if (DEBUG_chain_loops) {
 				auto &DEBUG_chain_loop = (*DEBUG_chain_loops)[&cons - &constraints[0]];
 				for (glm::uvec2 e : loop) {
@@ -765,8 +896,19 @@ void ak::embed_constraints(
 			}
 
 		}
+	}
 
+	//should have a chain per constraint:
+	assert(embedded_chains.size() == constraints.size());
 
+	//embed chains using planar map:
+	EmbeddedPlanarMap epm;
+	for (uint32_t c = 0; c < constraints.size(); ++c) {
+		for (uint32_t i = 0; i + 1 < embedded_chains[c].size(); ++i) {
+			uint32_t a = epm.add_vertex(embedded_chains[c][i]);
+			uint32_t b = epm.add_vertex(embedded_chains[c][i+1]);
+			epm.add_edge(a,b,constraints[c].value);
+		}
 	}
 
 	//std::cout << "Used " << used_edges << " edges." << std::endl; //DEBUG
@@ -777,6 +919,19 @@ void ak::embed_constraints(
 	constrained_model.vertices = verts;
 	constrained_model.triangles = tris;
 
+
+	constrained_values.assign(constrained_model.vertices.size(), std::numeric_limits< float >::quiet_NaN());
+	//Quick hack to test interpolation:
+	uint32_t lowest = 0;
+	uint32_t highest = 0;
+	for (uint32_t i = 0; i < constrained_model.vertices.size(); ++i) {
+		if (constrained_model.vertices[i].z < constrained_model.vertices[lowest].z) lowest = i;
+		if (constrained_model.vertices[i].z > constrained_model.vertices[highest].z) highest = i;
+	}
+	if (!constrained_values.empty()) {
+		constrained_values[lowest] =-1.0f;
+		constrained_values[highest] = 1.0f;
+	}
 
 
 }
