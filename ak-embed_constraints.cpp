@@ -7,17 +7,33 @@
 #include <deque>
 #include <iostream>
 #include <set>
+#include <map>
 #include <unordered_map>
 #include <unordered_set>
 
 
+#define WEIGHT_SUM  (1024U)
 struct IntegerEmbeddedVertex {
 	glm::uvec3 simplex;
 	glm::ivec3 weights;
-	static constexpr const int32_t WeightSum = 1024;
 
 	IntegerEmbeddedVertex(const glm::uvec3 &simplex_, const glm::ivec3 &weights_) : simplex(simplex_), weights(weights_) {
-		assert(weights.x + weights.y + weights.z == WeightSum);
+		assert(weights.x + weights.y + weights.z == WEIGHT_SUM);
+	}
+
+	static IntegerEmbeddedVertex simplify(const IntegerEmbeddedVertex &in) {
+		assert(in.simplex.x < in.simplex.y && in.simplex.y <= in.simplex.z);
+		assert(in.weights.x + in.weights.y + in.weights.z == WEIGHT_SUM);
+		IntegerEmbeddedVertex ret(glm::uvec3(0, -1U, -1U), glm::ivec3(1024, 0,0));
+		uint32_t o = 0;
+		for (uint32_t i = 0; i < 3; ++i) {
+			if (in.weights[i] != 0) {
+				ret.simplex[o] = in.simplex[i];
+				ret.weights[o] = in.weights[i];
+				++o;
+			}
+		}
+		return ret;
 	}
 
 	IntegerEmbeddedVertex(const ak::EmbeddedVertex &src) : simplex(src.simplex) {
@@ -29,12 +45,12 @@ struct IntegerEmbeddedVertex {
 		float xy = x + src.weights.y;
 		float xyz = xy + src.weights.z;
 
-		int32_t ix = std::round(WeightSum * (x / xyz));
-		int32_t ixy = std::round(WeightSum * (xy / xyz));
-		int32_t ixyz = std::round(WeightSum * (xyz / xyz));
+		int32_t ix = std::round(WEIGHT_SUM * (x / xyz));
+		int32_t ixy = std::round(WEIGHT_SUM * (xy / xyz));
+		int32_t ixyz = std::round(WEIGHT_SUM * (xyz / xyz));
 
 		weights = glm::ivec3(ix, ixy - ix, ixyz - ixy);
-		assert(weights.x + weights.y + weights.z == WeightSum);
+		assert(weights.x + weights.y + weights.z == WEIGHT_SUM);
 	};
 
 	bool operator==(const IntegerEmbeddedVertex &o) const {
@@ -53,7 +69,7 @@ struct IntegerEmbeddedVertex {
 			assert(simplex2[o] == simplex[i]);
 			ret[o] = weights[i];
 		}
-		assert(ret.x + ret.y + ret.z == WeightSum);
+		assert(ret.x + ret.y + ret.z == WEIGHT_SUM);
 
 		return ret;
 	}
@@ -176,13 +192,23 @@ struct EmbeddedPlanarMap {
 	}
 
 	
-	uint32_t add_vertex(const IntegerEmbeddedVertex &v) {
+	uint32_t add_vertex(const IntegerEmbeddedVertex &v_) {
+		IntegerEmbeddedVertex v = IntegerEmbeddedVertex::simplify(v_);
+
 		auto &verts = simplex_vertices[v.simplex];
 		auto &edges = simplex_edges[v.simplex];
 
 		for (auto i : verts) {
 			if (vertices[i] == v) return i;
 		}
+		/* //PARANOIA:
+		assert(v.simplex.x < v.simplex.y && v.simplex.y <= v.simplex.z);
+		assert(v.weights.x + v.weights.y + v.weights.z == WEIGHT_SUM);
+		for (const auto &v2 : vertices) {
+			assert(!(v2 == v));
+		}
+		//end PARANOIA*/
+
 		uint32_t idx = vertices.size();
 		vertices.emplace_back(v);
 		verts.emplace_back(idx);
@@ -256,7 +282,7 @@ struct EmbeddedPlanarMap {
 			//if edges cross, remove, add intersection, and re-insert:
 			if (segments_intersect(a,b, a2,b2)) {
 				glm::ivec3 pt = glm::ivec3(rounded_intersection(a,b,a2,b2), 0);
-				pt.z = IntegerEmbeddedVertex::WeightSum - pt.x - pt.y;
+				pt.z = WEIGHT_SUM - pt.x - pt.y;
 				uint32_t pti = add_vertex(IntegerEmbeddedVertex(common, pt));
 
 				float ai2 = edges[e].first;
@@ -273,6 +299,9 @@ struct EmbeddedPlanarMap {
 			}
 			
 		}
+
+		//if got to this point, no intersections:
+		edges.emplace_back(ai, bi, value);
 
 
 	}
@@ -762,10 +791,10 @@ void ak::embed_constraints(
 		if (cons.radius == 0.0f) {
 			//add directly to embedded constrained edges.
 			for (auto v : path) {
-				assert(v < model.vertices.size());
+				assert(v < verts.size());
 				embedded_chains.back().emplace_back(EmbeddedVertex::on_vertex(v));
 			}
-			break;
+			continue;
 		}
 		//generate distance field from constraint:
 		std::vector< std::pair< float, uint32_t > > todo;
@@ -865,11 +894,8 @@ void ak::embed_constraints(
 			while (true) {
 				auto f = links.find(loop.back());
 				if (f == links.end()) break;
-				if (f->second == loop[0]) {
-					loop.emplace_back(f->second);
-					break;
-				}
 				loop.emplace_back(f->second);
+				if (f->second == loop[0]) break;
 			}
 			if (loop[0] != loop.back()) {
 				while (true) {
@@ -903,22 +929,369 @@ void ak::embed_constraints(
 
 	//embed chains using planar map:
 	EmbeddedPlanarMap epm;
+	uint32_t total_chain_edges = 0;
 	for (uint32_t c = 0; c < constraints.size(); ++c) {
+		uint32_t first = 0;
+		uint32_t last = 0;
 		for (uint32_t i = 0; i + 1 < embedded_chains[c].size(); ++i) {
 			uint32_t a = epm.add_vertex(embedded_chains[c][i]);
 			uint32_t b = epm.add_vertex(embedded_chains[c][i+1]);
 			epm.add_edge(a,b,constraints[c].value);
+			++total_chain_edges;
+			if (i == 0) first = a;
+			if (i + 2 == embedded_chains[c].size()) last = b;
 		}
+		if (first != last) std::cout << "NOTE: have open chain." << std::endl;
 	}
+	uint32_t total_simplex_edges = 0;
+	for (const auto &edges : epm.simplex_edges) {
+		total_simplex_edges += edges.second.size();
+	}
+	std::cout << "EPM has " << epm.vertices.size() << " vertices." << std::endl;
+	std::cout << "EPM has " << epm.simplex_vertices.size() << " simplices with vertices." << std::endl;
+	std::cout << "EPM has " << epm.simplex_edges.size() << " simplices with edges (" << total_simplex_edges << " edges from " << total_chain_edges << " chain edges)." << std::endl;
+
+	/*//DEBUG:
+	for (const auto &se : epm.simplex_edges) {
+		assert(se.first.x <= se.first.y && se.first.y <= se.first.z);
+		if (se.first.z != -1U) {
+			std::cout << se.first.x << ", " << se.first.y << ", " << se.first.z << std::endl;
+		}
+	}*/
+
+	{ //Build a mesh that is split at the embedded edges:
+		std::vector< glm::vec3 > split_verts = verts;
+		std::vector< glm::uvec3 > split_tris;
+		std::vector< uint32_t > epm_to_split;
+
+		epm_to_split.reserve(epm.vertices.size());
+		for (uint32_t i = 0; i < epm.vertices.size(); ++i) {
+			const auto &v = epm.vertices[i];
+			assert(v.simplex.x < verts.size());
+			assert(v.weights.x + v.weights.y + v.weights.z == WEIGHT_SUM);
+			if (v.simplex.y == -1U) {
+				assert(v.simplex.z == -1U);
+				epm_to_split.emplace_back(v.simplex.x);
+			} else if (v.simplex.z == -1U) {
+				assert(v.simplex.y < verts.size());
+				assert(v.weights.z == 0);
+				epm_to_split.emplace_back(split_verts.size());
+				split_verts.emplace_back((
+					  verts[v.simplex.x] * float(v.weights.x)
+					+ verts[v.simplex.y] * float(v.weights.y)
+					) / float(WEIGHT_SUM));
+			} else {
+				assert(v.simplex.y < verts.size());
+				assert(v.simplex.z < verts.size());
+				epm_to_split.emplace_back(split_verts.size());
+				split_verts.emplace_back((
+					  verts[v.simplex.x] * float(v.weights.x)
+					+ verts[v.simplex.y] * float(v.weights.y)
+					+ verts[v.simplex.z] * float(v.weights.z)
+					) / float(WEIGHT_SUM));
+			}
+		}
+
+
+		for (const auto &tri : tris) {
+			glm::uvec3 simplex = tri;
+			bool need_flip = false;
+			if (simplex.x > simplex.y) {
+				std::swap(simplex.x, simplex.y);
+				need_flip = !need_flip;
+			}
+			if (simplex.y > simplex.z) {
+				std::swap(simplex.y, simplex.z);
+				need_flip = !need_flip;
+			}
+			if (simplex.x > simplex.y) {
+				std::swap(simplex.x, simplex.y);
+				need_flip = !need_flip;
+			}
+			assert(simplex.x < simplex.y && simplex.y < simplex.z);
+			/*if (!epm.simplex_edges.count(simplex)) {
+				//DEBUG, was: split_tris.emplace_back(tri);
+				continue;
+			}
+			assert(!epm.simplex_edges[simplex].empty());
+			*/
+			std::vector< uint32_t > source_verts; //in split_verts
+			std::vector< glm::ivec2 > coords; //[x,y] in weight space
+			std::unordered_multimap< uint32_t, uint32_t > half_edges; //relative to coords
+
+			std::unordered_map< uint32_t, uint32_t > split_verts_to_coords;
+			auto ref_vert = [&](uint32_t split_vert, const glm::ivec3 &weights_on) -> uint32_t {
+				auto res = split_verts_to_coords.insert(std::make_pair(split_vert, coords.size()));
+				if (res.second) {
+					//std::cout << "Inserting " << split_vert << " / " << weights_on.x << ", " << weights_on.y << ", " << weights_on.z << std::endl; //DEBUG
+					assert(res.first->second == coords.size());
+					coords.emplace_back(weights_on);
+					source_verts.emplace_back(split_vert);
+				}
+				return res.first->second;
+			};
+
+			//add two half-edges for all internal edges:
+			//std::cout << " ---- internal edges ---- " << std::endl; //DEBUG
+			auto f = epm.simplex_edges.find(simplex);
+			if (f != epm.simplex_edges.end()) {
+				for (const auto &edge : f->second) {
+					uint32_t a = ref_vert(epm_to_split[edge.first], epm.vertices[edge.first].weights_on(simplex));
+					uint32_t b = ref_vert(epm_to_split[edge.second], epm.vertices[edge.second].weights_on(simplex));
+					half_edges.insert(std::make_pair(a,b));
+					half_edges.insert(std::make_pair(b,a));
+				}
+			}
+			//std::cout << " ---- sides ---- " << std::endl; //DEBUG
+			//add one half-edge along all sides:
+			auto do_side = [&](uint32_t ifrom, uint32_t ito) {
+				glm::uvec3 edge_simplex(simplex[ifrom], simplex[ito], -1U);
+				if (edge_simplex.x > edge_simplex.y) std::swap(edge_simplex.x, edge_simplex.y);
+				uint32_t from;
+				uint32_t to;
+				{
+					glm::ivec3 from_weights = glm::ivec3(0);
+					from_weights[ifrom] = WEIGHT_SUM;
+					glm::ivec3 to_weights = glm::ivec3(0);
+					to_weights[ito] = WEIGHT_SUM;
+					from = ref_vert(simplex[ifrom], from_weights);
+					to = ref_vert(simplex[ito], to_weights);
+				}
+				
+				std::map< int32_t, uint32_t > weight_to_vert;
+				auto f = epm.simplex_vertices.find(edge_simplex);
+				if (f != epm.simplex_vertices.end()) {
+					for (auto sv : f->second) {
+						glm::ivec3 weights = epm.vertices[sv].weights_on(simplex);
+						auto res = weight_to_vert.insert(std::make_pair(weights[ito], ref_vert(epm_to_split[sv], weights)));
+						assert(res.second);
+					}
+				}
+				weight_to_vert.insert(std::make_pair(0, from));
+				weight_to_vert.insert(std::make_pair(WEIGHT_SUM, to));
+
+				assert(weight_to_vert[0] == from);
+				assert(weight_to_vert[WEIGHT_SUM] == to);
+				auto at = weight_to_vert.begin();
+				uint32_t prev = at->second;
+				++at;
+				for (; at != weight_to_vert.end(); ++at) {
+					half_edges.insert(std::make_pair(prev, at->second));
+					prev = at->second;
+				}
+			};
+			do_side(0,1);
+			do_side(1,2);
+			do_side(2,0);
+
+			/*//DEBUG:
+			std::cout << "---------------\n";
+			for (uint32_t c = 0; c < coords.size(); ++c) {
+				std::cout << "coords[" << c << "] = (" << coords[c].x << ", " << coords[c].y << ")\n";
+			}
+			for (auto e : half_edges) {
+				std::cout << "  " << e.first << " -> " << e.second << "\n";
+			}
+			std::cout.flush();*/
+
+			while (!half_edges.empty()) {
+				std::vector< uint32_t > loop;
+				loop.emplace_back(half_edges.begin()->first);
+				loop.emplace_back(half_edges.begin()->second);
+
+				//std::cout << "Seed: " << loop[0] << " -> " << loop[1] << std::endl; //DEBUG
+				bool had_reflex = false;
+
+				while (true) {
+					const glm::ivec2 &from = coords[loop[loop.size()-2]];
+					const glm::ivec2 &at = coords[loop.back()];
+					//want to find he ccw-most exit, relative to from->at
+					auto r = half_edges.equal_range(loop.back());
+					assert(r.first != r.second); //ran out of edges to make a loop(?!?!)
+					uint32_t best_to = -1U;
+					glm::ivec2 best_d = glm::ivec2(0,0); //best == largest y/x
+					int best_quad = 4;
+					auto best_iter = half_edges.end();
+					for (auto ri = r.first; ri != r.second; ++ri) {
+						uint32_t i = ri->second;
+						const glm::ivec2 &next = coords[i];
+						glm::ivec2 d;
+						d.x = (next - at).x * (at - from).x + (next - at).y * (at - from).y;
+						d.y = (next - at).x *-(at - from).y + (next - at).y * (at - from).x;
+						assert(!(d.x == 0 && d.y == 0));
+						int quad;
+						if (d.x <= 0 && d.y > 0) {
+							quad = 0;
+							d.x = -d.x;
+							std::swap(d.x, d.y);
+						} else if (d.x > 0 && d.y >= 0) {
+							quad = 1;
+						} else if (d.x >= 0 && d.y < 0) {
+							d.y = -d.y;
+							std::swap(d.x, d.y);
+							quad = 2;
+						} else if (d.x < 0 && d.y <= 0) {
+							d.x = -d.x;
+							d.y = -d.y;
+							quad = 3;
+						} else {
+							assert(false);
+						}
+
+						//std::cout << "  " << ri->first << " -> " << ri->second << " quad " << quad << " y/x " << d.y << "/" << d.x << std::endl; //DEBUG
+
+						
+						if (quad < best_quad || (quad == best_quad && uint64_t(d.y) * uint64_t(best_d.x) > uint64_t(best_d.y) * uint64_t(d.x))) {
+							best_to = i;
+							best_quad = quad;
+							best_d = d;
+							best_iter = ri;
+						}
+					}
+					assert(best_to != -1U);
+					if (best_quad >= 2) had_reflex = true;
+					//std::cout << "Best is " << best_iter->first << " to " << best_iter->second << std::endl; //DEBUG
+					if (best_iter->first == loop[0] && best_iter->second == loop[1]) {
+						half_edges.erase(best_iter);
+						break;
+					}
+					half_edges.erase(best_iter);
+					loop.emplace_back(best_to);
+				}
+				//std::cout << "Peeled a loop of " << loop.size() << " verts." << std::endl; //DEBUG
+				assert(loop[0] == loop.back());
+				loop.pop_back();
+				assert(loop.size() >= 3);
+
+				if (had_reflex) {
+					std::cerr << "ERROR: no code for reflex verts in planar map yet." << std::endl;
+				}
+				for (uint32_t i = 1; i + 1 < loop.size(); ++i) {
+					split_tris.emplace_back(source_verts[loop[0]], source_verts[loop[i]], source_verts[loop[i+1]]);
+					if (need_flip) {
+						std::swap(split_tris.back().y, split_tris.back().z);
+					}
+				}
+			}
+		}
+
+		//record constrained edges in terms of split_verts:
+		std::unordered_map< glm::uvec2, float > constrained_edges;
+		std::vector< float > split_values(split_verts.size(), std::numeric_limits< float >::quiet_NaN());
+		for (const auto &se : epm.simplex_edges) {
+			for (auto const &e : se.second) {
+				glm::uvec2 ab = glm::uvec2(epm_to_split[e.first], epm_to_split[e.second]);
+				if (ab.x > ab.y) std::swap(ab.x, ab.y);
+				constrained_edges.insert(std::make_pair(ab, e.value));
+				//also grab vertex values:
+				split_values[epm_to_split[e.first]] = e.value;
+				split_values[epm_to_split[e.second]] = e.value;
+			}
+		}
+		std::cout << constrained_edges.size() << " constrained edges." << std::endl;
+
+		
+		std::vector< uint32_t > tri_component(split_tris.size(), -1U);
+		std::vector< bool > component_keep;
+		{ //mark connected components + delete the "wrong" ones
+			std::unordered_map< glm::uvec2, uint32_t > over;
+			for (const auto &tri : split_tris) {
+				uint32_t ti = &tri - &split_tris[0];
+				auto res = over.insert(std::make_pair(glm::uvec2(tri.x, tri.y), ti));
+				assert(res.second);
+				res = over.insert(std::make_pair(glm::uvec2(tri.y, tri.z), ti));
+				assert(res.second);
+				res = over.insert(std::make_pair(glm::uvec2(tri.z, tri.x), ti));
+				assert(res.second);
+			}
+			for (uint32_t seed = 0; seed < split_tris.size(); ++seed) {
+				if (tri_component[seed] != -1U) continue;
+				//std::cout << "Doing CC with seed " << seed << std::endl; //DEBUG
+				uint32_t component = component_keep.size();
+				tri_component[seed] = component;
+				std::set< float > values;
+				std::vector< uint32_t > todo;
+				todo.emplace_back(seed);
+				auto do_edge = [&](uint32_t a, uint32_t b) {
+					{ //if edge is constrained, don't traverse over:
+						glm::uvec2 e(a,b);
+						if (e.x > e.y) std::swap(e.x,e.y);
+						auto v = constrained_edges.find(e);
+						if (v != constrained_edges.end()) {
+							values.insert(v->second);
+							return;
+						}
+					}
+					//otherwise, traverse over:
+					auto f = over.find(glm::uvec2(b,a));
+					if (f != over.end()) {
+						if (tri_component[f->second] != component) {
+							assert(tri_component[f->second] == -1U);
+							tri_component[f->second] = component;
+							todo.emplace_back(f->second);
+						}
+					}
+				};
+				while (!todo.empty()) {
+					uint32_t at = todo.back();
+					todo.pop_back();
+					assert(tri_component[at] == component);
+					do_edge(split_tris[at].x, split_tris[at].y);
+					do_edge(split_tris[at].y, split_tris[at].z);
+					do_edge(split_tris[at].z, split_tris[at].x);
+				}
+				component_keep.emplace_back(values.size() > 1);
+			}
+			std::cout << "Have " << component_keep.size() << " connected components." << std::endl;
+		}
+
+
+		//remove any split_verts that aren't used:
+		std::vector< glm::vec3 > compressed_verts;
+		std::vector< float > compressed_values;
+		std::vector< glm::uvec3 > compressed_tris;
+		for (uint32_t ti = 0; ti < split_tris.size(); ++ti) {
+			if (component_keep[tri_component[ti]]) {
+				compressed_tris.emplace_back(split_tris[ti]);
+			}
+		}
+		compressed_verts.reserve(split_verts.size());
+		std::vector< uint32_t > to_compressed(split_verts.size(), -1U);
+		auto add_vert = [&](uint32_t vi) {
+			if (to_compressed[vi] == -1U) {
+				to_compressed[vi] = compressed_verts.size();
+				compressed_verts.emplace_back(split_verts[vi]);
+				compressed_values.emplace_back(split_values[vi]);
+			}
+			return to_compressed[vi];
+		};
+		for (auto &tri : compressed_tris) {
+			tri.x = add_vert(tri.x);
+			tri.y = add_vert(tri.y);
+			tri.z = add_vert(tri.z);
+		}
+
+		std::cout << "Went from " << tris.size() << " to (via split) " << split_tris.size() << " to (via discard) " << compressed_tris.size() << " triangles." << std::endl; //DEBUG
+
+		constrained_model.vertices = compressed_verts;
+		constrained_model.triangles = compressed_tris;
+
+		constrained_values = compressed_values;
+
+	}
+
 
 	//std::cout << "Used " << used_edges << " edges." << std::endl; //DEBUG
 
 	//TODO: split at distance field level set
 	//TODO: constrain values at distance field border
 
+/*
 	constrained_model.vertices = verts;
 	constrained_model.triangles = tris;
+	*/
 
+/*
 
 	constrained_values.assign(constrained_model.vertices.size(), std::numeric_limits< float >::quiet_NaN());
 	//Quick hack to test interpolation:
@@ -932,6 +1305,6 @@ void ak::embed_constraints(
 		constrained_values[lowest] =-1.0f;
 		constrained_values[highest] = 1.0f;
 	}
-
+*/
 
 }

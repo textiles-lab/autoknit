@@ -492,7 +492,7 @@ void Interface::draw() {
 	}
 
 
-	{ //draw marker spheres:
+	if (show == ShowModel) { //draw marker spheres:
 		glUseProgram(marker_draw->program);
 		glBindVertexArray(sphere_tristrip_for_marker_draw->array);
 
@@ -562,7 +562,7 @@ void Interface::draw() {
 	}
 
 	//draw constraint paths:
-	if (DEBUG_constraint_paths_tristrip.count) {
+	if (DEBUG_constraint_paths_tristrip.count && (show == ShowModel)) {
 
 		//Position-to-clip matrix:
 		glm::mat4 p2c = camera.mvp();
@@ -592,7 +592,7 @@ void Interface::draw() {
 	}
 
 	//draw constraint loops:
-	if (DEBUG_constraint_loops_tristrip.count) {
+	if (DEBUG_constraint_loops_tristrip.count && (show == ShowModel)) {
 
 		//Position-to-clip matrix:
 		glm::mat4 p2c = camera.mvp();
