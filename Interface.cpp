@@ -143,9 +143,9 @@ kit::Load< GLProgram > textured_draw(kit::LoadTagDefault, [](){
 		"}\n"
 	);
 
-	model_draw_p2c = ret->getUniformLocation("p2c", GLProgram::MissingIsError);
-	model_draw_p2l = ret->getUniformLocation("p2l", GLProgram::MissingIsWarning);
-	model_draw_n2l = ret->getUniformLocation("n2l", GLProgram::MissingIsWarning);
+	textured_draw_p2c = ret->getUniformLocation("p2c", GLProgram::MissingIsError);
+	textured_draw_p2l = ret->getUniformLocation("p2l", GLProgram::MissingIsWarning);
+	textured_draw_n2l = ret->getUniformLocation("n2l", GLProgram::MissingIsWarning);
 
 	glUseProgram(ret->program);
 	glUniform1i(ret->getUniformLocation("tex", GLProgram::MissingIsWarning), 0);
@@ -370,6 +370,8 @@ kit::Load< GLVertexArray > empty_vertex_array(kit::LoadTagDefault);
 
 
 Interface::Interface() {
+	std::cout << "Setting up various buffer bindings." << std::endl; //DEBUG
+
 	model_triangles_for_model_draw = GLVertexArray::make_binding(model_draw->program, {
 		{model_draw->getAttribLocation("Position", GLProgram::MissingIsError), model_triangles[0]},
 		{model_draw->getAttribLocation("Normal", GLProgram::MissingIsWarning), model_triangles[1]},
@@ -395,6 +397,8 @@ Interface::Interface() {
 		{textured_draw->getAttribLocation("ID", GLProgram::MissingIsWarning), constrained_model_triangles[2]},
 		{textured_draw->getAttribLocation("TexCoord", GLProgram::MissingIsWarning), constrained_model_triangles[3]}
 	});
+
+	GL_ERRORS();
 
 
 }
@@ -442,8 +446,7 @@ void Interface::draw() {
 
 	glEnable(GL_DEPTH_TEST);
 
-
-	if (show == ShowModel) { //draw the model:
+	if (show == ShowModel && model_triangles.count) { //draw the model:
 		glUseProgram(model_draw->program);
 
 		//Position-to-clip matrix:
@@ -476,9 +479,9 @@ void Interface::draw() {
 		//Normal-to-light matrix:
 		glm::mat3 n2l = glm::inverse(glm::transpose(glm::mat3(p2l)));
 
-		glUniformMatrix4fv(model_draw_p2c, 1, GL_FALSE, glm::value_ptr(p2c));
-		glUniformMatrix4x3fv(model_draw_p2l, 1, GL_FALSE, glm::value_ptr(p2l));
-		glUniformMatrix3fv(model_draw_n2l, 1, GL_FALSE, glm::value_ptr(n2l));
+		glUniformMatrix4fv(textured_draw_p2c, 1, GL_FALSE, glm::value_ptr(p2c));
+		glUniformMatrix4x3fv(textured_draw_p2l, 1, GL_FALSE, glm::value_ptr(p2l));
+		glUniformMatrix3fv(textured_draw_n2l, 1, GL_FALSE, glm::value_ptr(n2l));
 
 		glBindVertexArray(constrained_model_triangles_for_textured_draw.array);
 		glBindTexture(GL_TEXTURE_2D, time_tex->texture);
@@ -620,7 +623,6 @@ void Interface::draw() {
 		glBindVertexArray(0);
 		glUseProgram(0);
 	}
-
 
 	GL_ERRORS();
 
@@ -945,6 +947,8 @@ void Interface::update_model_triangles() {
 	}
 
 	model_triangles.set(attribs, GL_STATIC_DRAW);
+	std::cout << "Set model_triangles to have " << model_triangles.count << " vertices." << std::endl; //DEBUG
+	GL_ERRORS();
 }
 
 void Interface::set_constraints(std::vector< ak::Constraint > const &new_constraints) {
@@ -957,11 +961,24 @@ void Interface::update_constraints() {
 	constraints_dirty = false;
 	save_constraints();
 
+	constrained_model.clear();
+	constrained_values.clear();
+	DEBUG_constraint_paths.clear();
+	DEBUG_constraint_loops.clear();
+
+	interpolated_values.clear();
+
 	ak::embed_constraints(model, constraints, &constrained_model, &constrained_values, &DEBUG_constraint_paths, &DEBUG_constraint_loops);
+
 	update_DEBUG_constraint_paths_tristrip();
 	update_DEBUG_constraint_loops_tristrip();
 
-	ak::interpolate_values(constrained_model, constrained_values, &interpolated_values);
+	try {
+		ak::interpolate_values(constrained_model, constrained_values, &interpolated_values);
+	} catch (std::exception &e) {
+		std::cout << "ERROR during interpoation: " << e.what() << std::endl;
+		interpolated_values.clear();
+	}
 
 	update_constrained_model_triangles();
 }
@@ -1103,11 +1120,16 @@ void Interface::update_constrained_model_triangles() {
 	}
 
 	std::vector< glm::vec2 > texcoords;
-	texcoords.reserve(interpolated_values.size());
-	for (auto v : interpolated_values) {
-		texcoords.emplace_back(
-			(((v - min) / (max - min)) * (TimeTexSize-1) + 0.5f) / float(TimeTexSize),
-			0.5f);
+	if (interpolated_values.empty()) {
+		texcoords.assign(constrained_model.vertices.size(), glm::vec2(0.5f, 0.5f));
+	} else {
+		assert(interpolated_values.size() == constrained_model.vertices.size());
+		texcoords.reserve(interpolated_values.size());
+		for (auto v : interpolated_values) {
+			texcoords.emplace_back(
+				(((v - min) / (max - min)) * (TimeTexSize-1) + 0.5f) / float(TimeTexSize),
+				0.5f);
+		}
 	}
 
 	for (auto const &t : constrained_model.triangles) {

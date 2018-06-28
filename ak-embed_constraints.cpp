@@ -336,6 +336,13 @@ void ak::embed_constraints(
 		*DEBUG_chain_loops = std::vector< std::vector< glm::vec3 > >(constraints.size());
 	}
 
+	//No constraints => return input model:
+	if (constraints.empty()) {
+		constrained_model = model;
+		constrained_values.assign(constrained_model.vertices.size(), std::numeric_limits< float >::quiet_NaN());
+		return;
+	}
+
 	std::vector< std::vector< std::pair< uint32_t, float > > > adj(model.vertices.size());
 	{ //extract edges from model:
 		std::set< std::pair< uint32_t, uint32_t > > edges;

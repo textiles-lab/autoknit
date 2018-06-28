@@ -14,6 +14,7 @@ namespace ak {
 struct Model {
 	std::vector< glm::vec3 > vertices;
 	std::vector< glm::uvec3 > triangles;
+	void clear() { triangles.clear(); vertices.clear(); }
 };
 
 //Load an object file into a Model structure.
@@ -46,6 +47,7 @@ void save_constraints(
 );
 
 //Given list of constraints, properly trim and constrain a model:
+//(in the case of no constraints, returns the input model with all-NaN constrained values)
 void embed_constraints(
 	Model const &model,
 	std::vector< Constraint > const &constraints,

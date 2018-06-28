@@ -30,16 +30,26 @@ struct TaggedArgument {
 				*value = arg;
 				return true;
 			},
-			tag_ + ":<string> (default: \"" + *value + "\") " + help_ ) {
+			tag_ + ":<string> " + (*value != "" ? "default: \"" + *value + "\") " : "") + help_
+		) {
 	}
 };
 
 struct TaggedArguments : std::vector< TaggedArgument > {
 	bool parse(int argc, char **argv) {
+		std::vector< std::string > args;
+		for (int i = 0; i < argc; ++i) {
+			args.emplace_back(argv[i]);
+		}
+		return parse(args);
+	}
+	bool parse(const std::vector< std::string > &args) {
 		bool success = true;
-		for (int i = 1; i < argc; ++i) {
+		for (const std::string &arg : args) {
+			if (&arg == &args[0]) continue;
+
 			std::string tag = "";
-			std::string value = argv[i];
+			std::string value = arg;
 			auto idx = value.find(':');
 			if (idx != std::string::npos) {
 				tag = value.substr(0, idx);
@@ -53,10 +63,10 @@ struct TaggedArguments : std::vector< TaggedArgument > {
 				}
 			}
 			if (!found) {
-				std::cerr << "ERROR: No tag match for argument '" << argv[i] << "'." << std::endl;
+				std::cerr << "ERROR: No tag match for argument '" << arg << "'." << std::endl;
 				success = false;
 			} else if (!found->parse(value)) {
-				std::cerr << "ERROR: Failed to parse argument '" << argv[i] << "'." << std::endl;
+				std::cerr << "ERROR: Failed to parse argument '" << arg << "'." << std::endl;
 				success = false;
 			}
 		}

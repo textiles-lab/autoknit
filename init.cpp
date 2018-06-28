@@ -1,5 +1,6 @@
 
 #include "Interface.hpp"
+#include "TaggedArguments.hpp"
 
 #include <kit/kit.hpp>
 #include <kit/Load.hpp>
@@ -17,34 +18,22 @@ std::shared_ptr< kit::Mode > kit_mode() {
 	std::string obj_file = "";
 	std::string load_constraints_file = "";
 	std::string save_constraints_file = "";
-	for (auto const &arg : kit::args) {
-		if (&arg == &kit::args[0]) continue;
-
-		std::string tag = arg;
-		std::string value = "";
-		for (uint32_t i = 0; i < tag.size(); ++i) {
-			if (tag[i] == ':') {
-				value = tag.substr(i+1);
-				tag = tag.substr(0,i);
-				break;
-			}
+	{
+		TaggedArguments args;
+		args.emplace_back("obj", &obj_file, "input obj file (required)");
+		args.emplace_back("load-constraints", &load_constraints_file, "file to load time constraints from");
+		args.emplace_back("save-constraints", &save_constraints_file, "file to save time constraints to");
+		bool usage = !args.parse(kit::args);
+		if (!usage && obj_file == "") {
+			std::cerr << "ERROR: 'obj:' argument is required." << std::endl;
+			usage = true;
 		}
-		if (tag == "obj") {
-			obj_file = value;
-		} else if (tag == "load-constraints") {
-			load_constraints_file = value;
-		} else if (tag == "save-constraints") {
-			save_constraints_file = value;
-		} else {
-			std::cerr << "Unrecognized tag:value argument pair '" << tag << ':' << value << "'." << std::endl;
+		if (usage) {
+			std::cerr << "Usage:\n\t./interface [tag:value] [...]\n" << args.help_string() << std::endl;
 			return nullptr;
 		}
 	}
 
-	if (obj_file == "") {
-		std::cerr << "Please pass an obj:file.obj parameter." << std::endl;
-		return nullptr;
-	}
 	ak::Model model;
 	ak::load_obj(obj_file, &model);
 
