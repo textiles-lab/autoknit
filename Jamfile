@@ -26,8 +26,10 @@ NAMES =
 	;
 
 AUTOKNIT_NAMES =
-	init
+	ak-find_first_active_chains
+	ak-sample_chain
 	Interface
+	init
 	load_obj
 	ak-load_constraints
 	ak-embed_constraints

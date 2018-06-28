@@ -135,6 +135,11 @@ struct Interface : public kit::Mode {
 	//interpolation (also computed by update_constraints):
 	std::vector< float > interpolated_values;
 
+	//peeling information:
+	void start_peeling();
+	std::vector< std::vector< ak::EmbeddedVertex > > active_chains;
+	std::vector< std::vector< ak::Flag > > active_flags;
+
 
 	std::string save_constraints_file = ""; //if not "", will save constraints to this file after every change
 	void save_constraints();
@@ -154,6 +159,11 @@ struct Interface : public kit::Mode {
 	//constrained model buffer: position, normal, id, texcoord
 	GLAttribBuffer< glm::vec3, glm::vec3, glm::u8vec4, glm::vec2 > constrained_model_triangles;
 	GLVertexArray constrained_model_triangles_for_textured_draw;
+
+	void update_active_chains_tristrip();
+	//position, normal, color:
+	GLAttribBuffer< glm::vec3, glm::vec3, glm::u8vec4 > active_chains_tristrip;
+	GLVertexArray active_chains_tristrip_for_path_draw;
 
 	//place camera to view whole model:
 	void reset_camera();

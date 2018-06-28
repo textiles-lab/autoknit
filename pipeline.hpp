@@ -82,9 +82,20 @@ struct EmbeddedVertex {
 		}
 		return EmbeddedVertex(glm::uvec3(a, b, -1U), glm::vec3(1.0f - mix, mix, 0.0f));
 	}
+
+	template< typename T >
+	T interpolate(std::vector< T > const &values) const {
+		T ret = values[simplex.x] * weights.x;
+		if (simplex.y != -1U) ret += values[simplex.y] * weights.y;
+		if (simplex.z != -1U) ret += values[simplex.z] * weights.z;
+		return ret;
+	}
 };
 
 //NOTE: chains represented as [a,b,c,d,a] if a loop, [a,b,c,d] if a chain. Always represented in CCW order.
+
+//an active chain is a list of embedded vertices on the mesh. If it is a loop, the first and last vertex are the same.
+// active chains are accompanied by flags for each vertex, indicating whether that vertex has been selected to be a stitch.
 
 enum Flag : int8_t {
 	FlagDiscard = -1,
@@ -93,16 +104,24 @@ enum Flag : int8_t {
 	FlagLinkAny  = 2,
 };
 
+//helper used by the find_first and peel methods to sample chain at sub-stitch length scale:
+void sample_chain(
+	Model const &model, //in: model over which chain is defined
+	std::vector< EmbeddedVertex > const &chain, //in: chain to be sampled
+	std::vector< EmbeddedVertex > *sampled_chain, //out: sub-sampled chain
+	std::vector< Flag > *sampled_flags //out: flags (possibly with linkNone on points needed in chain for consistency but not sampled?)
+);
+
+//The first active chains are along boundaries that are at minimums:
 void find_first_active_chains(
-	std::vector< glm::uvec3 > const &triangles, //in: list of model triangles
+	Model const &model, //in: model
 	std::vector< float > const &times,          //in: time field (times @ vertices)
 	std::vector< std::vector< EmbeddedVertex > > *active_chains, //out: all mesh boundaries that contain a minimum
 	std::vector< std::vector< Flag > > *active_flags //out: all mesh boundaries that contain a minimum
 );
 
 void peel_chains(
-	std::vector< glm::vec3 > const &vertices,   //in: list of model vertices
-	std::vector< glm::uvec3 > const &triangles, //in: list of model triangles
+	Model const &model, //in: model
 	std::vector< float > const &times,          //in: time field (times @ vertices)
 	std::vector< std::vector< EmbeddedVertex > > const &active_chains, //in: current active chains
 	std::vector< std::vector< EmbeddedVertex > > *next_chains //out: next chains (may be different size than active_chains)

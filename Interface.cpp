@@ -398,6 +398,13 @@ Interface::Interface() {
 		{textured_draw->getAttribLocation("TexCoord", GLProgram::MissingIsWarning), constrained_model_triangles[3]}
 	});
 
+
+	active_chains_tristrip_for_path_draw = GLVertexArray::make_binding(path_draw->program, {
+		{path_draw->getAttribLocation("Position", GLProgram::MissingIsError), active_chains_tristrip[0]},
+		{path_draw->getAttribLocation("Normal", GLProgram::MissingIsWarning), active_chains_tristrip[1]},
+		{path_draw->getAttribLocation("Color", GLProgram::MissingIsWarning), active_chains_tristrip[2]}
+	});
+
 	GL_ERRORS();
 
 
@@ -624,6 +631,36 @@ void Interface::draw() {
 		glUseProgram(0);
 	}
 
+	//draw active chains (peeling):
+	if (active_chains_tristrip.count && (show == ShowConstrainedModel)) {
+
+		//Position-to-clip matrix:
+		glm::mat4 p2c = camera.mvp();
+		//Position-to-light matrix:
+		glm::mat4x3 p2l = camera.mv();
+		//Normal-to-light matrix:
+		glm::mat3 n2l = glm::inverse(glm::transpose(glm::mat3(p2l)));
+
+		glUseProgram(path_draw->program);
+		glBindVertexArray(active_chains_tristrip_for_path_draw.array);
+
+		glUniformMatrix4fv(path_draw_p2c, 1, GL_FALSE, glm::value_ptr(p2c));
+		glUniformMatrix4x3fv(path_draw_p2l, 1, GL_FALSE, glm::value_ptr(p2l));
+		glUniformMatrix3fv(path_draw_n2l, 1, GL_FALSE, glm::value_ptr(n2l));
+
+		glUniform4f(path_draw_id, 0 / 255.0f, 0 / 255.0f, 0 / 255.0f, 0 / 255.0f);
+
+		//don't draw into ID array:
+		glColorMaski(1, GL_FALSE, GL_FALSE, GL_FALSE, GL_FALSE);
+
+		glDrawArrays(GL_TRIANGLE_STRIP, 0, active_chains_tristrip.count);
+
+		glColorMaski(1, GL_TRUE, GL_TRUE, GL_TRUE, GL_TRUE);
+
+		glBindVertexArray(0);
+		glUseProgram(0);
+	}
+
 	GL_ERRORS();
 
 	//---------------------------------------------------
@@ -737,6 +774,8 @@ void Interface::handle_event(SDL_Event const &evt) {
 		if (evt.key.keysym.scancode == SDL_SCANCODE_S) {
 			if (show == ShowModel) show = ShowConstrainedModel;
 			else if (show == ShowConstrainedModel) show = ShowModel;
+		} else if (evt.key.keysym.scancode == SDL_SCANCODE_P) {
+			start_peeling();
 		} else if (evt.key.keysym.scancode == SDL_SCANCODE_C) {
 			if (hovered.cons < constraints.size()) {
 				if (drag == DragNone) {
@@ -988,10 +1027,23 @@ void Interface::save_constraints() {
 	ak::save_constraints(model, constraints, save_constraints_file);
 }
 
-void Interface::update_DEBUG_constraint_paths_tristrip() {
-	assert(DEBUG_constraint_paths.size() == constraints.size());
+void Interface::start_peeling() {
+	active_chains.clear();
+	active_flags.clear();
 
-	std::vector< GLAttribBuffer< glm::vec3, glm::vec3, glm::u8vec4 >::Vertex > attribs;
+	if (constrained_values.empty()) {
+		std::cerr << "WARNING: no constrained values to start peeling." << std::endl;
+	} else {
+		ak::find_first_active_chains(constrained_model, interpolated_values, &active_chains, &active_flags);
+	}
+
+	update_active_chains_tristrip();
+}
+
+static void make_tube(
+	std::vector< GLAttribBuffer< glm::vec3, glm::vec3, glm::u8vec4 >::Vertex > *attribs,
+	glm::vec3 const &a, glm::vec3 const &b, float r, glm::u8vec4 const &color ) {
+	assert(attribs);
 
 	static std::vector< glm::vec2 > circle = [](){
 		const constexpr uint32_t Angles = 16;
@@ -1003,6 +1055,34 @@ void Interface::update_DEBUG_constraint_paths_tristrip() {
 		}
 		return ret;
 	}();
+
+	glm::vec3 along = glm::normalize(b-a);
+	glm::vec3 p1,p2;
+	if (std::abs(along.x) <= std::abs(along.y) && std::abs(along.x) <= std::abs(along.z)) {
+		p1 = glm::vec3(1.0f, 0.0f, 0.0f);
+	} else if (std::abs(along.y) <= std::abs(along.z)) {
+		p1 = glm::vec3(0.0f, 1.0f, 0.0f);
+	} else {
+		p1 = glm::vec3(0.0f, 0.0f, 1.0f);
+	}
+	p1 = glm::normalize(p1 - glm::dot(along, p1) * along);
+	p2 = glm::cross(along, p1);
+	glm::mat2x3 xy = glm::mat2x3(p1, p2);
+
+	attribs->emplace_back(a + xy * (r * circle.back()), xy * circle.back(), color);
+	attribs->emplace_back(attribs->back());
+	attribs->emplace_back(b + xy * (r * circle.back()), xy * circle.back(), color);
+	for (auto const &c : circle) {
+		attribs->emplace_back(a + xy * (r * c), xy * c, color);
+		attribs->emplace_back(b + xy * (r * c), xy * c, color);
+	}
+	attribs->emplace_back(attribs->back());
+}
+
+void Interface::update_DEBUG_constraint_paths_tristrip() {
+	assert(DEBUG_constraint_paths.size() == constraints.size());
+
+	std::vector< GLAttribBuffer< glm::vec3, glm::vec3, glm::u8vec4 >::Vertex > attribs;
 
 	float min_time = -1.0f;
 	float max_time = 1.0f;
@@ -1018,29 +1098,8 @@ void Interface::update_DEBUG_constraint_paths_tristrip() {
 		for (uint32_t pi = 0; pi + 1 < path.size(); ++pi) {
 			glm::vec3 a = path[pi];
 			glm::vec3 b = path[pi+1];
-			glm::vec3 along = glm::normalize(b-a);
-			glm::vec3 p1,p2;
-			if (std::abs(along.x) <= std::abs(along.y) && std::abs(along.x) <= std::abs(along.z)) {
-				p1 = glm::vec3(1.0f, 0.0f, 0.0f);
-			} else if (std::abs(along.y) <= std::abs(along.z)) {
-				p1 = glm::vec3(0.0f, 1.0f, 0.0f);
-			} else {
-				p1 = glm::vec3(0.0f, 0.0f, 1.0f);
-			}
-			p1 = glm::normalize(p1 - glm::dot(along, p1) * along);
-			p2 = glm::cross(along, p1);
-			glm::mat2x3 xy = glm::mat2x3(p1, p2);
-
 			constexpr const float r = 0.02f;
-
-			attribs.emplace_back(a + xy * (r * circle.back()), xy * circle.back(), color8);
-			attribs.emplace_back(attribs.back());
-			attribs.emplace_back(b + xy * (r * circle.back()), xy * circle.back(), color8);
-			for (auto const &c : circle) {
-				attribs.emplace_back(a + xy * (r * c), xy * c, color8);
-				attribs.emplace_back(b + xy * (r * c), xy * c, color8);
-			}
-			attribs.emplace_back(attribs.back());
+			make_tube(&attribs, a, b, r, color8);
 		}
 	}
 
@@ -1051,17 +1110,6 @@ void Interface::update_DEBUG_constraint_loops_tristrip() {
 	assert(DEBUG_constraint_loops.size() == constraints.size());
 
 	std::vector< GLAttribBuffer< glm::vec3, glm::vec3, glm::u8vec4 >::Vertex > attribs;
-
-	static std::vector< glm::vec2 > circle = [](){
-		const constexpr uint32_t Angles = 16;
-		std::vector< glm::vec2 > ret;
-		ret.reserve(Angles);
-		for (uint32_t a = 0; a < Angles; ++a) {
-			float ang = a / float(Angles) * 2.0f * float(M_PI);
-			ret.emplace_back(std::cos(ang), std::sin(ang));
-		}
-		return ret;
-	}();
 
 	float min_time = -1.0f;
 	float max_time = 1.0f;
@@ -1077,29 +1125,8 @@ void Interface::update_DEBUG_constraint_loops_tristrip() {
 		for (uint32_t pi = 0; pi + 1 < path.size(); ++pi) {
 			glm::vec3 a = path[pi];
 			glm::vec3 b = path[pi+1];
-			glm::vec3 along = glm::normalize(b-a);
-			glm::vec3 p1,p2;
-			if (std::abs(along.x) <= std::abs(along.y) && std::abs(along.x) <= std::abs(along.z)) {
-				p1 = glm::vec3(1.0f, 0.0f, 0.0f);
-			} else if (std::abs(along.y) <= std::abs(along.z)) {
-				p1 = glm::vec3(0.0f, 1.0f, 0.0f);
-			} else {
-				p1 = glm::vec3(0.0f, 0.0f, 1.0f);
-			}
-			p1 = glm::normalize(p1 - glm::dot(along, p1) * along);
-			p2 = glm::cross(along, p1);
-			glm::mat2x3 xy = glm::mat2x3(p1, p2);
-
 			constexpr const float r = 0.01f;
-
-			attribs.emplace_back(a + xy * (r * circle.back()), xy * circle.back(), color8);
-			attribs.emplace_back(attribs.back());
-			attribs.emplace_back(b + xy * (r * circle.back()), xy * circle.back(), color8);
-			for (auto const &c : circle) {
-				attribs.emplace_back(a + xy * (r * c), xy * c, color8);
-				attribs.emplace_back(b + xy * (r * c), xy * c, color8);
-			}
-			attribs.emplace_back(attribs.back());
+			make_tube(&attribs, a, b, r, color8);
 		}
 	}
 
@@ -1154,6 +1181,25 @@ void Interface::update_constrained_model_triangles() {
 	}
 
 	constrained_model_triangles.set(attribs, GL_STATIC_DRAW);
+}
+
+
+void Interface::update_active_chains_tristrip() {
+	std::vector< GLAttribBuffer< glm::vec3, glm::vec3, glm::u8vec4 >::Vertex > attribs;
+
+	for (auto const &chain : active_chains) {
+		glm::u8vec4 color8 = glm::u8vec4(0xff, 0x00, 0xf8, 0xff);
+		for (uint32_t pi = 0; pi + 1 < chain.size(); ++pi) {
+			glm::vec3 a = chain[pi].interpolate(constrained_model.vertices);
+			glm::vec3 b = chain[pi+1].interpolate(constrained_model.vertices);
+			constexpr const float r = 0.01f;
+
+			make_tube(&attribs, a, b, r, color8);
+		}
+	}
+
+	active_chains_tristrip.set(attribs, GL_STATIC_DRAW);
+	std::cout << "Active chains tristrip includes " << active_chains_tristrip.count << " vertices." << std::endl;
 }
 
 
