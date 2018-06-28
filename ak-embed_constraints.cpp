@@ -408,6 +408,8 @@ void ak::embed_constraints(
 	const float MaxEdgeLength2 = MaxEdgeLength * MaxEdgeLength;
 	constexpr const float MinEdgeRatio2 = MinEdgeRatio * MinEdgeRatio;
 
+	std::cout << "Max edge length: " << MaxEdgeLength << " model units." << std::endl;
+
 	std::vector< glm::vec3 > verts = model.vertices;
 	std::vector< glm::uvec3 > tris = model.triangles;
 

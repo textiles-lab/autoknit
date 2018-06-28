@@ -18,11 +18,15 @@ std::shared_ptr< kit::Mode > kit_mode() {
 	std::string obj_file = "";
 	std::string load_constraints_file = "";
 	std::string save_constraints_file = "";
+	ak::Parameters parameters;
 	{
 		TaggedArguments args;
 		args.emplace_back("obj", &obj_file, "input obj file (required)");
+		args.emplace_back("obj-scale", &parameters.model_units_mm, "length of one unit in obj file (mm)");
 		args.emplace_back("load-constraints", &load_constraints_file, "file to load time constraints from");
 		args.emplace_back("save-constraints", &save_constraints_file, "file to save time constraints to");
+		args.emplace_back("stitch-width", &parameters.stitch_width_mm, "stitch width (mm)");
+		args.emplace_back("stitch-height", &parameters.stitch_height_mm, "stitch height (mm)");
 		bool usage = !args.parse(kit::args);
 		if (!usage && obj_file == "") {
 			std::cerr << "ERROR: 'obj:' argument is required." << std::endl;
@@ -48,6 +52,8 @@ std::shared_ptr< kit::Mode > kit_mode() {
 	}
 
 	std::shared_ptr< Interface > interface = std::make_shared< Interface >();
+
+	interface->parameters = parameters;
 
 	interface->save_constraints_file = save_constraints_file;
 
