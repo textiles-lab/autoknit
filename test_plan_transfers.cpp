@@ -645,7 +645,7 @@ bool test_plan_transfers(std::string label) {
 		}
 
 		//pick random offsets for beds:
-		auto assign_random_offsets = [&constraints,&slack](std::vector< BedNeedle > &ccw, int32_t max_racking) {
+		auto assign_random_offsets = [&slack](std::vector< BedNeedle > &ccw, int32_t max_racking) {
 			assert(ccw.size() == slack.size());
 
 			int32_t front_min = std::numeric_limits< int32_t >::max();

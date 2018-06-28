@@ -165,7 +165,7 @@ void run_transfers(
 			}
 		};
 
-		auto from_bn = [&to_bottom_bed,&to_top_bed](std::pair< BedNeedle::Bed, NeedleRollGoal > const &bs) -> BedNeedle {
+		auto from_bn = [](std::pair< BedNeedle::Bed, NeedleRollGoal > const &bs) -> BedNeedle {
 			return BedNeedle(bs.first, bs.second.needle);
 		};
 		auto to_bn = [&to_bottom_bed,&to_top_bed](std::pair< BedNeedle::Bed, NeedleRollGoal > const &bs) -> BedNeedle {
