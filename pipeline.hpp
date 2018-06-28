@@ -10,7 +10,6 @@
 namespace ak {
 
 // Input model: vertices and triangles, loaded from an .obj file:
-
 struct Model {
 	std::vector< glm::vec3 > vertices;
 	std::vector< glm::uvec3 > triangles;
@@ -31,6 +30,26 @@ struct Constraint {
 	float radius = 0.0f;
 };
 
+// Parameters: used to influence various steps
+struct Parameters {
+	//stitch size in millimeters:
+	float stitch_width_mm = 3.66f;
+	float stitch_height_mm = 1.73f;
+
+	//model unit size in millimeters:
+	float model_units_mm = 1.0f;
+
+	//maximum edge length for embed_constraints:
+	float get_max_edge_length() const {
+		return 0.5f * std::min(stitch_width_mm, 2.0f * stitch_height_mm) / model_units_mm;
+	}
+
+	//potential stitch spacing for sample_chain:
+	float get_active_chain_spacing() const {
+		return 0.1f * stitch_width_mm / model_units_mm;
+	}
+};
+
 //Load list of constraints from a file
 //NOTE: throws on error
 void load_constraints(
@@ -46,9 +65,10 @@ void save_constraints(
 	std::string const &file //in: file name to save to
 );
 
-//Given list of constraints, properly trim and constrain a model:
+//Given list of constraints, properly trim (maybe remesh?) and constrain a model:
 //(in the case of no constraints, returns the input model with all-NaN constrained values)
 void embed_constraints(
+	Parameters const &parameters,
 	Model const &model,
 	std::vector< Constraint > const &constraints,
 	Model *constrained_model,
@@ -106,6 +126,7 @@ enum Flag : int8_t {
 
 //helper used by the find_first and peel methods to sample chain at sub-stitch length scale:
 void sample_chain(
+	float vertex_spacing, //in: maximum space between chain vertices
 	Model const &model, //in: model over which chain is defined
 	std::vector< EmbeddedVertex > const &chain, //in: chain to be sampled
 	std::vector< EmbeddedVertex > *sampled_chain, //out: sub-sampled chain
@@ -114,6 +135,7 @@ void sample_chain(
 
 //The first active chains are along boundaries that are at minimums:
 void find_first_active_chains(
+	Parameters const &parameters,
 	Model const &model, //in: model
 	std::vector< float > const &times,          //in: time field (times @ vertices)
 	std::vector< std::vector< EmbeddedVertex > > *active_chains, //out: all mesh boundaries that contain a minimum
@@ -121,6 +143,7 @@ void find_first_active_chains(
 );
 
 void peel_chains(
+	Parameters const &parameters,
 	Model const &model, //in: model
 	std::vector< float > const &times,          //in: time field (times @ vertices)
 	std::vector< std::vector< EmbeddedVertex > > const &active_chains, //in: current active chains

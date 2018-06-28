@@ -114,6 +114,9 @@ struct Interface : public kit::Mode {
 
 	void update_hovered();
 
+	//parameters:
+	ak::Parameters parameters;
+
 	//original model:
 	ak::Model model;
 	void set_model(ak::Model const &model);

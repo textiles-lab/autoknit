@@ -1007,7 +1007,7 @@ void Interface::update_constraints() {
 
 	interpolated_values.clear();
 
-	ak::embed_constraints(model, constraints, &constrained_model, &constrained_values, &DEBUG_constraint_paths, &DEBUG_constraint_loops);
+	ak::embed_constraints(parameters, model, constraints, &constrained_model, &constrained_values, &DEBUG_constraint_paths, &DEBUG_constraint_loops);
 
 	update_DEBUG_constraint_paths_tristrip();
 	update_DEBUG_constraint_loops_tristrip();
@@ -1034,7 +1034,7 @@ void Interface::start_peeling() {
 	if (constrained_values.empty()) {
 		std::cerr << "WARNING: no constrained values to start peeling." << std::endl;
 	} else {
-		ak::find_first_active_chains(constrained_model, interpolated_values, &active_chains, &active_flags);
+		ak::find_first_active_chains(parameters, constrained_model, interpolated_values, &active_chains, &active_flags);
 	}
 
 	update_active_chains_tristrip();

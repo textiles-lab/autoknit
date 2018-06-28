@@ -313,6 +313,7 @@ struct EmbeddedPlanarMap {
 };
 
 void ak::embed_constraints(
+	ak::Parameters const &parameters,
 	ak::Model const &model,
 	std::vector< ak::Constraint > const &constraints,
 	ak::Model *constrained_model_,
@@ -401,10 +402,10 @@ void ak::embed_constraints(
 
 	//Now create a higher-resolution mesh for trimming / eventually interpolation:
 
-	constexpr const float MaxEdgeLength = 0.1f; //largest allowed edge length
+	const float MaxEdgeLength = parameters.get_max_edge_length(); //largest allowed edge length
 	constexpr const float MinEdgeRatio = 0.3f; //smallest allowed smallest-to-largest edge ratio in a triangle
 
-	constexpr const float MaxEdgeLength2 = MaxEdgeLength * MaxEdgeLength;
+	const float MaxEdgeLength2 = MaxEdgeLength * MaxEdgeLength;
 	constexpr const float MinEdgeRatio2 = MinEdgeRatio * MinEdgeRatio;
 
 	std::vector< glm::vec3 > verts = model.vertices;

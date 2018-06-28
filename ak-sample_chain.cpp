@@ -1,6 +1,7 @@
 #include "pipeline.hpp"
 
 void ak::sample_chain(
+	float spacing,
 	ak::Model const &model, //in: model over which chain is defined
 	std::vector< ak::EmbeddedVertex > const &chain, //in: chain to be sampled
 	std::vector< ak::EmbeddedVertex > *sampled_chain_, //out: sub-sampled chain
@@ -14,7 +15,7 @@ void ak::sample_chain(
 	auto &sampled_flags = *sampled_flags_;
 	sampled_flags.clear();
 
-	//TODO: do something with nice (jittered?) uniform spacing
+	//TODO: do something with the 'spacing' parameter
 
 	sampled_chain = chain;
 	sampled_flags.assign(sampled_chain.size(), FlagLinkAny);

@@ -6,6 +6,7 @@
 #include <glm/gtx/hash.hpp>
 
 void ak::find_first_active_chains(
+	ak::Parameters const &parameters,
 	ak::Model const &model, //in: model (vertices & triangles)
 	std::vector< float > const &times,          //in: time field (times @ vertices)
 	std::vector< std::vector< ak::EmbeddedVertex > > *active_chains_, //out: all mesh boundaries that contain a minimum
@@ -112,7 +113,7 @@ void ak::find_first_active_chains(
 		active_chains.emplace_back();
 		active_flags.emplace_back();
 
-		sample_chain(model, embedded_chain, &active_chains.back(), &active_flags.back());
+		sample_chain(parameters.get_active_chain_spacing(), model, embedded_chain, &active_chains.back(), &active_flags.back());
 	}
 
 	assert(active_chains.size() == active_flags.size());
