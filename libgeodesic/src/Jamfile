@@ -1,0 +1,24 @@
+SubDir TOP libgeodesic src ;
+
+MySubDir TOP libgeodesic src ;
+
+local NAMES =
+	hmCholeskyFactor
+	hmContext
+	hmDenseMatrix
+	hmPairSizeTDouble
+	hmSparseMatrix
+	hmTriDistance
+	hmTriMesh
+	hmVectorDouble
+	hmVectorPairSizeTDouble
+	hmVectorSizeT
+	;
+
+ObjectCcFlags $(NAMES:S=$(SUFOBJ)) : -Ilibgeodesic/include -I/usr/include/suitesparse ;
+
+LIBGEODESIC_LIBS = -L/usr/local/lib -lspqr -lumfpack -lcholmod -lmetis -lcolamd -lccolamd -lcamd -lamd -lm -lsuitesparseconfig ;
+
+MyObjects $(NAMES:S=.c) ;
+
+LIBGEODESIC_OBJECTS = $(NAMES:D=$(LOCATE_TARGET):S=$(SUFOBJ)) ;

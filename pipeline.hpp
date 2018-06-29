@@ -112,6 +112,15 @@ struct EmbeddedVertex {
 	}
 };
 
+//helper: extract embedded level sets given values at vertices:
+//NOTE: chain orientation is along +x (if values increase along +y)
+void extract_level_chains(
+	Model const &model, //in: model on which to embed vertices
+	std::vector< float > const &values, //in: values at vertices
+	float const level, //in: level at which to extract chains
+	std::vector< std::vector< EmbeddedVertex > > *chains //chains of edges at given level
+);
+
 //NOTE: chains represented as [a,b,c,d,a] if a loop, [a,b,c,d] if a chain. Always represented in CCW order.
 
 //an active chain is a list of embedded vertices on the mesh. If it is a loop, the first and last vertex are the same.
@@ -156,8 +165,8 @@ struct Link {
 };
 
 void link_chains(
-	std::vector< glm::vec3 > const &vertices,   //in: list of model vertices
-	std::vector< glm::uvec3 > const &triangles, //in: list of model triangles
+	Parameters const &parameters,
+	Model const &model, //in: model
 	std::vector< float > const &times,          //in: time field (times @ vertices)
 	std::vector< std::vector< EmbeddedVertex > > const &active_chains, //in: current active chains
 	std::vector< std::vector< Flag > > const &active_flags, //in: stitches
@@ -171,6 +180,7 @@ void link_chains(
 //void reposition_course -- somehow update next course's position based on linking result.
 
 void build_next_active_chains(
+	Parameters const &parameters,
 	std::vector< std::vector< EmbeddedVertex > > const &active_chains, //in: current active chains
 	std::vector< std::vector< Flag > > const &active_flags, //in: flags for current active
 	std::vector< std::vector< EmbeddedVertex > > const &next_chains, //in: next chains

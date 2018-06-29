@@ -2,6 +2,7 @@ KIT_RAW_SDL_EVENTS = 1 ;
 
 SubDir TOP ;
 SubInclude TOP kit ;
+SubInclude TOP libgeodesic src ;
 
 MySubDir TOP ;
 
@@ -26,6 +27,8 @@ NAMES =
 	;
 
 AUTOKNIT_NAMES =
+	ak-extract_level_chains
+	ak-peel_chains
 	ak-find_first_active_chains
 	ak-sample_chain
 	Interface
@@ -46,6 +49,8 @@ if $(OS) = MACOSX {
 	ObjectC++Flags ak-interpolate_values.o : -I/usr/include/eigen3 ;
 }
 
+ObjectC++Flags ak-peel_chains.o : -Ilibgeodesic/include -I/usr/include/suitesparse ;
+
 LOCATE_TARGET = objs ; #put objects in 'objs' directory
 Objects $(NAMES:S=.cpp) test_plan_transfers.cpp ;
 
@@ -54,5 +59,8 @@ MainFromObjects schedule : $(NAMES:S=$(SUFOBJ)) ;
 
 MainFromObjects test_plan_transfers : test_plan_transfers$(SUFOBJ) $(PLAN_TRANSFERS_NAMES:S=$(SUFOBJ)) ;
 
+LINKLIBS on interface = $(LINKLIBS) ;
+LINKLIBS on interface += $(LIBGEODESIC_LIBS) ;
+
 MyObjects $(AUTOKNIT_NAMES:S=.cpp) ;
-MyMainFromObjects interface : $(AUTOKNIT_NAMES:S=$(SUFOBJ)) $(KIT_OBJECTS) ;
+MyMainFromObjects interface : $(AUTOKNIT_NAMES:S=$(SUFOBJ)) $(KIT_OBJECTS) $(LIBGEODESIC_OBJECTS) ;

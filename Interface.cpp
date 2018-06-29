@@ -405,8 +405,14 @@ Interface::Interface() {
 		{path_draw->getAttribLocation("Color", GLProgram::MissingIsWarning), active_chains_tristrip[2]}
 	});
 
-	GL_ERRORS();
+	next_chains_tristrip_for_path_draw = GLVertexArray::make_binding(path_draw->program, {
+		{path_draw->getAttribLocation("Position", GLProgram::MissingIsError), next_chains_tristrip[0]},
+		{path_draw->getAttribLocation("Normal", GLProgram::MissingIsWarning), next_chains_tristrip[1]},
+		{path_draw->getAttribLocation("Color", GLProgram::MissingIsWarning), next_chains_tristrip[2]}
+	});
 
+
+	GL_ERRORS();
 
 }
 
@@ -661,6 +667,37 @@ void Interface::draw() {
 		glUseProgram(0);
 	}
 
+	//draw next chains:
+	if (next_chains_tristrip.count && (show == ShowConstrainedModel)) {
+
+		//Position-to-clip matrix:
+		glm::mat4 p2c = camera.mvp();
+		//Position-to-light matrix:
+		glm::mat4x3 p2l = camera.mv();
+		//Normal-to-light matrix:
+		glm::mat3 n2l = glm::inverse(glm::transpose(glm::mat3(p2l)));
+
+		glUseProgram(path_draw->program);
+		glBindVertexArray(next_chains_tristrip_for_path_draw.array);
+
+		glUniformMatrix4fv(path_draw_p2c, 1, GL_FALSE, glm::value_ptr(p2c));
+		glUniformMatrix4x3fv(path_draw_p2l, 1, GL_FALSE, glm::value_ptr(p2l));
+		glUniformMatrix3fv(path_draw_n2l, 1, GL_FALSE, glm::value_ptr(n2l));
+
+		glUniform4f(path_draw_id, 0 / 255.0f, 0 / 255.0f, 0 / 255.0f, 0 / 255.0f);
+
+		//don't draw into ID array:
+		glColorMaski(1, GL_FALSE, GL_FALSE, GL_FALSE, GL_FALSE);
+
+		glDrawArrays(GL_TRIANGLE_STRIP, 0, next_chains_tristrip.count);
+
+		glColorMaski(1, GL_TRUE, GL_TRUE, GL_TRUE, GL_TRUE);
+
+		glBindVertexArray(0);
+		glUseProgram(0);
+	}
+
+
 	GL_ERRORS();
 
 	//---------------------------------------------------
@@ -775,7 +812,11 @@ void Interface::handle_event(SDL_Event const &evt) {
 			if (show == ShowModel) show = ShowConstrainedModel;
 			else if (show == ShowConstrainedModel) show = ShowModel;
 		} else if (evt.key.keysym.scancode == SDL_SCANCODE_P) {
-			start_peeling();
+			if (active_chains.empty()) {
+				start_peeling();
+			} else {
+				step_peeling();
+			}
 		} else if (evt.key.keysym.scancode == SDL_SCANCODE_C) {
 			if (hovered.cons < constraints.size()) {
 				if (drag == DragNone) {
@@ -793,9 +834,14 @@ void Interface::handle_event(SDL_Event const &evt) {
 		} else if (evt.key.keysym.scancode == SDL_SCANCODE_R) {
 			if (hovered.cons < constraints.size()) {
 				if (drag == DragNone) {
-					drag = DragConsRadius;
-					dragging.cons = hovered.cons;
-					dragging.cons_pt = hovered.cons_pt;
+					if (constraints[hovered.cons].radius == 0.0f) {
+						drag = DragConsRadius;
+						dragging.cons = hovered.cons;
+						dragging.cons_pt = hovered.cons_pt;
+					} else {
+						constraints[hovered.cons].radius = 0.0f;
+						constraints_dirty = true;
+					}
 				}
 			}
 		} else if (evt.key.keysym.scancode == SDL_SCANCODE_X) {
@@ -1020,6 +1066,10 @@ void Interface::update_constraints() {
 	}
 
 	update_constrained_model_triangles();
+
+	active_chains.clear();
+	active_flags.clear();
+	next_chains.clear();
 }
 
 void Interface::save_constraints() {
@@ -1031,6 +1081,8 @@ void Interface::start_peeling() {
 	active_chains.clear();
 	active_flags.clear();
 
+	next_chains.clear();
+
 	if (constrained_values.empty()) {
 		std::cerr << "WARNING: no constrained values to start peeling." << std::endl;
 	} else {
@@ -1039,6 +1091,14 @@ void Interface::start_peeling() {
 
 	update_active_chains_tristrip();
 }
+
+void Interface::step_peeling() {
+	next_chains.clear();
+	ak::peel_chains(parameters, constrained_model, interpolated_values, active_chains, &next_chains);
+
+	update_next_chains_tristrip();
+}
+
 
 static void make_tube(
 	std::vector< GLAttribBuffer< glm::vec3, glm::vec3, glm::u8vec4 >::Vertex > *attribs,
@@ -1202,67 +1262,23 @@ void Interface::update_active_chains_tristrip() {
 	std::cout << "Active chains tristrip includes " << active_chains_tristrip.count << " vertices." << std::endl;
 }
 
+void Interface::update_next_chains_tristrip() {
+	std::vector< GLAttribBuffer< glm::vec3, glm::vec3, glm::u8vec4 >::Vertex > attribs;
 
+	for (auto const &chain : next_chains) {
+		glm::u8vec4 color8 = glm::u8vec4(0x00, 0xff, 0x88, 0xff);
+		for (uint32_t pi = 0; pi + 1 < chain.size(); ++pi) {
+			glm::vec3 a = chain[pi].interpolate(constrained_model.vertices);
+			glm::vec3 b = chain[pi+1].interpolate(constrained_model.vertices);
+			constexpr const float r = 0.01f;
 
-/*void Interface::set_constraints(ak::Constraints const &constraints) {
-	constrained_vertices.clear();
-	//constrained_paths.clear();
-
-	for (auto const &c : constraints.constraints) {
-		glm::vec3 pt = glm::vec3(c);
-		float val = c.w;
-
-		uint32_t close = -1U;
-		float close_dis = std::numeric_limits< float >::infinity();
-		for (auto const &v : model.vertices) {
-			float dis = glm::length2(v - pt);
-			if (dis < close_dis) {
-				close = &v - &model.vertices[0];
-			}
+			make_tube(&attribs, a, b, r, color8);
 		}
-		assert(close != -1U);
-		constrained_vertices.emplace_back(close, val);
-	}
-	//TODO: paths!
-
-}*/
-
-/*
-void Interface::update_constrained_model() {
-	ak::embed_constraints(model, constraints, &constrained_model, &constrained_values);
-	update_constrained_model_triangles();
-}
-
-void Interface::update_constrained_model_triangles() {
-	std::vector< GLAttribBuffer< glm::vec4, glm::vec3, glm::u8vec4 >::Vertex > attribs;
-	attribs.reserve(3 * constrained_model.triangles.size());
-
-	for (auto const &t : constrained_model.triangles) {
-		glm::vec3 const &a = constrained_model.vertices[t.x];
-		float va = constrained_values[t.x];
-		glm::vec3 const &b = constrained_model.vertices[t.y];
-		float vb = constrained_values[t.y];
-		glm::vec3 const &c = constrained_model.vertices[t.z];
-		float vc = constrained_values[t.z];
-
-		glm::vec3 n = glm::normalize(glm::cross(b-a, c-a));
-
-		uint32_t idx = &t - &model.triangles[0];
-		glm::u8vec4 id = glm::u8vec4(
-			0x2,
-			(idx >> 16) & 0xff,
-			(idx >> 8) & 0xff,
-			idx & 0xff
-		);
-
-		attribs.emplace_back(glm::vec4(a, va), n, id);
-		attribs.emplace_back(glm::vec4(b, vb), n, id);
-		attribs.emplace_back(glm::vec4(c, vc), n, id);
 	}
 
-	constrained_model_triangles.set(attribs, GL_STATIC_DRAW);
+	next_chains_tristrip.set(attribs, GL_STATIC_DRAW);
+	std::cout << "Next chains tristrip includes " << next_chains_tristrip.count << " vertices." << std::endl;
 }
-*/
 
 
 void Interface::reset_camera() {
