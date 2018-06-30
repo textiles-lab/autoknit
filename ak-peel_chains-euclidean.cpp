@@ -51,6 +51,9 @@ void ak::peel_chains(
 
 	//TODO: blur/smooth distance fn somehow?
 
+	//extract candidate chains:
+	std::vector< std::vector< EmbeddedVertex > > possible_chains;
+
 	//for (int step = 1; step < 10; ++step) { //DEBUG: show several distances
 	{	int step = 1;
 
@@ -60,7 +63,7 @@ void ak::peel_chains(
 
 		ak::extract_level_chains(model, values, level, &temp_chains);
 		
-		next_chains.insert(next_chains.end(), temp_chains.begin(), temp_chains.end());
+		possible_chains.insert(possible_chains.end(), temp_chains.begin(), temp_chains.end());
 	}
 
 	//Trim chains that are not immediately left-of the active chains (should deal with problems of the surface looping back on itself?)
@@ -80,8 +83,9 @@ void ak::peel_chains(
 	//add vertices for active chains to avoid crossing:
 	for (auto const &ac : active_chains) {
 		for (auto const &ev : ac) {
-			assert(ev.simplex.z == -1U);
-			if (ev.simplex.y != -1U) {
+			if (ev.simplex.z != -1U) {
+				//inside a triangle; ignore
+			} else if (ev.simplex.y != -1U) {
 				//edge vertex, easy!
 				glm::uvec2 s = glm::uvec2(ev.simplex);
 				assert(s.x < s.y);
@@ -94,8 +98,8 @@ void ak::peel_chains(
 	}
 
 	//add vertices for potential next chains because that's what we do:
-	for (auto const &nc : next_chains) {
-		uint32_t nci = &nc - &next_chains[0];
+	for (auto const &nc : possible_chains) {
+		uint32_t nci = &nc - &possible_chains[0];
 		for (auto const &ev : nc) {
 			uint32_t evi = &ev - &nc[0];
 			assert(ev.simplex.z == -1U);
@@ -149,44 +153,70 @@ void ak::peel_chains(
 		for (uint32_t ci = 0; ci + 1 < ac.size(); ++ci) {
 			EmbeddedVertex const &a = ac[ci];
 			EmbeddedVertex const &b = ac[ci+1];
-			assert(a.simplex.z == -1U);
-			assert(b.simplex.z == -1U);
-			if (a.simplex.y != -1U && b.simplex.y != -1U) {
-				//inside a triangle, figure out verts.
-				glm::uvec3 tri;
-				{
-					uint32_t other = ((a.simplex.x == b.simplex.x || a.simplex.y == b.simplex.x) ? b.simplex.y : b.simplex.x);
-					assert(other != a.simplex.x && other != a.simplex.y);
-					auto f1 = opposite.find(glm::uvec2(a.simplex.x, a.simplex.y));
-					auto f2 = opposite.find(glm::uvec2(a.simplex.y, a.simplex.x));
-					if (f1 != opposite.end() && f1->second == other) {
-						assert(f2 == opposite.end() || f2->second != other);
+			if (a.simplex.z != -1U && b.simplex.z != -1U) {
+				//both inside a triangle, no edges to start from
+				continue;
+			}
+			glm::uvec3 common = EmbeddedVertex::common_simplex(a.simplex, b.simplex);
+			if (common.y == -1U) {
+				//both on the same vertex -- weird!
+				std::cerr << "WEIRD CASE: two chain verts on same vertex." << std::endl;
+			} else if (common.z == -1U) {
+				//both on the same edge; seed if one is at vertex:
+				if (a.simplex.y == -1U) {
+					//a is at vertex
+					uint32_t to = (a.simplex.x == b.simplex.x ? b.simplex.y : b.simplex.x);
+					auto f = opposite.find(glm::uvec2(a.simplex.x, to));
+					if (f != opposite.end()) {
+						todo.emplace_back(a.simplex.x, f->second, -1.0f);
+					}
 
-						tri = glm::uvec3(a.simplex.x, a.simplex.y, other);
-					} else {
-						assert(f2 != opposite.end() && f2->second == other);
-
-						tri = glm::uvec3(a.simplex.x, other, a.simplex.y);
+				}
+				if (b.simplex.y == -1U) {
+					//b is at vertex
+					uint32_t from = (b.simplex.x == a.simplex.x ? a.simplex.y : a.simplex.x);
+					auto f = opposite.find(glm::uvec2(from, b.simplex.x));
+					if (f != opposite.end()) {
+						todo.emplace_back(b.simplex.x, f->second, -1.0f);
 					}
 				}
-				//now that we have the triangle orientation, we know what's left-of a:
-				assert(a.simplex.x == tri.x);
-				if (a.simplex.y == tri.y) {
-					//left-of is tri.x / simplex.x:
-					todo.emplace_back(a.simplex.y, a.simplex.x, a.weights.x);
-				} else { assert(a.simplex.y == tri.z);
-					//left-of is tri.z / simplex.y:
-					todo.emplace_back(a.simplex.x, a.simplex.y, a.weights.y);
-				}
-				//TODO: could also have non-redundant seed at b if chain is not a loop
-			} else if (a.simplex.y == -1U && b.simplex.y == -1U) {
-				//find the triangle to the left:
-				auto f = opposite.find(glm::uvec2(a.simplex.x, b.simplex.x));
-				if (f != opposite.end()) {
-					todo.emplace_back(a.simplex.x, f->second, -1.0f);
-				}
 			} else {
-				//tricky cases that I will ignore for the moment, probably to my detriment.
+				assert(common.x < common.y && common.y < common.z && common.z != -1U);
+				//both on the same triangle; seed if one is at edge (or vertex?):
+				if (a.simplex.y == -1U) {
+					//TODO: don't skip this case
+					// rare(?) case: a is on vertex.
+				} else if (a.simplex.z == -1U) {
+					//a is on edge, figure out edge orientation:
+					auto f1 = opposite.find(glm::uvec2(a.simplex.x, a.simplex.y));
+					auto f2 = opposite.find(glm::uvec2(a.simplex.y, a.simplex.x));
+					bool f1_matches = (f1 != opposite.end() && (f1->second == common.x || f1->second == common.y || f1->second == common.z));
+					bool f2_matches = (f2 != opposite.end() && (f2->second == common.x || f2->second == common.y || f2->second == common.z));
+					if (f1_matches) {
+						assert(!f2_matches);
+						todo.emplace_back(a.simplex.y, a.simplex.x, a.weights.x);
+					} else { assert(f2_matches);
+						todo.emplace_back(a.simplex.x, a.simplex.y, a.weights.y);
+					}
+				}
+
+				if (b.simplex.y == -1U) {
+					//TODO: don't skip this case
+					// rare(?) case: b is on vertex.
+				} else if (b.simplex.z == -1U) {
+					//b is on edge, figure out edge orientation:
+					auto f1 = opposite.find(glm::uvec2(b.simplex.x, b.simplex.y));
+					auto f2 = opposite.find(glm::uvec2(b.simplex.y, b.simplex.x));
+					bool f1_matches = (f1 != opposite.end() && (f1->second == common.x || f1->second == common.y || f1->second == common.z));
+					bool f2_matches = (f2 != opposite.end() && (f2->second == common.x || f2->second == common.y || f2->second == common.z));
+					if (f1_matches) {
+						assert(!f2_matches);
+						todo.emplace_back(b.simplex.x, b.simplex.y, b.weights.y);
+					} else { assert(f2_matches);
+						todo.emplace_back(b.simplex.y, b.simplex.x, b.weights.x);
+					}
+				}
+
 			}
 		}
 	}
@@ -246,14 +276,13 @@ void ak::peel_chains(
 	}
 
 
-	std::cout << "Found " << found.size() << " of " << next_chains.size() << " chains." << std::endl;
+	std::cout << "Found " << found.size() << " of " << possible_chains.size() << " chains." << std::endl;
 
-	std::vector< std::vector< EmbeddedVertex > > found_chains;
-	found_chains.reserve(found.size());
+	next_chains.reserve(found.size());
 	for (auto f : found) {
-		found_chains.emplace_back(next_chains[f]);
+		next_chains.emplace_back();
+		sample_chain(parameters.get_chain_sample_spacing(), model, possible_chains[f], &next_chains.back());
 	}
-	next_chains = found_chains;
 
 }
 

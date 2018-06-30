@@ -145,6 +145,7 @@ struct Interface : public kit::Mode {
 
 	void step_peeling();
 	std::vector< std::vector< ak::EmbeddedVertex > > next_chains;
+	std::vector< std::vector< ak::Flag > > next_flags;
 
 
 	std::string save_constraints_file = ""; //if not "", will save constraints to this file after every change

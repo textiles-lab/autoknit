@@ -27,6 +27,7 @@ NAMES =
 	;
 
 AUTOKNIT_NAMES =
+	ak-link_chains
 	ak-peel_chains-euclidean
 	ak-extract_level_chains
 	ak-find_first_active_chains

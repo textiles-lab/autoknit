@@ -75,24 +75,7 @@ struct IntegerEmbeddedVertex {
 	}
 
 	static glm::uvec3 common_simplex(const glm::uvec3 &a, const glm::uvec3 &b) {
-		glm::ivec3 ret;
-		uint32_t ia = 0;
-		uint32_t ib = 0;
-		for (uint32_t o = 0; o < 3; ++o) {
-			if (a[ia] == b[ib]) {
-				ret[o] = a[ia];
-				++ia; ++ib;
-			} else if (a[ia] < b[ib]) {
-				ret[o] = a[ia];
-				++ia;
-			} else { assert(a[ia] > b[ib]);
-				ret[o] = b[ib];
-				++ib;
-			}
-		}
-		assert(ia == 3 || a[ia] == -1U);
-		assert(ib == 3 || b[ib] == -1U);
-		return ret;
+		return ak::EmbeddedVertex::common_simplex(a,b);
 	}
 };
 

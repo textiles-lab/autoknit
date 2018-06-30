@@ -1106,8 +1106,60 @@ void Interface::step_peeling() {
 	next_chains.clear();
 	ak::peel_chains(parameters, constrained_model, interpolated_values, active_chains, &next_chains);
 
+	//next_flags should (eventually) be set by linking:
+	next_flags.clear();
+	next_flags.reserve(next_chains.size());
+	for (auto const &chain : next_chains) {
+		next_flags.emplace_back(chain.size(), ak::FlagLinkAny);
+	}
+
 	update_next_chains_tristrip();
 }
+
+static void make_sphere(
+	std::vector< GLAttribBuffer< glm::vec3, glm::vec3, glm::u8vec4 >::Vertex > *attribs,
+	glm::vec3 const &c, float r, glm::u8vec4 const &color ) {
+	assert(attribs);
+
+	const constexpr uint32_t Slices = 14;
+	const constexpr uint32_t Rings = 8;
+	static glm::vec2 Ring[Slices];
+	static glm::vec2 Slice[Rings+1];
+
+	static bool inited = [](){
+		for (uint32_t a = 0; a < Slices; ++a) {
+			float ang = a / float(Slices) * 2.0f * float(M_PI);
+			Ring[a] = glm::vec2(std::cos(ang), std::sin(ang));
+		}
+
+		for (uint32_t a = 0; a <= Rings; ++a) {
+			float ang = (a / float(Rings) - 0.5f) * float(M_PI);
+			Slice[a] = glm::vec2(std::cos(ang), std::sin(ang));
+		}
+		return true;
+	}();
+	(void)inited;
+
+	auto dir = [&](uint32_t ri, uint32_t si) -> glm::vec3 {
+		return glm::vec3(
+			Slice[ri].x * Ring[si].x,
+			Slice[ri].x * Ring[si].y,
+			Slice[ri].y
+		);
+	};
+
+	for (uint32_t ri = 0; ri < Rings; ++ri) {
+		attribs->emplace_back(c + r * dir(ri, Slices-1), dir(ri, Slices-1), color);
+		attribs->emplace_back(attribs->back());
+		attribs->emplace_back(c + r * dir(ri+1, Slices-1), dir(ri+1, Slices-1), color);
+		for (uint32_t si = 0; si < Slices; ++si) {
+			attribs->emplace_back(c + r * dir(ri, si), dir(ri, si), color);
+			attribs->emplace_back(c + r * dir(ri+1, si), dir(ri+1, si), color);
+		}
+		attribs->emplace_back(attribs->back());
+	}
+}
+
 
 
 static void make_tube(
@@ -1254,40 +1306,67 @@ void Interface::update_constrained_model_triangles() {
 }
 
 
-void Interface::update_active_chains_tristrip() {
+
+void update_chains_tristrip(ak::Model const &model,
+	std::vector< std::vector< ak::EmbeddedVertex > > const &chains,
+	std::vector< std::vector< ak::Flag > > const &flags,
+	glm::u8vec4 color8,
+	float r,
+	GLAttribBuffer< glm::vec3, glm::vec3, glm::u8vec4 > * tristrip_) {
+
+	assert(tristrip_);
+	auto &tristrip = *tristrip_;
+
 	std::vector< GLAttribBuffer< glm::vec3, glm::vec3, glm::u8vec4 >::Vertex > attribs;
 
-	for (auto const &chain : active_chains) {
-		glm::u8vec4 color8 = glm::u8vec4(0xff, 0x00, 0xf8, 0xff);
+	for (auto const &chain : chains) {
 		for (uint32_t pi = 0; pi + 1 < chain.size(); ++pi) {
-			glm::vec3 a = chain[pi].interpolate(constrained_model.vertices);
-			glm::vec3 b = chain[pi+1].interpolate(constrained_model.vertices);
-			constexpr const float r = 0.01f;
-
+			glm::vec3 a = chain[pi].interpolate(model.vertices);
+			glm::vec3 b = chain[pi+1].interpolate(model.vertices);
+			//TODO: some sort of direction indication?
 			make_tube(&attribs, a, b, r, color8);
 		}
+		uint32_t ci = &chain - &chains[0];
+		assert(ci < flags.size());
+		std::vector< ak::Flag > const &flag = flags[ci];
+		assert(flag.size() == chain.size());
+		for (uint32_t pi = 0; pi < chain.size(); ++pi) {
+			if (pi == 0 && (chain[0] == chain.back())) {
+				assert(flag[0] == flag.back());
+				continue;
+			}
+			glm::vec3 at = chain[pi].interpolate(model.vertices);
+			glm::u8vec4 col = glm::u8vec4(0xff, 0x00, 0xff, 0xff);
+			if (flag[pi] == ak::FlagDiscard) {
+				col = glm::u8vec4(0x00, 0x00, 0x88, 0xff);
+			} else if (flag[pi] == ak::FlagLinkNone) {
+				col = glm::u8vec4(0x22, 0x22, 0x22, 0xff);
+			} else if (flag[pi] == ak::FlagLinkOne) {
+				col = glm::u8vec4(0x88, 0x88, 0x88, 0xff);
+			} else if (flag[pi] == ak::FlagLinkAny) {
+				col = glm::u8vec4(0xdd, 0xdd, 0xdd, 0xff);
+			}
+			make_sphere(&attribs, at, 1.5f * r, col);
+		}
+
 	}
 
-	active_chains_tristrip.set(attribs, GL_STATIC_DRAW);
-	std::cout << "Active chains tristrip includes " << active_chains_tristrip.count << " vertices." << std::endl;
+	tristrip.set(attribs, GL_STATIC_DRAW);
+}
+
+
+void Interface::update_active_chains_tristrip() {
+	update_chains_tristrip(constrained_model, active_chains, active_flags,
+		glm::u8vec4(0xff, 0x00, 0x88, 0xff),
+		0.01f,
+		&active_chains_tristrip);
 }
 
 void Interface::update_next_chains_tristrip() {
-	std::vector< GLAttribBuffer< glm::vec3, glm::vec3, glm::u8vec4 >::Vertex > attribs;
-
-	for (auto const &chain : next_chains) {
-		glm::u8vec4 color8 = glm::u8vec4(0x00, 0xff, 0x88, 0xff);
-		for (uint32_t pi = 0; pi + 1 < chain.size(); ++pi) {
-			glm::vec3 a = chain[pi].interpolate(constrained_model.vertices);
-			glm::vec3 b = chain[pi+1].interpolate(constrained_model.vertices);
-			constexpr const float r = 0.01f;
-
-			make_tube(&attribs, a, b, r, color8);
-		}
-	}
-
-	next_chains_tristrip.set(attribs, GL_STATIC_DRAW);
-	std::cout << "Next chains tristrip includes " << next_chains_tristrip.count << " vertices." << std::endl;
+	update_chains_tristrip(constrained_model, next_chains, next_flags,
+		glm::u8vec4(0x00, 0xff, 0x88, 0xff),
+		0.01f,
+		&next_chains_tristrip);
 }
 
 

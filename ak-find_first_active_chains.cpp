@@ -111,9 +111,10 @@ void ak::find_first_active_chains(
 		}
 
 		active_chains.emplace_back();
-		active_flags.emplace_back();
 
-		sample_chain(parameters.get_active_chain_spacing(), model, embedded_chain, &active_chains.back(), &active_flags.back());
+		sample_chain(parameters.get_chain_sample_spacing(), model, embedded_chain, &active_chains.back());
+
+		active_flags.emplace_back(active_chains.back().size(), ak::FlagLinkAny);
 	}
 
 	assert(active_chains.size() == active_flags.size());

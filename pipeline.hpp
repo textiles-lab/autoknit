@@ -45,7 +45,7 @@ struct Parameters {
 	}
 
 	//potential stitch spacing for sample_chain:
-	float get_active_chain_spacing() const {
+	float get_chain_sample_spacing() const {
 		return 0.1f * stitch_width_mm / model_units_mm;
 	}
 };
@@ -92,6 +92,10 @@ struct EmbeddedVertex {
 	EmbeddedVertex() = default;
 	EmbeddedVertex(glm::uvec3 const &simplex_, glm::vec3 const &weights_) : simplex(simplex_), weights(weights_) { }
 
+	bool operator==(EmbeddedVertex const &o) const {
+		return simplex == o.simplex && weights == o.weights;
+	}
+
 	static EmbeddedVertex on_vertex(uint32_t a) {
 		return EmbeddedVertex(glm::uvec3(a, -1U, -1U), glm::vec3(1.0f, 0.0f, 0.0f));
 	}
@@ -108,6 +112,42 @@ struct EmbeddedVertex {
 		T ret = values[simplex.x] * weights.x;
 		if (simplex.y != -1U) ret += values[simplex.y] * weights.y;
 		if (simplex.z != -1U) ret += values[simplex.z] * weights.z;
+		return ret;
+	}
+
+	glm::vec3 weights_on(glm::uvec3 simplex2) const {
+		glm::vec3 ret(0,0,0);
+		uint32_t o = 0;
+		for (uint32_t i = 0; i < 3; ++i) {
+			if (simplex[i] == -1U) break;
+			while (simplex2[o] < simplex[i]) {
+				++o;
+				assert(o < 3);
+			}
+			assert(simplex2[o] == simplex[i]);
+			ret[o] = weights[i];
+		}
+		return ret;
+	}
+
+	static glm::uvec3 common_simplex(const glm::uvec3 &a, const glm::uvec3 &b) {
+		glm::ivec3 ret;
+		uint32_t ia = 0;
+		uint32_t ib = 0;
+		for (uint32_t o = 0; o < 3; ++o) {
+			if (a[ia] == b[ib]) {
+				ret[o] = a[ia];
+				++ia; ++ib;
+			} else if (a[ia] < b[ib]) {
+				ret[o] = a[ia];
+				++ia;
+			} else { assert(a[ia] > b[ib]);
+				ret[o] = b[ib];
+				++ib;
+			}
+		}
+		assert(ia == 3 || a[ia] == -1U);
+		assert(ib == 3 || b[ib] == -1U);
 		return ret;
 	}
 };
@@ -138,8 +178,8 @@ void sample_chain(
 	float vertex_spacing, //in: maximum space between chain vertices
 	Model const &model, //in: model over which chain is defined
 	std::vector< EmbeddedVertex > const &chain, //in: chain to be sampled
-	std::vector< EmbeddedVertex > *sampled_chain, //out: sub-sampled chain
-	std::vector< Flag > *sampled_flags //out: flags (possibly with linkNone on points needed in chain for consistency but not sampled?)
+	std::vector< EmbeddedVertex > *sampled_chain //out: sub-sampled chain
+	//std::vector< Flag > *sampled_flags //out: flags (possibly with linkNone on points needed in chain for consistency but not sampled?)
 );
 
 //The first active chains are along boundaries that are at minimums:
