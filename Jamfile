@@ -27,8 +27,8 @@ NAMES =
 	;
 
 AUTOKNIT_NAMES =
+	ak-peel_chains-euclidean
 	ak-extract_level_chains
-	ak-peel_chains
 	ak-find_first_active_chains
 	ak-sample_chain
 	Interface
@@ -49,7 +49,7 @@ if $(OS) = MACOSX {
 	ObjectC++Flags ak-interpolate_values.o : -I/usr/include/eigen3 ;
 }
 
-ObjectC++Flags ak-peel_chains.o : -Ilibgeodesic/include -I/usr/include/suitesparse ;
+ObjectC++Flags ak-peel_chains-libgeodesic.o : -Ilibgeodesic/include -I/usr/include/suitesparse ;
 
 LOCATE_TARGET = objs ; #put objects in 'objs' directory
 Objects $(NAMES:S=.cpp) test_plan_transfers.cpp ;

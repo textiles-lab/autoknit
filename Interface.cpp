@@ -1093,6 +1093,16 @@ void Interface::start_peeling() {
 }
 
 void Interface::step_peeling() {
+	if (!next_chains.empty()) {
+		active_chains = next_chains;
+		//TODO: this should really be set by linking but instead here we go:
+		active_flags.clear();
+		for (auto const &ac : active_chains) {
+			active_flags.emplace_back(ac.size(), ak::FlagLinkAny);
+		}
+		update_active_chains_tristrip();
+	}
+
 	next_chains.clear();
 	ak::peel_chains(parameters, constrained_model, interpolated_values, active_chains, &next_chains);
 
