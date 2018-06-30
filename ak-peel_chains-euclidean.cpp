@@ -61,9 +61,16 @@ void ak::peel_chains(
 
 	//Trim chains that are not immediately left-of the active chains (should deal with problems of the surface looping back on itself?)
 
-	//IDEA: start at active chain vertices and move to left-of- 
-	//std::unordered_multimap< glm::uvec2, std::pair< uint32_t, uint32_t > > edge_vertices;
-	
+	//IDEA: start at active chain vertices and move to left-of until other chains are hit. Mark these chains as "okay".
+
+	//these are (chain, index) pairs on sorted-index-order edges:
+	struct EdgeVertex {
+		EdgeVertex(float pos_, uint32_t chain_, uint32_t index_) : pos(pos_), chain(chain_), index(index_) { }
+		float pos;
+		uint32_t chain;
+		uint32_t index;
+	};
+	std::unordered_multimap< glm::uvec2, EdgeVertex > edge_vertices;
 
 
 }
