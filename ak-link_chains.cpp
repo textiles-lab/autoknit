@@ -77,8 +77,16 @@ void ak::link_chains(
 			}
 			chain.emplace_back(chain_in[ci+1]);
 		}
-		assert(discards.size() == chain.size());
+		assert(discards.size() + 1 == chain.size());
 	}
+
+	//PARANOIA: subsequent chain verts need common simplex.
+	for (auto const &chain : next_chains) {
+		for (uint32_t ci = 0; ci + 1 < chain.size(); ++ci) {
+			EmbeddedVertex::common_simplex(chain[ci].simplex, chain[ci+1].simplex);
+		}
+	}
+	//end PARANOIA
 
 	//compute lengths for each segment:
 	std::vector< std::vector< float > > next_segment_lengths;
@@ -143,6 +151,8 @@ void ak::link_chains(
 
 		//first, remove any non-discard segment shorter than 1.5 stitches:
 		if_mixed_then_flatten_and_call(is_loop, next_segment_lengths[idx], next_segment_discards[idx], [&parameters](std::vector< float > &lengths, std::vector< bool > &discards){
+			assert(discards[0] != discards.back());
+
 			float MinSegmentLength = 1.5f * parameters.stitch_width_mm / parameters.model_units_mm;
 
 			for (uint32_t begin = 0; begin < discards.size(); /* later */) {
@@ -159,6 +169,7 @@ void ak::link_chains(
 				}
 
 				if (length < MinSegmentLength) {
+					std::cout << "setting discard on [" << begin << ", " << end << ") of [0, " << discards.size() << ")" << std::endl; //DEBUG
 					//discard too-short segment:
 					for (uint32_t i = begin; i < end; ++i) {
 						discards[i] = true;
@@ -171,6 +182,8 @@ void ak::link_chains(
 
 		//then, remove any discard segment shorter than 0.5 stitches:
 		if_mixed_then_flatten_and_call(is_loop, next_segment_lengths[idx], next_segment_discards[idx], [&parameters](std::vector< float > &lengths, std::vector< bool > &discards){
+			assert(discards[0] != discards.back());
+
 			float MinSegmentLength = 0.5f * parameters.stitch_width_mm / parameters.model_units_mm;
 
 			for (uint32_t begin = 0; begin < discards.size(); /* later */) {
@@ -181,13 +194,14 @@ void ak::link_chains(
 
 				uint32_t end = begin + 1;
 				float length = lengths[begin];
-				while (end < discards.size() && !discards[end]) {
+				while (end < discards.size() && discards[end]) {
 					length += lengths[end];
 					++end;
 				}
 
 				if (length < MinSegmentLength) {
-					//discard too-short segment:
+					//mark too-short segment:
+					std::cout << "setting keep on [" << begin << ", " << end << ") of [0, " << discards.size() << ")" << std::endl; //DEBUG
 					for (uint32_t i = begin; i < end; ++i) {
 						discards[i] = false;
 					}
@@ -563,8 +577,8 @@ void ak::link_chains(
 		auto &flags = linked_next_flags.back();
 
 		uint32_t s = 0;
-		auto add_before = [&](uint32_t until) {
-			while (s < until) {
+		auto add_until = [&](uint32_t until) {
+			while (s <= until) {
 				assert(s < chain.size());
 				linked_chain.emplace_back(chain[s]);
 				bool discard = 
@@ -572,18 +586,27 @@ void ak::link_chains(
 					&& (s < discards.size() ? discards[s] : discards_after_back);
 				if (discard) flags.emplace_back(ak::FlagDiscard);
 				else flags.emplace_back(ak::FlagLinkNone);
+				++s;
 			}
 		};
 		for (auto const &san : m) {
-			add_before(san.first.first);
-			assert(s == san.first.first);
-			assert(s + 1 < chain.size());
-			linked_chain.emplace_back( EmbeddedVertex::mix( chain[s], chain[s+1], san.first.second ) );
-			if (discards[s]) flags.emplace_back(ak::FlagDiscard);
+			add_until(san.first.first);
+			assert(s == san.first.first+1);
+			assert(s < chain.size());
+			linked_chain.emplace_back( EmbeddedVertex::mix( chain[s-1], chain[s], san.first.second ) );
+			if (discards[s-1]) flags.emplace_back(ak::FlagDiscard);
 			else flags.emplace_back(san.second->flag);
 		}
-		add_before(chain.size());
+		add_until(chain.size()-1);
 	}
+
+	//PARANOIA: subsequent chain verts need common simplex.
+	for (auto const &chain : linked_next_chains) {
+		for (uint32_t ci = 0; ci + 1 < chain.size(); ++ci) {
+			EmbeddedVertex::common_simplex(chain[ci].simplex, chain[ci+1].simplex);
+		}
+	}
+	//end PARANOIA
 
 }
 

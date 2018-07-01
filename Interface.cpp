@@ -812,6 +812,7 @@ void Interface::handle_event(SDL_Event const &evt) {
 			if (show == ShowModel) show = ShowConstrainedModel;
 			else if (show == ShowConstrainedModel) show = ShowModel;
 		} else if (evt.key.keysym.scancode == SDL_SCANCODE_P) {
+			show = ShowConstrainedModel;
 			if (active_chains.empty()) {
 				start_peeling();
 			} else {
@@ -1095,23 +1096,23 @@ void Interface::start_peeling() {
 void Interface::step_peeling() {
 	if (!next_chains.empty()) {
 		active_chains = next_chains;
-		//TODO: this should really be set by linking but instead here we go:
-		active_flags.clear();
-		for (auto const &ac : active_chains) {
-			active_flags.emplace_back(ac.size(), ak::FlagLinkAny);
-		}
+		active_flags = next_flags;
 		update_active_chains_tristrip();
 	}
 
 	next_chains.clear();
 	ak::peel_chains(parameters, constrained_model, interpolated_values, active_chains, &next_chains);
 
-	//next_flags should (eventually) be set by linking:
-	next_flags.clear();
-	next_flags.reserve(next_chains.size());
-	for (auto const &chain : next_chains) {
-		next_flags.emplace_back(chain.size(), ak::FlagLinkAny);
-	}
+	std::vector< std::vector< ak::EmbeddedVertex > > linked_next_chains;
+	std::vector< std::vector< ak::Flag > > linked_next_flags;
+	std::vector< ak::Link > links;
+
+	ak::link_chains(parameters, constrained_model, interpolated_values,
+		active_chains, active_flags, next_chains,
+		&linked_next_chains, &linked_next_flags, &links);
+
+	next_chains = linked_next_chains;
+	next_flags = linked_next_flags;
 
 	update_next_chains_tristrip();
 }
@@ -1337,16 +1338,18 @@ void update_chains_tristrip(ak::Model const &model,
 			}
 			glm::vec3 at = chain[pi].interpolate(model.vertices);
 			glm::u8vec4 col = glm::u8vec4(0xff, 0x00, 0xff, 0xff);
+			float sr = 1.5f * r;
 			if (flag[pi] == ak::FlagDiscard) {
-				col = glm::u8vec4(0x00, 0x00, 0x88, 0xff);
+				col = glm::u8vec4(0xff, 0x00, 0x00, 0xff);
 			} else if (flag[pi] == ak::FlagLinkNone) {
+				sr = r;
 				col = glm::u8vec4(0x22, 0x22, 0x22, 0xff);
 			} else if (flag[pi] == ak::FlagLinkOne) {
 				col = glm::u8vec4(0x88, 0x88, 0x88, 0xff);
 			} else if (flag[pi] == ak::FlagLinkAny) {
 				col = glm::u8vec4(0xdd, 0xdd, 0xdd, 0xff);
 			}
-			make_sphere(&attribs, at, 1.5f * r, col);
+			make_sphere(&attribs, at, sr, col);
 		}
 
 	}
