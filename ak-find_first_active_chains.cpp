@@ -164,6 +164,7 @@ void ak::find_first_active_chains(
 				}
 				stitch_acc -= remain;
 			}
+			active_chains.back().emplace_back(divided_chain.back());
 
 			assert(active_flags.back().size() == active_chains.back().size());
 
