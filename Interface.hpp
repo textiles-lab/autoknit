@@ -147,6 +147,8 @@ struct Interface : public kit::Mode {
 	std::vector< std::vector< ak::EmbeddedVertex > > next_chains;
 	std::vector< std::vector< ak::Flag > > next_flags;
 
+	std::vector< ak::Link > links;
+
 
 	std::string save_constraints_file = ""; //if not "", will save constraints to this file after every change
 	void save_constraints();
@@ -176,6 +178,12 @@ struct Interface : public kit::Mode {
 	//position, normal, color:
 	GLAttribBuffer< glm::vec3, glm::vec3, glm::u8vec4 > next_chains_tristrip;
 	GLVertexArray next_chains_tristrip_for_path_draw;
+
+	void update_links_tristrip();
+	//position, normal, color:
+	GLAttribBuffer< glm::vec3, glm::vec3, glm::u8vec4 > links_tristrip;
+	GLVertexArray links_tristrip_for_path_draw;
+
 
 
 	//place camera to view whole model:

@@ -39,6 +39,10 @@ void ak::link_chains(
 	auto &linked_next_flags = *linked_next_flags_;
 	linked_next_flags.clear();
 
+	assert(links_);
+	auto &links = *links_;
+	links.clear();
+
 	//figure out the time to trim after:
 	float active_max_time = -std::numeric_limits< float >::infinity();
 	for (auto const &chain : active_chains) {
@@ -133,6 +137,7 @@ void ak::link_chains(
 
 			std::rotate(discards.begin(), discards.begin() + new_first, discards.end());
 			std::rotate(lengths.begin(), lengths.begin() + new_first, lengths.end());
+			assert(discards[0] != discards.back());
 		}
 
 		call(lengths, discards);
@@ -151,7 +156,6 @@ void ak::link_chains(
 
 		//first, remove any non-discard segment shorter than 1.5 stitches:
 		if_mixed_then_flatten_and_call(is_loop, next_segment_lengths[idx], next_segment_discards[idx], [&parameters](std::vector< float > &lengths, std::vector< bool > &discards){
-			assert(discards[0] != discards.back());
 
 			float MinSegmentLength = 1.5f * parameters.stitch_width_mm / parameters.model_units_mm;
 
@@ -182,7 +186,6 @@ void ak::link_chains(
 
 		//then, remove any discard segment shorter than 0.5 stitches:
 		if_mixed_then_flatten_and_call(is_loop, next_segment_lengths[idx], next_segment_discards[idx], [&parameters](std::vector< float > &lengths, std::vector< bool > &discards){
-			assert(discards[0] != discards.back());
 
 			float MinSegmentLength = 0.5f * parameters.stitch_width_mm / parameters.model_units_mm;
 
@@ -533,6 +536,7 @@ void ak::link_chains(
 		}
 		assert(new_stitches.size() == stitches);
 
+		std::vector< bool > new_stitch_linkone;
 		std::vector< glm::vec3 > new_stitch_locations;
 		new_stitch_locations.reserve(new_stitches.size());
 		for (auto const &n : new_stitches) {
@@ -546,10 +550,105 @@ void ak::link_chains(
 					n.along
 				)
 			);
+			new_stitch_linkone.emplace_back(n.flag == ak::FlagLinkOne);
 		}
 
 		//figure out how to link to next stitches:
-		//TODO: any sort of cleverness at all!
+		std::vector< uint32_t > active_stitch_indices;
+		std::vector< bool > active_stitch_linkone;
+		std::vector< glm::vec3 > active_stitch_locations;
+		{
+			assert(anm.first.first < active_chains.size());
+			auto const &active_chain = active_chains[anm.first.first];
+			auto const &active_flag = active_flags[anm.first.first];
+			assert(active_chain.size() == active_flag.size());
+			for (auto const &be : match.active) {
+				for (uint32_t i = be.begin; i < be.end; ++i) {
+					if (active_flag[i] == ak::FlagLinkAny || active_flag[i] == ak::FlagLinkOne ) {
+						active_stitch_indices.emplace_back( i );
+						active_stitch_locations.emplace_back( active_chain[i].interpolate(model.vertices) );
+						active_stitch_linkone.emplace_back( active_flag[i] == ak::FlagLinkOne );
+					}
+				}
+			}
+		}
+
+		//actually build links:
+		{ //least-clever linking solution: linkones link 1-1, others link to keep arrays mostly in sync
+			std::vector< std::pair< uint32_t, uint32_t > > possible_links;
+
+			if (active_stitch_locations.size() <= new_stitch_locations.size()) {
+				//evenly distribute increases among the non-linkone stitches:
+				uint32_t total = 0;
+				for (auto l : active_stitch_linkone) {
+					if (!l) ++total;
+				}
+				uint32_t increases = new_stitch_locations.size() - active_stitch_locations.size();
+				std::vector< bool > inc(total, false);
+				for (uint32_t i = 0; i < increases; ++i) {
+					assert(inc[i * total / increases] == false);
+					inc[i * total / increases] = true;
+				}
+				uint32_t n = 0;
+				uint32_t i = 0;
+				for (uint32_t a = 0; a < active_stitch_locations.size(); ++a) {
+					possible_links.emplace_back(a, n);
+					++n;
+					if (!active_stitch_linkone[a]) {
+						assert(i < inc.size());
+						if (inc[i]) {
+							possible_links.emplace_back(a, n);
+							++n;
+						}
+						++i;
+					}
+				}
+				assert(i == total);
+				assert(n == new_stitch_locations.size());
+			} else if (active_stitch_locations.size() > new_stitch_locations.size()) {
+				//evenly distribute decreases among the non-linkone stitches:
+				uint32_t total = 0;
+				for (auto l : new_stitch_linkone) {
+					if (!l) ++total;
+				}
+				uint32_t decreases = active_stitch_locations.size() - new_stitch_locations.size();
+				std::vector< bool > dec(total, false);
+				for (uint32_t i = 0; i < decreases; ++i) {
+					assert(dec[i * total / decreases] == false);
+					dec[i * total / decreases] = true;
+				}
+				uint32_t a = 0;
+				uint32_t i = 0;
+				for (uint32_t n = 0; n < new_stitch_locations.size(); ++n) {
+					possible_links.emplace_back(a, n);
+					++a;
+					if (!new_stitch_linkone[a]) {
+						assert(i < dec.size());
+						if (dec[i]) {
+							possible_links.emplace_back(a, n);
+							++a;
+						}
+						++i;
+					}
+				}
+				assert(i == total);
+				assert(a == active_stitch_locations.size());
+			}
+
+			for (auto const &p : possible_links) {
+				Link link;
+				link.from_chain = anm.first.first;
+				assert(p.first < active_stitch_indices.size());
+				link.from_vertex = active_stitch_indices[p.first];
+
+				//will get translated to real index in divide-at-stitches code:
+				link.to_chain = -1U;
+				assert(p.second < new_stitches.size());
+				link.to_vertex = all_new_stitches.size() + p.second;
+
+				links.emplace_back(link);
+			}
+		}
 
 		all_new_stitches.insert(all_new_stitches.end(), new_stitches.begin(), new_stitches.end());
 	}
@@ -561,6 +660,8 @@ void ak::link_chains(
 		auto res = m.insert(std::make_pair( std::make_pair(ns.segment, ns.along), &ns ));
 		assert(res.second); //shouldn't have two overlapping stitches!
 	}
+
+	std::vector< std::pair< uint32_t, uint32_t > > ns_index(all_new_stitches.size(), std::make_pair(-1U, -1U));
 
 	for (auto const &chain : next_chains) {
 		auto const &discards = next_segment_discards[&chain - &next_chains[0]];
@@ -593,6 +694,11 @@ void ak::link_chains(
 			add_until(san.first.first);
 			assert(s == san.first.first+1);
 			assert(s < chain.size());
+			assert(ns_index[san.second - &all_new_stitches[0]] == std::make_pair(-1U, -1U));
+			ns_index[san.second - &all_new_stitches[0]] = std::make_pair(
+				&linked_chain - &linked_next_chains[0],
+				linked_chain.size()
+			);
 			linked_chain.emplace_back( EmbeddedVertex::mix( chain[s-1], chain[s], san.first.second ) );
 			if (discards[s-1]) flags.emplace_back(ak::FlagDiscard);
 			else flags.emplace_back(san.second->flag);
@@ -607,6 +713,16 @@ void ak::link_chains(
 		}
 	}
 	//end PARANOIA
+
+	//translate links:
+	for (auto &link : links) {
+		assert(link.to_chain == -1U);
+		assert(link.to_vertex < ns_index.size());
+		link.to_chain = ns_index[link.to_vertex].first;
+		link.to_vertex = ns_index[link.to_vertex].second;
+		assert(link.to_chain < linked_next_chains.size());
+		assert(link.to_vertex < linked_next_chains[link.to_chain].size());
+	}
 
 }
 
