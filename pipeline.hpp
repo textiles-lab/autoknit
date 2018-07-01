@@ -46,7 +46,7 @@ struct Parameters {
 
 	//potential stitch spacing for sample_chain:
 	float get_chain_sample_spacing() const {
-		return 0.1f * stitch_width_mm / model_units_mm;
+		return 0.25f * stitch_width_mm / model_units_mm;
 	}
 };
 
@@ -95,6 +95,9 @@ struct EmbeddedVertex {
 	bool operator==(EmbeddedVertex const &o) const {
 		return simplex == o.simplex && weights == o.weights;
 	}
+	bool operator!=(EmbeddedVertex const &o) const {
+		return !(*this == o);
+	}
 
 	static EmbeddedVertex on_vertex(uint32_t a) {
 		return EmbeddedVertex(glm::uvec3(a, -1U, -1U), glm::vec3(1.0f, 0.0f, 0.0f));
@@ -105,6 +108,14 @@ struct EmbeddedVertex {
 			mix = 1.0f - mix;
 		}
 		return EmbeddedVertex(glm::uvec3(a, b, -1U), glm::vec3(1.0f - mix, mix, 0.0f));
+	}
+
+	static EmbeddedVertex mix(EmbeddedVertex const &a, EmbeddedVertex const &b, float m) {
+		glm::uvec3 common = common_simplex(a.simplex, b.simplex);
+		return EmbeddedVertex(
+			common,
+			glm::mix(a.weights_on(common), b.weights_on(common), m)
+		);
 	}
 
 	template< typename T >

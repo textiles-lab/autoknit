@@ -281,6 +281,7 @@ void ak::peel_chains(
 	next_chains.reserve(found.size());
 	for (auto f : found) {
 		next_chains.emplace_back();
+		//next_chains.back() = possible_chains[f];
 		sample_chain(parameters.get_chain_sample_spacing(), model, possible_chains[f], &next_chains.back());
 	}
 

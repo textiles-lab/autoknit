@@ -110,11 +110,72 @@ void ak::find_first_active_chains(
 			embedded_chain.emplace_back(EmbeddedVertex::on_vertex(c));
 		}
 
+		//subdivide the chain to make sure there are enough samples for later per-sample computations:
+		std::vector< EmbeddedVertex > divided_chain;
+		sample_chain(parameters.get_chain_sample_spacing(), model, embedded_chain, &divided_chain);
+
+		//further subdivide and place stitches:
+		std::vector< float > lengths;
+		lengths.reserve(divided_chain.size()-1);
+		float total_length = 0.0f;
+		for (uint32_t ci = 0; ci + 1 < divided_chain.size(); ++ci) {
+			glm::vec3 a = divided_chain[ci].interpolate(model.vertices);
+			glm::vec3 b = divided_chain[ci+1].interpolate(model.vertices);
+			float l = glm::length(b-a);
+			lengths.emplace_back(l);
+			total_length += l;
+		}
+		assert(lengths.size() == divided_chain.size()-1);
+
+		float stitch_width = parameters.stitch_width_mm / parameters.model_units_mm;
+		uint32_t stitches = std::max(3, int32_t(std::round(total_length / stitch_width)));
+
 		active_chains.emplace_back();
+		active_flags.emplace_back();
 
-		sample_chain(parameters.get_chain_sample_spacing(), model, embedded_chain, &active_chains.back());
+		{ //subdivide chain further
+			float stitch_step = total_length / stitches;
+			float stitch_acc = 0.5f * stitch_step;
+			for (uint32_t di = 0; di + 1 < divided_chain.size(); ++di) {
 
-		active_flags.emplace_back(active_chains.back().size(), ak::FlagLinkAny);
+				active_chains.back().emplace_back(divided_chain[di]);
+				//stitches close enough to an existing vertex get snapped:
+				if (stitch_acc < 0.01f * stitch_width) {
+					active_flags.back().emplace_back(ak::FlagLinkAny);
+					stitch_acc += stitch_step;
+				} else {
+					active_flags.back().emplace_back(ak::FlagLinkNone);
+				}
+
+				if (di + 1 == divided_chain.size()) break;
+
+
+				float length = lengths[di];
+
+				float remain = length;
+				while (stitch_acc < remain - 0.01f * stitch_width) {
+					remain -= stitch_acc;
+					active_chains.back().emplace_back(EmbeddedVertex::mix(
+						divided_chain[di], divided_chain[di+1],
+						(length - remain) / length
+					));
+					active_flags.back().emplace_back(ak::FlagLinkAny);
+					stitch_acc = stitch_step;
+				}
+				stitch_acc -= remain;
+			}
+
+			assert(active_flags.back().size() == active_chains.back().size());
+
+			assert((divided_chain[0] == divided_chain.back()) == (active_chains.back()[0] == active_chains.back().back()));
+
+			//make sure this worked:
+			uint32_t any_count = 0;
+			for (auto f : active_flags.back()) {
+				if (f == ak::FlagLinkAny) ++any_count;
+			}
+			assert(any_count == stitches);
+		}
 	}
 
 	assert(active_chains.size() == active_flags.size());
