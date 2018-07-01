@@ -169,7 +169,7 @@ void extract_level_chains(
 enum Flag : int8_t {
 	FlagDiscard = -1,
 	FlagLinkNone = 0, //for non-stitches or already-linked stitches
-	FlagLinkOne  = 1, //for short-row ends
+	FlagLinkOne  = 1, //for short-row ends -- must link to and from one stitch only
 	FlagLinkAny  = 2,
 };
 
