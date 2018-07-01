@@ -136,7 +136,7 @@ void ak::find_first_active_chains(
 		{ //subdivide chain further
 			float stitch_step = total_length / stitches;
 			float stitch_acc = 0.5f * stitch_step;
-			for (uint32_t di = 0; di + 1 < divided_chain.size(); ++di) {
+			for (uint32_t di = 0; di < divided_chain.size(); ++di) {
 
 				active_chains.back().emplace_back(divided_chain[di]);
 				//stitches close enough to an existing vertex get snapped:
@@ -164,7 +164,6 @@ void ak::find_first_active_chains(
 				}
 				stitch_acc -= remain;
 			}
-			active_chains.back().emplace_back(divided_chain.back());
 
 			assert(active_flags.back().size() == active_chains.back().size());
 
