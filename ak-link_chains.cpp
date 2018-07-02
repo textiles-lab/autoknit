@@ -574,68 +574,103 @@ void ak::link_chains(
 		}
 
 		//actually build links:
-		{ //least-clever linking solution: linkones link 1-1, others link to keep arrays mostly in sync
-			std::vector< std::pair< uint32_t, uint32_t > > possible_links;
+		{ //least-clever linking solution: FlagLinkOne's link 1-1, others link to keep arrays mostly in sync
 
-			if (active_stitch_locations.size() <= new_stitch_locations.size()) {
-				//evenly distribute increases among the non-linkone stitches:
-				uint32_t total = 0;
-				for (auto l : active_stitch_linkone) {
-					if (!l) ++total;
-				}
-				uint32_t increases = new_stitch_locations.size() - active_stitch_locations.size();
-				std::vector< bool > inc(total, false);
-				for (uint32_t i = 0; i < increases; ++i) {
-					assert(inc[i * total / increases] == false);
-					inc[i * total / increases] = true;
-				}
-				uint32_t n = 0;
-				uint32_t i = 0;
-				for (uint32_t a = 0; a < active_stitch_locations.size(); ++a) {
-					possible_links.emplace_back(a, n);
-					++n;
-					if (!active_stitch_linkone[a]) {
-						assert(i < inc.size());
-						if (inc[i]) {
-							possible_links.emplace_back(a, n);
-							++n;
-						}
-						++i;
+			std::vector< std::pair< uint32_t, uint32_t > > best_links;
+			float best_cost = std::numeric_limits< float >::infinity();
+
+			auto try_links_even = [&](uint32_t roll_active, uint32_t roll_new) {
+				std::vector< std::pair< uint32_t, uint32_t > > possible_links;
+
+				if (active_stitch_locations.size() <= new_stitch_locations.size()) {
+					//evenly distribute increases among the non-linkone stitches:
+					uint32_t total = 0;
+					for (auto l : active_stitch_linkone) {
+						if (!l) ++total;
 					}
-				}
-				assert(i == total);
-				assert(n == new_stitch_locations.size());
-			} else if (active_stitch_locations.size() > new_stitch_locations.size()) {
-				//evenly distribute decreases among the non-linkone stitches:
-				uint32_t total = 0;
-				for (auto l : new_stitch_linkone) {
-					if (!l) ++total;
-				}
-				uint32_t decreases = active_stitch_locations.size() - new_stitch_locations.size();
-				std::vector< bool > dec(total, false);
-				for (uint32_t i = 0; i < decreases; ++i) {
-					assert(dec[i * total / decreases] == false);
-					dec[i * total / decreases] = true;
-				}
-				uint32_t a = 0;
-				uint32_t i = 0;
-				for (uint32_t n = 0; n < new_stitch_locations.size(); ++n) {
-					possible_links.emplace_back(a, n);
-					++a;
-					if (!new_stitch_linkone[a]) {
-						assert(i < dec.size());
-						if (dec[i]) {
-							possible_links.emplace_back(a, n);
-							++a;
-						}
-						++i;
+					uint32_t increases = new_stitch_locations.size() - active_stitch_locations.size();
+					std::vector< bool > inc(total, false);
+					for (uint32_t i = 0; i < increases; ++i) {
+						assert(inc[i * total / increases] == false);
+						inc[i * total / increases] = true;
 					}
+					uint32_t n = 0;
+					uint32_t i = 0;
+					for (uint32_t a = 0; a < active_stitch_locations.size(); ++a) {
+						uint32_t ra = (a + roll_active) % active_stitch_locations.size();
+						uint32_t rn = (n + roll_new) % new_stitch_locations.size();
+						possible_links.emplace_back(ra, rn);
+						++n;
+						if (!active_stitch_linkone[ra]) {
+							assert(i < inc.size());
+							if (inc[i]) {
+								rn = (n + roll_new) % new_stitch_locations.size();
+								possible_links.emplace_back(ra, rn);
+								++n;
+							}
+							++i;
+						}
+					}
+					assert(i == total);
+					assert(n == new_stitch_locations.size());
+				} else if (active_stitch_locations.size() > new_stitch_locations.size()) {
+					//evenly distribute decreases among the non-linkone stitches:
+					uint32_t total = 0;
+					for (auto l : new_stitch_linkone) {
+						if (!l) ++total;
+					}
+					uint32_t decreases = active_stitch_locations.size() - new_stitch_locations.size();
+					std::vector< bool > dec(total, false);
+					for (uint32_t i = 0; i < decreases; ++i) {
+						assert(dec[i * total / decreases] == false);
+						dec[i * total / decreases] = true;
+					}
+					uint32_t a = 0;
+					uint32_t i = 0;
+					for (uint32_t n = 0; n < new_stitch_locations.size(); ++n) {
+						uint32_t ra = (a + roll_active) % active_stitch_locations.size();
+						uint32_t rn = (n + roll_new) % new_stitch_locations.size();
+						possible_links.emplace_back(ra, rn);
+						++a;
+						if (!new_stitch_linkone[rn]) {
+							assert(i < dec.size());
+							if (dec[i]) {
+								ra = (a + roll_active) % active_stitch_locations.size();
+								possible_links.emplace_back(ra, rn);
+								++a;
+							}
+							++i;
+						}
+					}
+					assert(i == total);
+					assert(a == active_stitch_locations.size());
 				}
-				assert(i == total);
-				assert(a == active_stitch_locations.size());
+				float const row_height = 2.0f * parameters.stitch_height_mm / parameters.model_units_mm;
+				float cost = 0.0f;
+				for (auto const &p : possible_links) {
+					float len = glm::length(new_stitch_locations[p.second] - active_stitch_locations[p.first]);
+					cost += (len - row_height) * (len - row_height);
+				}
+
+				if (cost < best_cost) {
+					best_cost = cost;
+					best_links = possible_links;
+				}
+			};
+
+
+			if (active_stitch_locations.size() >= new_stitch_locations.size()) {
+				for (uint32_t roll_active = 0; roll_active < active_stitch_locations.size(); ++roll_active) {
+					try_links_even(roll_active,0);
+				}
+			} else {
+				for (uint32_t roll_new = 0; roll_new < new_stitch_locations.size(); ++roll_new) {
+					try_links_even(0,roll_new);
+				}
 			}
 
-			for (auto const &p : possible_links) {
+
+			for (auto const &p : best_links) {
 				Link link;
 				link.from_chain = anm.first.first;
 				assert(p.first < active_stitch_indices.size());
@@ -645,10 +680,10 @@ void ak::link_chains(
 				link.to_chain = -1U;
 				assert(p.second < new_stitches.size());
 				link.to_vertex = all_new_stitches.size() + p.second;
-
 				links.emplace_back(link);
 			}
 		}
+
 
 		all_new_stitches.insert(all_new_stitches.end(), new_stitches.begin(), new_stitches.end());
 	}

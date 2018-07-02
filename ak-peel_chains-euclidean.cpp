@@ -57,7 +57,7 @@ void ak::peel_chains(
 	//for (int step = 1; step < 10; ++step) { //DEBUG: show several distances
 	{	int step = 1;
 
-		float level = step * (parameters.stitch_height_mm / parameters.model_units_mm);
+		float level = step * (2.0f * parameters.stitch_height_mm / parameters.model_units_mm);
 
 		std::vector< std::vector< EmbeddedVertex > > temp_chains;
 
