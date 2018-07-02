@@ -232,6 +232,7 @@ void link_chains(
 
 void build_next_active_chains(
 	Parameters const &parameters,
+	Model const &model,
 	std::vector< std::vector< EmbeddedVertex > > const &active_chains, //in: current active chains
 	std::vector< std::vector< Flag > > const &active_flags, //in: flags for current active
 	std::vector< std::vector< EmbeddedVertex > > const &next_chains, //in: next chains

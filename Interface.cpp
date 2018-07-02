@@ -418,6 +418,12 @@ Interface::Interface() {
 	});
 
 
+	next_active_chains_tristrip_for_path_draw = GLVertexArray::make_binding(path_draw->program, {
+		{path_draw->getAttribLocation("Position", GLProgram::MissingIsError), next_active_chains_tristrip[0]},
+		{path_draw->getAttribLocation("Normal", GLProgram::MissingIsWarning), next_active_chains_tristrip[1]},
+		{path_draw->getAttribLocation("Color", GLProgram::MissingIsWarning), next_active_chains_tristrip[2]}
+	});
+
 
 	GL_ERRORS();
 
@@ -703,6 +709,37 @@ void Interface::draw() {
 		glBindVertexArray(0);
 		glUseProgram(0);
 	}
+
+	//draw next active chains:
+	if (next_active_chains_tristrip.count && (show == ShowConstrainedModel)) {
+
+		//Position-to-clip matrix:
+		glm::mat4 p2c = camera.mvp();
+		//Position-to-light matrix:
+		glm::mat4x3 p2l = camera.mv();
+		//Normal-to-light matrix:
+		glm::mat3 n2l = glm::inverse(glm::transpose(glm::mat3(p2l)));
+
+		glUseProgram(path_draw->program);
+		glBindVertexArray(next_active_chains_tristrip_for_path_draw.array);
+
+		glUniformMatrix4fv(path_draw_p2c, 1, GL_FALSE, glm::value_ptr(p2c));
+		glUniformMatrix4x3fv(path_draw_p2l, 1, GL_FALSE, glm::value_ptr(p2l));
+		glUniformMatrix3fv(path_draw_n2l, 1, GL_FALSE, glm::value_ptr(n2l));
+
+		glUniform4f(path_draw_id, 0 / 255.0f, 0 / 255.0f, 0 / 255.0f, 0 / 255.0f);
+
+		//don't draw into ID array:
+		glColorMaski(1, GL_FALSE, GL_FALSE, GL_FALSE, GL_FALSE);
+
+		glDrawArrays(GL_TRIANGLE_STRIP, 0, next_active_chains_tristrip.count);
+
+		glColorMaski(1, GL_TRUE, GL_TRUE, GL_TRUE, GL_TRUE);
+
+		glBindVertexArray(0);
+		glUseProgram(0);
+	}
+
 
 	//draw links:
 	if (links_tristrip.count && (show == ShowConstrainedModel)) {
@@ -1154,6 +1191,13 @@ void Interface::step_peeling() {
 
 	update_next_chains_tristrip();
 	update_links_tristrip();
+
+	ak::build_next_active_chains(parameters, constrained_model,
+		active_chains, active_flags, linked_next_chains, linked_next_flags,
+		links,
+		&next_active_chains, &next_active_flags);
+	
+	update_next_active_chains_tristrip();
 }
 
 static void make_sphere(
@@ -1411,6 +1455,13 @@ void Interface::update_next_chains_tristrip() {
 		&next_chains_tristrip);
 }
 
+
+void Interface::update_next_active_chains_tristrip() {
+	update_chains_tristrip(constrained_model, next_active_chains, next_active_flags,
+		glm::u8vec4(0x00, 0x88, 0x88, 0xff),
+		0.015f,
+		&next_active_chains_tristrip);
+}
 
 void Interface::update_links_tristrip() {
 	std::vector< GLAttribBuffer< glm::vec3, glm::vec3, glm::u8vec4 >::Vertex > attribs;
