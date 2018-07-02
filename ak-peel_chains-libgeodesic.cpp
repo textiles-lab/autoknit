@@ -86,7 +86,7 @@ void ak::peel_chains(
 	//DEBUG: just show several distances:
 	for (int step = 1; step < 10; ++step) {
 
-		float level = step * (parameters.stitch_height_mm / parameters.model_units_mm);
+		float level = step * (2.0f * parameters.stitch_height_mm / parameters.model_units_mm);
 
 		std::vector< float > values;
 		values.assign(distance.distance.values, distance.distance.values + distance.distance.nRows);
