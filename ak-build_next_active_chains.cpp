@@ -506,6 +506,13 @@ void ak::build_next_active_chains(
 
 				//figure out which exactly one edge this vertex links to (it shouldn't link to two because that would imply two edges without a discard between, which implies a split/merge, which means no increases are allowed)
 				ChainVertex to(f->second[0]);
+				assert(f->second.size() == 1 || f->second.size() == 2);
+				if (f->second.size() == 2) {
+					if (!next_edges[to.chain].count(to.vertex)) {
+						to = f->second[1];
+						assert(next_edges[to.chain].count(to.vertex));
+					}
+				}
 				assert(to.vertex != -1U);
 				assert(next_edges[to.chain].count(to.vertex));
 
