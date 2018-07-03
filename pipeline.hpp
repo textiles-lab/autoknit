@@ -44,9 +44,14 @@ struct Parameters {
 		return 0.5f * std::min(stitch_width_mm, 2.0f * stitch_height_mm) / model_units_mm;
 	}
 
-	//potential stitch spacing for sample_chain:
+	//sample spacing for sample_chain:
 	float get_chain_sample_spacing() const {
 		return 0.25f * stitch_width_mm / model_units_mm;
+	}
+
+	//edge sample spacing for embedded_path:
+	float get_max_path_sample_spacing() const {
+		return 0.02f * std::min(stitch_width_mm, 2.0f * stitch_height_mm) / model_units_mm;
 	}
 };
 
@@ -225,6 +230,17 @@ void link_chains(
 	std::vector< std::vector< EmbeddedVertex > > *linked_next_chains, //out: next chains
 	std::vector< std::vector< Flag > > *linked_next_flags, //out: flags indicating status of vertices on next chains
 	std::vector< Link > *links //out: active_chains[from_chain][from_vertex] -> linked_next_chains[to_chain][to_vertex] links
+);
+
+//helper:
+// find a shortest path between two embedded vertices
+//  note: will throw runtime_error if no path exists
+void embedded_path(
+	Parameters const &parameters,
+	Model const &model,
+	EmbeddedVertex const &source,
+	EmbeddedVertex const &target,
+	std::vector< EmbeddedVertex > *path //out: path; path[0] will be source and path.back() will be target
 );
 
 //maybe:

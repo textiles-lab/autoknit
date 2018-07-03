@@ -28,8 +28,14 @@ void ak::build_next_active_chains(
 	for (auto const &l : links) {
 		assert(l.from_chain < active_chains.size());
 		assert(l.from_vertex < active_chains[l.from_chain].size());
+		if (active_chains[l.from_chain][0] == active_chains[l.from_chain].back()) {
+			assert(l.from_vertex + 1 < active_chains[l.from_chain].size());
+		}
 		assert(l.to_chain < next_chains.size());
 		assert(l.to_vertex < next_chains[l.to_chain].size());
+		if (next_chains[l.to_chain][0] == next_chains[l.to_chain].back()) {
+			assert(l.to_vertex + 1 < next_chains[l.to_chain].size());
+		}
 	}
 
 	assert(next_active_chains_);
@@ -52,19 +58,126 @@ void ak::build_next_active_chains(
 		}
 	};
 
-	std::multimap< ChainVertex, ChainVertex > active_next;
-	std::multimap< ChainVertex, ChainVertex > next_active;
+	std::map< ChainVertex, std::vector< ChainVertex > > active_next;
+	std::map< ChainVertex, std::vector< ChainVertex > > next_active;
 
 	for (auto const &l : links) {
-		active_next.insert(std::make_pair(
-			ChainVertex(l.from_chain, l.from_vertex),
-			ChainVertex(l.to_chain, l.to_vertex)
-		));
-		next_active.insert(std::make_pair(
-			ChainVertex(l.to_chain, l.to_vertex),
-			ChainVertex(l.from_chain, l.from_vertex)
-		));
+		active_next[ ChainVertex(l.from_chain, l.from_vertex) ]
+			.emplace_back(l.to_chain, l.to_vertex);
+		next_active[ ChainVertex(l.to_chain, l.to_vertex) ]
+			.emplace_back(l.from_chain, l.from_vertex);
 	}
+
+	//now sort the links so that they run in increasing chain order:
+	{ //sort active->next links:
+		//need to know where stitches are to check:
+		std::vector< std::unordered_set< uint32_t > > next_stitches(next_chains.size());
+		//stitches are flagged stitches:
+		for (auto const &flags : next_flags_in) {
+			uint32_t ci = &flags - &next_flags_in[0];
+			bool is_loop = next_chains[ci][0] == next_chains[ci].back();
+			for (uint32_t i = 0; i < flags.size(); ++i) {
+				if (i + 1 == flags.size() && is_loop) break;
+				if (flags[i] == ak::FlagLinkOne || flags[i] == ak::FlagLinkAny) {
+					next_stitches[ci].insert(i);
+				}
+			}
+		}
+		//stitches are the destination of links (even if flagged discard):
+		for (auto const &l : links) {
+			next_stitches[l.to_chain].insert(l.to_vertex);
+		}
+
+		for (auto &fv : active_next) {
+			std::vector< ChainVertex > &v = fv.second;
+			assert(!v.empty());
+			if (v.size() == 1) continue;
+			assert(v.size() == 2);
+			assert(v[0].chain == v[1].chain); //no splits/merges
+			assert(v[0].vertex != v[1].vertex);
+			uint32_t ci = v[0].chain;
+			auto stitch_in = [&](uint32_t begin, uint32_t end) {
+				for (uint32_t i = begin; i < end; ++i) {
+					if (next_stitches[ci].count(i)) return true;
+				}
+				return false;
+			};
+			bool is_loop = (next_chains[ci][0] == next_chains[ci].back());
+			if (is_loop) {
+				if (v[0].vertex < v[1].vertex) {
+					if (stitch_in(v[0].vertex+1, v[1].vertex)) std::swap(v[0], v[1]);
+				}
+
+				if (v[0].vertex < v[1].vertex) {
+					assert(!stitch_in(v[0].vertex+1,v[1].vertex));
+					assert(stitch_in(0, v[0].vertex) || stitch_in(v[1].vertex+1, next_chains[ci].size()));
+				} else { assert(v[0].vertex > v[1].vertex);
+					assert(!stitch_in(v[0].vertex+1, next_chains[ci].size()) && !stitch_in(0, v[1].vertex));
+					assert(stitch_in(v[1].vertex+1,v[0].vertex));
+				}
+			} else {
+				if (v[0].vertex > v[1].vertex) std::swap(v[0], v[1]);
+				assert(!stitch_in(v[0].vertex+1,v[1].vertex));
+			}
+		}
+	}
+
+	//now sort the links so that they run in increasing chain order:
+	{ //sort next->active links:
+		//need to know where stitches are to check:
+		std::vector< std::unordered_set< uint32_t > > active_stitches(active_chains.size());
+		//stitches are flagged stitches:
+		for (auto const &flags : active_flags_in) {
+			uint32_t ci = &flags - &active_flags_in[0];
+			bool is_loop = (active_chains[ci][0] == active_chains[ci].back());
+			for (uint32_t i = 0; i < flags.size(); ++i) {
+				if (i + 1 == flags.size() && is_loop) break;
+				if (flags[i] == ak::FlagLinkOne || flags[i] == ak::FlagLinkAny) {
+					active_stitches[ci].insert(i);
+				}
+			}
+		}
+		//stitches are the source of links [but should always be flagged anyway]:
+		for (auto const &l : links) {
+			ak::Flag f = active_flags_in[l.from_chain][l.from_vertex];
+			assert(f == ak::FlagLinkOne || f == ak::FlagLinkAny);
+			assert(active_stitches[l.from_chain].count(l.from_vertex));
+		}
+
+		for (auto &fv : next_active) {
+			std::vector< ChainVertex > &v = fv.second;
+			assert(!v.empty());
+			if (v.size() == 1) continue;
+			assert(v.size() == 2);
+			assert(v[0].chain == v[1].chain); //no splits/merges
+			assert(v[0].vertex != v[1].vertex);
+			uint32_t ci = v[0].chain;
+			auto stitch_in = [&](uint32_t begin, uint32_t end) {
+				for (uint32_t i = begin; i < end; ++i) {
+					if (active_stitches[ci].count(i)) return true;
+				}
+				return false;
+			};
+			bool is_loop = (active_chains[ci][0] == active_chains[ci].back());
+			if (is_loop) {
+				if (v[0].vertex < v[1].vertex) {
+					if (stitch_in(v[0].vertex+1, v[1].vertex)) std::swap(v[0], v[1]);
+				}
+
+				if (v[0].vertex < v[1].vertex) {
+					assert(!stitch_in(v[0].vertex+1,v[1].vertex));
+					assert(stitch_in(0, v[0].vertex) || stitch_in(v[1].vertex+1, next_chains[ci].size()));
+				} else { assert(v[0].vertex > v[1].vertex);
+					assert(!stitch_in(v[0].vertex+1, next_chains[ci].size()) && !stitch_in(0, v[1].vertex));
+					assert(stitch_in(v[1].vertex+1,v[0].vertex));
+				}
+			} else {
+				if (v[0].vertex > v[1].vertex) std::swap(v[0], v[1]);
+				assert(!stitch_in(v[0].vertex+1,v[1].vertex));
+			}
+		}
+	}
+
 
 
 	//flood fill discards right up to stitches:
@@ -109,6 +222,8 @@ void ak::build_next_active_chains(
 
 	//next_edges tells you if a given next index is at the edge of a discard range:
 	std::vector< std::unordered_set< uint32_t > > next_edges(next_chains.size());
+	std::vector< std::unordered_set< uint32_t > > next_discard_after(next_chains.size());
+	std::vector< std::unordered_set< uint32_t > > next_discard_before(next_chains.size());
 	for (uint32_t c = 0; c < next_chains.size(); ++c) {
 		auto const &chain = next_chains[c];
 		auto const &flags = next_flags[c];
@@ -119,11 +234,15 @@ void ak::build_next_active_chains(
 			if (i + 1 == flags.size() && is_loop) continue;
 			//ignore things that aren't stitches:
 			if (!(flags[i] == ak::FlagLinkOne || flags[i] == ak::FlagLinkAny)) continue;
-			if ( ((i > 0 ? flags[i-1] : before_front) == ak::FlagDiscard)
-			  ||  (i + 1 < flags.size() && flags[i+1] == ak::FlagDiscard) ) {
+			bool discard_before = ((i > 0 ? flags[i-1] : before_front) == ak::FlagDiscard);
+			bool discard_after = (i + 1 < flags.size() && flags[i+1] == ak::FlagDiscard);
+			if (discard_before) next_discard_before[c].insert(i);
+			if (discard_after) next_discard_after[c].insert(i);
+			if (discard_before || discard_after) {
 				assert(flags[i] == ak::FlagLinkOne); //edges are marked LinkOne always
 				next_edges[c].insert(i);
 			}
+			assert(!(discard_before && discard_after));
 		}
 	}
 
@@ -142,21 +261,46 @@ void ak::build_next_active_chains(
 			}
 			//ignore non-stitches:
 			if (!(flags[i] == ak::FlagLinkOne || flags[i] == ak::FlagLinkAny)) continue;
+
+			ak::Flag ignore = ak::FlagDiscard;
+			ak::Flag *prev = (i > 0 ? &flags[i-1] : (is_loop ? &flags[flags.size()-2] : &ignore));
+			ak::Flag *next = (is_loop ? &flags[(i+1)%(flags.size()-1)] : (i + 1 < flags.size() ? &flags[i+1] : &ignore));
+
 			//mark any stitches linked to non-edges for discard:
-			auto r = active_next.equal_range(ChainVertex(c, i));
 			bool have_edge = false;
 			bool have_link = false;
-			for (auto ri = r.first; ri != r.second; ++ri) {
-				ak::Flag f = next_flags[ri->second.chain][ri->second.vertex];
-				if (f == ak::FlagDiscard) {
-					//ignore this link, target is discarded
-				} else if (next_edges[ri->second.chain].count(ri->second.vertex)) {
-					assert(f == ak::FlagLinkOne); //edges are always marked LinkOne
-					have_edge = true;
-				} else {
-					assert(f == ak::FlagLinkOne || f == ak::FlagLinkAny); //this should be a link to a valid-flagged stitch
-					have_link = true;
+			auto f = active_next.find(ChainVertex(c,i));
+			if (f != active_next.end()) {
+				auto &v = f->second;
+				assert(!v.empty());
+				for (auto &cv : v) {
+					ak::Flag f = next_flags[cv.chain][cv.vertex];
+					if (f == ak::FlagDiscard) {
+						//ignore.
+					} else if (next_edges[cv.chain].count(cv.vertex)) {
+						assert(f == ak::FlagLinkOne); //edges are always marked LinkOne
+						have_edge = true;
+					} else {
+						assert(f == ak::FlagLinkOne || f == ak::FlagLinkAny); //this should be a link to a valid-flagged stitch
+						have_link = true;
+					}
 				}
+
+				//add more discard marks if this is connected to a fragment-ending stitch:
+				if (next_discard_before[v[0].chain].count(v[0].vertex)) {
+					if (*next != ak::FlagDiscard) {
+						assert(*next == ak::FlagLinkNone); //requiring at least one location in each chain *between* stitches.
+						*next = ak::FlagDiscard;
+					}
+				}
+
+				if (next_discard_after[v.back().chain].count(v.back().vertex)) {
+					if (*prev != ak::FlagDiscard) {
+						assert(*prev == ak::FlagLinkNone); //requiring at least one location in each chain *between* stitches.
+						*prev = ak::FlagDiscard;
+					}
+				}
+
 			}
 			if (have_edge) {
 				active_to_none[c].emplace_back(i);
@@ -259,6 +403,8 @@ void ak::build_next_active_chains(
 	add_fragments(active_chains, active_flags, Fragment::OnActive);
 
 
+	/*
+
 	//DEBUG: dump fragments as individual output chains
 	for (auto const &frag : fragments) {
 		next_active_chains.emplace_back();
@@ -270,6 +416,145 @@ void ak::build_next_active_chains(
 			next_active_flags.back().emplace_back(src_flags[i]);
 		}
 	}
+
+	//DEBUG: dump paths as individual chains as well
+	for (auto const &frag : fragments) {
+		if (frag.on == Fragment::OnNext) {
+			auto r = next_active.equal_range(ChainVertex(frag.chain, frag.inds.back()));
+			//expecting exactly one link, given that this is the start/end of a range:
+			assert(r.first != r.second);
+			auto t = r.first;
+			++t;
+			assert(t == r.second);
+
+			ak::EmbeddedVertex from = next_chains[frag.chain][frag.inds.back()];
+			ak::EmbeddedVertex to = active_chains[r.first->second.chain][r.first->second.vertex];
+
+			std::vector< ak::EmbeddedVertex > path;
+
+			ak::embedded_path(parameters, model, from, to, &path);
+
+			next_active_chains.emplace_back(path);
+			next_active_flags.emplace_back(next_active_chains.back().size(), ak::FlagLinkNone);
+			
+		} else {
+			assert(frag.on == Fragment::OnActive);
+		}
+	}
+	*/
+
+	std::vector< bool > used(fragments.size(), false);
+	for (uint32_t seed = 0; seed < fragments.size(); ++seed) {
+		if (used[seed]) continue;
+		uint32_t at = seed;
+		next_active_chains.emplace_back();
+		next_active_flags.emplace_back();
+		auto &chain = next_active_chains.back();
+		auto &flags = next_active_flags.back();
+		while (true) {
+			assert(!used[at]);
+			used[at] = true;
+			//do fragment:
+			auto const &frag = fragments[at];
+			auto const &src_chain = (frag.on == Fragment::OnNext ? next_chains : active_chains)[frag.chain];
+			auto const &src_flags = (frag.on == Fragment::OnNext ? next_flags : active_flags)[frag.chain];
+			for (auto i : frag.inds) {
+				chain.emplace_back(src_chain[i]);
+				flags.emplace_back(src_flags[i]);
+			}
+			//do connection to next fragment:
+			std::vector< ak::EmbeddedVertex > path;
+			if (frag.on == Fragment::OnNext) {
+				auto f = next_active.find(ChainVertex(frag.chain, frag.inds.back()));
+				//expecting exactly one link, given that this is the start/end of a range:
+				assert(f != next_active.end());
+				assert(f->second.size() == 1);
+
+				ChainVertex to = f->second[0];
+
+				if (active_flags[to.chain][to.vertex] == ak::FlagDiscard) {
+					//this is the end of a strip
+					std::cerr << "End of a strip; but we don't really have strip-backward-extending code written." << std::endl;
+					assert(false);
+				}
+
+				ak::embedded_path(parameters, model,
+					next_chains[frag.chain][frag.inds.back()],
+					active_chains[to.chain][to.vertex],
+					&path);
+
+				//now find fragment that starts with to.chain / to.vertex:
+				uint32_t found = -1U;
+				for (uint32_t f = 0; f < fragments.size(); ++f) {
+					if (fragments[f].on == Fragment::OnActive && fragments[f].chain == to.chain && fragments[f].inds[0] == to.vertex) {
+						assert(found == -1U);
+						found = f;
+					}
+				}
+				assert(found != -1U);
+				at = found;
+
+			} else { assert(frag.on == Fragment::OnActive);
+
+				auto f = active_next.find(ChainVertex(frag.chain, frag.inds.back()));
+
+				if (f == active_next.end()) {
+					std::cerr << "End of a strip; but we don't really have strip-backward-extending code written." << std::endl;
+					assert(false);
+				}
+				assert(!f->second.empty());
+
+				//figure out which exactly one edge this vertex links to (it shouldn't link to two because that would imply two edges without a discard between, which implies a split/merge, which means no increases are allowed)
+				ChainVertex to(f->second[0]);
+				assert(to.vertex != -1U);
+				assert(next_edges[to.chain].count(to.vertex));
+
+				ak::embedded_path(parameters, model,
+					active_chains[frag.chain][frag.inds.back()],
+					next_chains[to.chain][to.vertex],
+					&path);
+
+				//now find fragment that starts with to.chain / to.vertex:
+				uint32_t found = -1U;
+				for (uint32_t f = 0; f < fragments.size(); ++f) {
+					if (fragments[f].on == Fragment::OnNext && fragments[f].chain == to.chain && fragments[f].inds[0] == to.vertex) {
+						assert(found == -1U);
+						found = f;
+					}
+				}
+				assert(found != -1U);
+				at = found;
+			}
+
+			for (uint32_t i = 1; i + 1 < path.size(); ++i) {
+				chain.emplace_back(path[i]);
+				flags.emplace_back(ak::FlagLinkNone);
+			}
+
+			if (at == seed) {
+				//loop closed.
+				assert(chain[0] == path.back());
+				chain.emplace_back(chain[0]);
+				flags.emplace_back(flags[0]);
+				break;
+			}
+		}
+
+	}
+
+	uint32_t lines = 0;
+	uint32_t loops = 0;
+	for (auto const &chain : next_active_chains) {
+		auto const &flags = next_active_flags[&chain - &next_active_chains[0]];
+		if (chain[0] == chain.back()) {
+			assert(flags[0] == flags.back());
+			++loops;
+		} else {
+			++lines;
+		}
+	}
+
+	std::cout << "Have " << next_active_chains.size() << " next active chains; " << lines << " lines and " << loops << " loops." << std::endl;
 
 
 #if 0 //I'm thinking this walking strategy gets messy with, say, non-linked chains and figuring out good seeding

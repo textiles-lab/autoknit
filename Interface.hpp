@@ -143,7 +143,7 @@ struct Interface : public kit::Mode {
 	std::vector< std::vector< ak::EmbeddedVertex > > active_chains;
 	std::vector< std::vector< ak::Flag > > active_flags;
 
-	void step_peeling();
+	void step_peeling(bool build_next);
 	std::vector< std::vector< ak::EmbeddedVertex > > next_chains;
 	std::vector< std::vector< ak::Flag > > next_flags;
 

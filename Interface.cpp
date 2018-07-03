@@ -891,7 +891,7 @@ void Interface::handle_event(SDL_Event const &evt) {
 			if (active_chains.empty()) {
 				start_peeling();
 			} else {
-				step_peeling();
+				step_peeling(!(evt.key.keysym.mod & KMOD_SHIFT));
 			}
 		} else if (evt.key.keysym.scancode == SDL_SCANCODE_C) {
 			if (hovered.cons < constraints.size()) {
@@ -1168,10 +1168,10 @@ void Interface::start_peeling() {
 	update_active_chains_tristrip();
 }
 
-void Interface::step_peeling() {
-	if (!next_chains.empty()) {
-		active_chains = next_chains;
-		active_flags = next_flags;
+void Interface::step_peeling(bool build_next) {
+	if (!next_active_chains.empty()) {
+		active_chains = next_active_chains;
+		active_flags = next_active_flags;
 		update_active_chains_tristrip();
 	}
 
@@ -1192,10 +1192,15 @@ void Interface::step_peeling() {
 	update_next_chains_tristrip();
 	update_links_tristrip();
 
-	ak::build_next_active_chains(parameters, constrained_model,
-		active_chains, active_flags, linked_next_chains, linked_next_flags,
-		links,
-		&next_active_chains, &next_active_flags);
+	if (build_next) {
+		ak::build_next_active_chains(parameters, constrained_model,
+			active_chains, active_flags, linked_next_chains, linked_next_flags,
+			links,
+			&next_active_chains, &next_active_flags);
+	} else {
+		next_active_chains.clear();
+		next_active_flags.clear();
+	}
 	
 	update_next_active_chains_tristrip();
 }

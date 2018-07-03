@@ -27,6 +27,7 @@ NAMES =
 	;
 
 AUTOKNIT_NAMES =
+	ak-embedded_path
 	ak-build_next_active_chains
 	ak-link_chains
 	ak-peel_chains-euclidean

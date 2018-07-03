@@ -401,11 +401,15 @@ void ak::link_chains(
 		//compute min/max totals from active chain flags:
 		uint32_t min = 0;
 		uint32_t max = 0;
+		uint32_t DEBUG_stitch_count = 0;
 		{
 			uint32_t link_one = 0;
 			uint32_t link_any = 0;
 			assert(anm.first.first < active_flags.size());
-			for (auto f : active_flags[anm.first.first]) {
+			bool is_loop = (active_chains[anm.first.first][0] == active_chains[anm.first.first].back());
+			for (uint32_t i = 0; i < active_flags[anm.first.first].size(); ++i) {
+				if (is_loop && i + 1 == active_flags[anm.first.first].size()) continue;
+				auto f = active_flags[anm.first.first][i];
 				if (f == ak::FlagLinkOne) ++link_one;
 				else if (f == ak::FlagLinkAny) ++link_any;
 			}
@@ -413,6 +417,8 @@ void ak::link_chains(
 			min = link_one + (link_any + 1) / 2;
 			//link_any stitches can be increases:
 			max = link_one + link_any * 2;
+
+			DEBUG_stitch_count = link_one + link_any;
 		}
 
 		//compute min for next segments based on short row ends constraints:
@@ -562,8 +568,10 @@ void ak::link_chains(
 			auto const &active_chain = active_chains[anm.first.first];
 			auto const &active_flag = active_flags[anm.first.first];
 			assert(active_chain.size() == active_flag.size());
+			bool is_loop = (active_chain[0] == active_chain.back());
 			for (auto const &be : match.active) {
 				for (uint32_t i = be.begin; i < be.end; ++i) {
+					if (is_loop && (i + 1 == active_flag.size())) continue; //skip last index in loops
 					if (active_flag[i] == ak::FlagLinkAny || active_flag[i] == ak::FlagLinkOne ) {
 						active_stitch_indices.emplace_back( i );
 						active_stitch_locations.emplace_back( active_chain[i].interpolate(model.vertices) );
@@ -572,6 +580,7 @@ void ak::link_chains(
 				}
 			}
 		}
+		assert(active_stitch_indices.size() == DEBUG_stitch_count);
 
 		//actually build links:
 		{ //least-clever linking solution: FlagLinkOne's link 1-1, others link to keep arrays mostly in sync
