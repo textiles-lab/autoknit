@@ -194,6 +194,11 @@ struct Interface : public kit::Mode {
 	GLVertexArray next_active_chains_tristrip_for_path_draw;
 
 
+	
+	//link bottom constraints directly to top constraints (to test linking function)
+	void DEBUG_test_linking();
+
+
 	//place camera to view whole model:
 	void reset_camera();
 

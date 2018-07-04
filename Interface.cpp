@@ -886,6 +886,9 @@ void Interface::handle_event(SDL_Event const &evt) {
 		if (evt.key.keysym.scancode == SDL_SCANCODE_S) {
 			if (show == ShowModel) show = ShowConstrainedModel;
 			else if (show == ShowConstrainedModel) show = ShowModel;
+		} else if (evt.key.keysym.scancode == SDL_SCANCODE_L) {
+			show = ShowConstrainedModel;
+			DEBUG_test_linking();
 		} else if (evt.key.keysym.scancode == SDL_SCANCODE_P) {
 			show = ShowConstrainedModel;
 			if (active_chains.empty()) {
@@ -1487,6 +1490,56 @@ void Interface::update_links_tristrip() {
 }
 
 
+void Interface::DEBUG_test_linking() {
+	
+	constrained_model.clear();
+	constrained_values.clear();
+	DEBUG_constraint_paths.clear();
+	DEBUG_constraint_loops.clear();
+
+	interpolated_values.clear();
+
+	ak::embed_constraints(parameters, model, constraints, &constrained_model, &constrained_values, &DEBUG_constraint_paths, &DEBUG_constraint_loops);
+
+	update_DEBUG_constraint_paths_tristrip();
+	update_DEBUG_constraint_loops_tristrip();
+
+	try {
+		ak::interpolate_values(constrained_model, constrained_values, &interpolated_values);
+	} catch (std::exception &e) {
+		std::cout << "ERROR during interpoation: " << e.what() << std::endl;
+		interpolated_values.clear();
+	}
+
+	update_constrained_model_triangles();
+
+	if (constrained_values.empty()) {
+		std::cerr << "WARNING: no constrained values to start peeling." << std::endl;
+	} else {
+		ak::find_first_active_chains(parameters, constrained_model, interpolated_values, &active_chains, &active_flags);
+		std::vector< float > temp_values = interpolated_values;
+		for (auto &v : temp_values) {
+			v = -v;
+		}
+		ak::find_first_active_chains(parameters, constrained_model, temp_values, &next_chains, &next_flags);
+		for (uint32_t ci = 0; ci < next_chains.size(); ++ci) {
+			std::reverse(next_chains[ci].begin(), next_chains[ci].end());
+			std::reverse(next_flags[ci].begin(), next_flags[ci].end());
+		}
+	}
+
+	update_active_chains_tristrip();
+	update_next_chains_tristrip();
+
+	links.clear();
+	std::vector< std::vector< ak::EmbeddedVertex > > linked_next_chains;
+	std::vector< std::vector< ak::Flag > > linked_next_flags;
+
+	ak::link_chains(parameters, constrained_model, interpolated_values, active_chains, active_flags, next_chains, &linked_next_chains, &linked_next_flags, &links);
+
+	update_links_tristrip();
+
+}
 
 void Interface::reset_camera() {
 	glm::vec3 min = glm::vec3(std::numeric_limits< float >::infinity());
