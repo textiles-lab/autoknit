@@ -394,9 +394,20 @@ void ak::link_chains(
 	//TODO: account for balance also
 	for (auto const &anm : matches) {
 		Match const &match = anm.second;
-		bool is_split_or_merge = (active_matches[anm.first.first] > 1 || active_matches[anm.first.second] > 1);
 
-		if (is_split_or_merge) continue; //TODO: handle splits/merges! somehow!
+		if (match.active.empty()) {
+			std::cout << "Ignoring match with empty active chain." << std::endl;
+			continue;
+		} else if (match.next.empty()) {
+			std::cout << "Ignoring match with empty next chain." << std::endl;
+			continue;
+		}
+		assert(!match.active.empty());
+		assert(!match.next.empty());
+
+		//bool is_split_or_merge = (active_matches[anm.first.first] > 1 || active_matches[anm.first.second] > 1);
+
+		//if (is_split_or_merge) continue; //TODO: handle splits/merges! somehow!
 
 		//compute min/max totals from active chain flags:
 		uint32_t min = 0;
@@ -407,11 +418,13 @@ void ak::link_chains(
 			uint32_t link_any = 0;
 			assert(anm.first.first < active_flags.size());
 			bool is_loop = (active_chains[anm.first.first][0] == active_chains[anm.first.first].back());
-			for (uint32_t i = 0; i < active_flags[anm.first.first].size(); ++i) {
-				if (is_loop && i + 1 == active_flags[anm.first.first].size()) continue;
-				auto f = active_flags[anm.first.first][i];
-				if (f == ak::FlagLinkOne) ++link_one;
-				else if (f == ak::FlagLinkAny) ++link_any;
+			for (auto const &be : match.active) {
+				for (uint32_t i = be.begin; i < be.end; ++i) {
+					if (is_loop && i + 1 == active_flags[anm.first.first].size()) continue;
+					auto f = active_flags[anm.first.first][i];
+					if (f == ak::FlagLinkOne) ++link_one;
+					else if (f == ak::FlagLinkAny) ++link_any;
+				}
 			}
 			//link_any stitches can be decreases:
 			min = link_one + (link_any + 1) / 2;
@@ -443,7 +456,6 @@ void ak::link_chains(
 				std::cerr << "ERROR: more discard/non-discard ends are required (" << next_ones << ") than are permitted by the current active flags (" << max << "); code to fix this (by removing shortest same-discard segment) not yet implemented." << std::endl;
 				assert(next_ones <= max);
 			}
-
 		}
 
 		//compute desired stitch count based on segment lengths:
@@ -514,6 +526,7 @@ void ak::link_chains(
 						best_density = d;
 					}
 				}
+				assert(best < alloc.size());
 				alloc[best].stitches += 1;
 			}
 

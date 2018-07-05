@@ -10,6 +10,8 @@
 
 #include <SDL.h>
 
+#include <algorithm>
+
 
 //given normalized 0..1 time:
 glm::vec3 time_color(float time) {
@@ -1536,6 +1538,9 @@ void Interface::DEBUG_test_linking() {
 	std::vector< std::vector< ak::Flag > > linked_next_flags;
 
 	ak::link_chains(parameters, constrained_model, interpolated_values, active_chains, active_flags, next_chains, &linked_next_chains, &linked_next_flags, &links);
+
+	next_chains = linked_next_chains;
+	next_flags =  linked_next_flags;
 
 	update_links_tristrip();
 

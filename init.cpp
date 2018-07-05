@@ -18,6 +18,7 @@ std::shared_ptr< kit::Mode > kit_mode() {
 	std::string obj_file = "";
 	std::string load_constraints_file = "";
 	std::string save_constraints_file = "";
+	std::string constraints_file = "";
 	ak::Parameters parameters;
 	{
 		TaggedArguments args;
@@ -25,6 +26,7 @@ std::shared_ptr< kit::Mode > kit_mode() {
 		args.emplace_back("obj-scale", &parameters.model_units_mm, "length of one unit in obj file (mm)");
 		args.emplace_back("load-constraints", &load_constraints_file, "file to load time constraints from");
 		args.emplace_back("save-constraints", &save_constraints_file, "file to save time constraints to");
+		args.emplace_back("constraints", &constraints_file, "try to load constraints from the named file, and definitely save them to it (load_constraints_file or save_constraints_file will override)");
 		args.emplace_back("stitch-width", &parameters.stitch_width_mm, "stitch width (mm)");
 		args.emplace_back("stitch-height", &parameters.stitch_height_mm, "stitch height (mm)");
 		bool usage = !args.parse(kit::args);
@@ -49,13 +51,23 @@ std::shared_ptr< kit::Mode > kit_mode() {
 	std::vector< ak::Constraint > constraints;
 	if (load_constraints_file != "") {
 		ak::load_constraints(model, load_constraints_file, &constraints);
+	} else if (constraints_file != "") {
+		try {
+			ak::load_constraints(model, constraints_file, &constraints);
+		} catch (std::exception const &e) {
+			std::cerr << "WARNING: failed to load from '" << constraints_file << "' (" << e.what() << ")>" << std::endl;
+		}
 	}
 
 	std::shared_ptr< Interface > interface = std::make_shared< Interface >();
 
 	interface->parameters = parameters;
 
-	interface->save_constraints_file = save_constraints_file;
+	if (save_constraints_file != "") {
+		interface->save_constraints_file = save_constraints_file;
+	} else if (constraints_file != "") {
+		interface->save_constraints_file = constraints_file;
+	}
 
 	interface->set_model(model);
 	interface->set_constraints(constraints);
