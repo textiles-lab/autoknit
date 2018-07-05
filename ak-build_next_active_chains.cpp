@@ -3,6 +3,7 @@
 #include <iostream>
 #include <map>
 #include <unordered_set>
+#include <set>
 
 void ak::build_next_active_chains(
 	ak::Parameters const &parameters,
@@ -55,6 +56,12 @@ void ak::build_next_active_chains(
 		bool operator<(ChainVertex const &o) const {
 			if (chain != o.chain) return chain < o.chain;
 			else return vertex < o.vertex;
+		}
+		bool operator==(ChainVertex const &o) const {
+			return chain == o.chain && vertex == o.vertex;
+		}
+		bool operator!=(ChainVertex const &o) const {
+			return !(*this == o);
 		}
 	};
 
@@ -218,12 +225,103 @@ void ak::build_next_active_chains(
 
 	//for next_flags, flood fill existing discards:
 	std::vector< std::vector< ak::Flag > > next_flags = next_flags_in;
+	//also, any chainvertex that links to an active chain whose next stitch doesn't link back gets discard marked:
+	for (uint32_t c = 0; c < next_chains.size(); ++c) {
+		auto const &chain = next_chains[c];
+		auto &flags = next_flags[c];
+		bool is_loop = (chain[0] == chain.back());
+		for (uint32_t i = 0; i < flags.size(); ++i) {
+			if (is_loop && i + 1 == flags.size()) {
+				flags[i] = flags[0];
+				continue;
+			}
+			//if stitches link to an active chain that has the next stitch marked live, then will need to connect fragments:
+			if (flags[i] == ak::FlagLinkOne || flags[i] == ak::FlagLinkAny) {
+				auto f = next_active.find(ChainVertex(c, i));
+				assert(f != next_active.end());
+				ChainVertex cv = f->second.back();
+				bool found_live = false;
+				bool skip = false;
+				{ //check if cv links back to a later vertex:
+					auto f = active_next.find(cv);
+					assert(f != active_next.end());
+					if (f->second.size() == 2 && f->second[1] != ChainVertex(c,i)) {
+						assert(f->second[0] == ChainVertex(c,i));
+						skip = true;
+					}
+					
+				}
+				while (!skip) {
+					cv.vertex += 1;
+					if (active_chains[cv.chain][0] == active_chains[cv.chain].back()) {
+						if (cv.vertex + 1 == active_chains[cv.chain].size()) {
+							cv.vertex = 0;
+						}
+					} else {
+						if (cv.vertex == active_chains[cv.chain].size()) break;
+					}
+					if (!(active_flags_in[cv.chain][cv.vertex] == ak::FlagLinkOne || active_flags_in[cv.chain][cv.vertex] == ak::FlagLinkAny)) {
+						continue;
+					}
+					auto f = active_next.find(cv);
+					if (f == active_next.end()) {
+						found_live = true;
+						break;
+					} else {
+						ChainVertex ncv = f->second[0];
+						if (next_flags[ncv.chain][ncv.vertex] == ak::FlagDiscard) {
+							found_live = true;
+						} else {
+							found_live = false;
+						}
+						break;
+					}
+				}
+				if (found_live) {
+					if (i + 1 < flags.size()) {
+						assert(flags[i+1] == ak::FlagLinkNone || flags[i+1] == ak::FlagDiscard);
+						flags[i+1] = ak::FlagDiscard;
+						if (is_loop && i + 2 == flags.size()) flags[0] = flags.back();
+					} else if (is_loop) {
+						assert(false); //should never be at last flags element if is_loop.
+					}
+				}
+			}
+		}
+	}
 	fill_discards(next_chains, next_flags);
+
+	//any lonely next stitches end up also discarded:
+	for (uint32_t c = 0; c < next_chains.size(); ++c) {
+		auto const &chain = next_chains[c];
+		auto &flags = next_flags[c];
+		bool is_loop = (chain[0] == chain.back());
+		ak::Flag prev = (is_loop ? flags[flags.size()-2] : flags[0]);
+		for (uint32_t i = 0; i < flags.size(); ++i) {
+			if (is_loop && i + 1 == flags.size()) {
+				flags[i] = flags[0];
+				continue;
+			}
+			ak::Flag cur = flags[i];
+			ak::Flag next = (i + 1 < flags.size() ? flags[i+1] : flags.back());
+			if (cur == ak::FlagLinkOne || cur == ak::FlagLinkAny) {
+				if (prev == ak::FlagDiscard && next == ak::FlagDiscard) {
+					std::cout << "Discarding stranded next stitch." << std::endl;
+					flags[i] = ak::FlagDiscard;
+				}
+			}
+			prev = cur;
+		}
+	}
+
 
 	//next_edges tells you if a given next index is at the edge of a discard range:
 	std::vector< std::unordered_set< uint32_t > > next_edges(next_chains.size());
-	std::vector< std::unordered_set< uint32_t > > next_discard_after(next_chains.size());
-	std::vector< std::unordered_set< uint32_t > > next_discard_before(next_chains.size());
+	//std::vector< std::unordered_set< uint32_t > > next_discard_after(next_chains.size());
+	//std::vector< std::unordered_set< uint32_t > > next_discard_before(next_chains.size());
+	//links from active->next that next is discarded after/before:
+	std::set< std::pair< ChainVertex, ChainVertex > > discard_before_links;
+	std::set< std::pair< ChainVertex, ChainVertex > > discard_after_links;
 	for (uint32_t c = 0; c < next_chains.size(); ++c) {
 		auto const &chain = next_chains[c];
 		auto const &flags = next_flags[c];
@@ -236,14 +334,48 @@ void ak::build_next_active_chains(
 			if (!(flags[i] == ak::FlagLinkOne || flags[i] == ak::FlagLinkAny)) continue;
 			bool discard_before = ((i > 0 ? flags[i-1] : before_front) == ak::FlagDiscard);
 			bool discard_after = (i + 1 < flags.size() && flags[i+1] == ak::FlagDiscard);
-			if (discard_before) next_discard_before[c].insert(i);
-			if (discard_after) next_discard_after[c].insert(i);
+			if (discard_before) {
+				//next_discard_before[c].insert(i);
+				auto f = next_active.find(ChainVertex(c,i));
+				if (f != next_active.end()) {
+					discard_before_links.insert(std::make_pair(f->second[0], ChainVertex(c,i)));
+				}
+			}
+			if (discard_after) {
+				//next_discard_after[c].insert(i);
+				auto f = next_active.find(ChainVertex(c,i));
+				if (f != next_active.end()) {
+					discard_after_links.insert(std::make_pair(f->second.back(), ChainVertex(c,i)));
+				}
+			}
 			if (discard_before || discard_after) {
-				assert(flags[i] == ak::FlagLinkOne); //edges are marked LinkOne always
+				//assert(flags[i] == ak::FlagLinkOne); //edges are marked LinkOne always <-- no longer true with loop split discards
 				next_edges[c].insert(i);
 			}
-			assert(!(discard_before && discard_after));
+			//assert(!(discard_before && discard_after)); <-- no longer true with loop split discard
 		}
+	}
+
+	//DEBUG:
+	for (uint32_t c = 0; c < next_chains.size(); ++c) {
+		std::cout << "next[" << c << "] ";
+		for (auto f : next_flags_in[c]) {
+			if      (f == ak::FlagDiscard)  std::cout << '-';
+			else if (f == ak::FlagLinkNone) std::cout << '.';
+			else if (f == ak::FlagLinkOne)  std::cout << '1';
+			else if (f == ak::FlagLinkAny)  std::cout << '2';
+			else std::cout << '?';
+		}
+		std::cout << std::endl;
+		std::cout << "        ";
+		for (auto f : next_flags[c]) {
+			if      (f == ak::FlagDiscard)  std::cout << '-';
+			else if (f == ak::FlagLinkNone) std::cout << '.';
+			else if (f == ak::FlagLinkOne)  std::cout << '1';
+			else if (f == ak::FlagLinkAny)  std::cout << '2';
+			else std::cout << '?';
+		}
+		std::cout << std::endl;
 	}
 
 
@@ -273,31 +405,59 @@ void ak::build_next_active_chains(
 			if (f != active_next.end()) {
 				auto &v = f->second;
 				assert(!v.empty());
+				if (v.size() == 1) {
+					if (discard_before_links.count(std::make_pair(ChainVertex(c,i), v[0]))) {
+						if (*next != ak::FlagDiscard) {
+							assert(*next == ak::FlagLinkNone); //requiring at least one location in each chain *between* stitches.
+							*next = ak::FlagDiscard;
+						}
+						have_link = true;
+					}
+					//next:   ......*-----
+					//active: ------1.....
+					if (discard_after_links.count(std::make_pair(ChainVertex(c,i), v[0]))) {
+						if (*next != ak::FlagDiscard) {
+							assert(*prev == ak::FlagLinkNone); //requiring at least one location in each chain *between* stitches.
+							*prev = ak::FlagDiscard;
+						}
+						have_link = true;
+					}
+				} else if (v.size() == 2) {
+					bool before0 = discard_before_links.count(std::make_pair(ChainVertex(c,i), v[0]));
+					bool before1 = discard_before_links.count(std::make_pair(ChainVertex(c,i), v[1]));
+					bool after0 = discard_after_links.count(std::make_pair(ChainVertex(c,i), v[0]));
+					bool after1 = discard_after_links.count(std::make_pair(ChainVertex(c,i), v[1]));
+					assert(!(after0 && before0));
+					assert(!(after1 && before1));
+					assert(!(before0 && after1));
+					if (after0 && before1) {
+						have_edge = true;
+					} else {
+						if (after0 || after1) {
+							if (*prev != ak::FlagDiscard) {
+								assert(*prev == ak::FlagLinkNone); //requiring at least one location in each chain *between* stitches.
+								*prev = ak::FlagDiscard;
+							}
+							have_edge = true;
+						}
+						if (before0 || before1) {
+							if (*prev != ak::FlagDiscard) {
+								assert(*prev == ak::FlagLinkNone); //requiring at least one location in each chain *between* stitches.
+								*prev = ak::FlagDiscard;
+							}
+							have_edge = true;
+						}
+					}
+				} else {
+					assert(v.size() == 1 || v.size() == 2);
+				}
 				for (auto &cv : v) {
 					ak::Flag f = next_flags[cv.chain][cv.vertex];
 					if (f == ak::FlagDiscard) {
 						//ignore.
-					} else if (next_edges[cv.chain].count(cv.vertex)) {
-						assert(f == ak::FlagLinkOne); //edges are always marked LinkOne
-						have_edge = true;
 					} else {
 						assert(f == ak::FlagLinkOne || f == ak::FlagLinkAny); //this should be a link to a valid-flagged stitch
 						have_link = true;
-					}
-				}
-
-				//add more discard marks if this is connected to a fragment-ending stitch:
-				if (next_discard_before[v[0].chain].count(v[0].vertex)) {
-					if (*next != ak::FlagDiscard) {
-						assert(*next == ak::FlagLinkNone); //requiring at least one location in each chain *between* stitches.
-						*next = ak::FlagDiscard;
-					}
-				}
-
-				if (next_discard_after[v.back().chain].count(v.back().vertex)) {
-					if (*prev != ak::FlagDiscard) {
-						assert(*prev == ak::FlagLinkNone); //requiring at least one location in each chain *between* stitches.
-						*prev = ak::FlagDiscard;
 					}
 				}
 
@@ -322,6 +482,40 @@ void ak::build_next_active_chains(
 		//make sure loop-ness was preserved:
 		assert(active_chains[c][0] != active_chains[c].back() || active_flags[c][0] == active_flags[c].back());
 	}
+
+
+	//DEBUG:
+	for (uint32_t c = 0; c < active_chains.size(); ++c) {
+		std::cout << "active[" << c << "] ";
+		for (auto f : active_flags_in[c]) {
+			if      (f == ak::FlagDiscard)  std::cout << '-';
+			else if (f == ak::FlagLinkNone) std::cout << '.';
+			else if (f == ak::FlagLinkOne)  std::cout << '1';
+			else if (f == ak::FlagLinkAny)  std::cout << '2';
+			else std::cout << '?';
+		}
+		std::cout << std::endl;
+		std::cout << "          ";
+		for (auto f : active_flags[c]) {
+			if      (f == ak::FlagDiscard)  std::cout << '-';
+			else if (f == ak::FlagLinkNone) std::cout << '.';
+			else if (f == ak::FlagLinkOne)  std::cout << '1';
+			else if (f == ak::FlagLinkAny)  std::cout << '2';
+			else std::cout << '?';
+		}
+		std::cout << std::endl;
+	}
+
+	//DEBUG:
+	for (auto const &cvv : active_next) {
+		std::cout << "active[" << cvv.first.chain << "][" << cvv.first.vertex << "] ->";
+		for (auto const &s : cvv.second) {
+			std::cout << " next[" << s.chain << "][" << s.vertex << "]";
+		}
+		std::cout << "\n";
+	}
+	std::cout.flush();
+
 
 
 	//divide chains into a series of 'fragments' between discarded segments:
@@ -404,7 +598,6 @@ void ak::build_next_active_chains(
 
 
 	/*
-
 	//DEBUG: dump fragments as individual output chains
 	for (auto const &frag : fragments) {
 		next_active_chains.emplace_back();
@@ -443,6 +636,14 @@ void ak::build_next_active_chains(
 	}
 	*/
 
+	//DEBUG:
+	for (auto const &frag : fragments) {
+		std::cout << " fragments[" << (&frag - &fragments[0]) << "] is ";
+		std::cout << (frag.on == Fragment::OnActive ? "active" : "next");
+		std::cout << "[" << frag.chain << "][" << frag.inds[0] << " - " << frag.inds.back() << "]";
+		std::cout << std::endl;
+	}
+
 	std::vector< bool > used(fragments.size(), false);
 	for (uint32_t seed = 0; seed < fragments.size(); ++seed) {
 		if (used[seed]) continue;
@@ -451,7 +652,9 @@ void ak::build_next_active_chains(
 		next_active_flags.emplace_back();
 		auto &chain = next_active_chains.back();
 		auto &flags = next_active_flags.back();
+		std::cout << "---- seed " << seed << " ----" << std::endl; //DEBUG
 		while (true) {
+			std::cout << "At fragment[" << at << "]" << std::endl; //DEBUG
 			assert(!used[at]);
 			used[at] = true;
 			//do fragment:
@@ -466,11 +669,11 @@ void ak::build_next_active_chains(
 			std::vector< ak::EmbeddedVertex > path;
 			if (frag.on == Fragment::OnNext) {
 				auto f = next_active.find(ChainVertex(frag.chain, frag.inds.back()));
-				//expecting exactly one link, given that this is the start/end of a range:
+				//expecting exactly one link, given that this is the start/end of a range: <-- no longer quite true
 				assert(f != next_active.end());
-				assert(f->second.size() == 1);
+				//assert(f->second.size() == 1); <--
 
-				ChainVertex to = f->second[0];
+				ChainVertex to = f->second.back(); //[0];
 
 				if (active_flags[to.chain][to.vertex] == ak::FlagDiscard) {
 					//this is the end of a strip
