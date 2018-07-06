@@ -19,6 +19,17 @@ void ak::peel_chains(
 	auto &next_chains = *next_chains_;
 	next_chains.clear();
 
+	{
+		//DEBUG:
+		uint32_t loops = 0;
+		uint32_t lines = 0;
+		for (auto const &chain : active_chains) {
+			if (chain[0] == chain.back()) ++loops;
+			else ++lines;
+		}
+		std::cout << "---- peel chains on [" << loops << " loops and " << lines << " lines] ----" << std::endl;
+	}
+
 	//This version of the code just uses the 3D distance to the curve.
 	//might have problems with models that get really close to themselves.
 
@@ -276,7 +287,7 @@ void ak::peel_chains(
 	}
 
 
-	std::cout << "Found " << found.size() << " of " << possible_chains.size() << " chains." << std::endl;
+	std::cout << "  selected " << found.size() << " of " << possible_chains.size() << " chains." << std::endl;
 
 	next_chains.reserve(found.size());
 	for (auto f : found) {
