@@ -1159,6 +1159,8 @@ void Interface::save_constraints() {
 }
 
 void Interface::start_peeling() {
+	if (constraints_dirty) update_constraints();
+
 	active_chains.clear();
 	active_flags.clear();
 

@@ -19,6 +19,7 @@ std::shared_ptr< kit::Mode > kit_mode() {
 	std::string load_constraints_file = "";
 	std::string save_constraints_file = "";
 	std::string constraints_file = "";
+	uint32_t peel_test = 0;
 	ak::Parameters parameters;
 	{
 		TaggedArguments args;
@@ -29,6 +30,7 @@ std::shared_ptr< kit::Mode > kit_mode() {
 		args.emplace_back("constraints", &constraints_file, "try to load constraints from the named file, and definitely save them to it (load_constraints_file or save_constraints_file will override)");
 		args.emplace_back("stitch-width", &parameters.stitch_width_mm, "stitch width (mm)");
 		args.emplace_back("stitch-height", &parameters.stitch_height_mm, "stitch height (mm)");
+		args.emplace_back("peel-test", &peel_test, "run N rounds of peeling then quit");
 		bool usage = !args.parse(kit::args);
 		if (!usage && obj_file == "") {
 			std::cerr << "ERROR: 'obj:' argument is required." << std::endl;
@@ -71,6 +73,14 @@ std::shared_ptr< kit::Mode > kit_mode() {
 
 	interface->set_model(model);
 	interface->set_constraints(constraints);
+
+	if (peel_test != 0) {
+		interface->start_peeling();
+		for (uint32_t i = 0; i < peel_test; ++i) {
+			interface->step_peeling(true);
+		}
+		return nullptr;
+	}
 
 	return interface;
 }

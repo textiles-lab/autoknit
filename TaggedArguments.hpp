@@ -23,6 +23,17 @@ struct TaggedArgument {
 			},
 			tag_ + ":<float> (default:" + std::to_string(*value) + ") " + help_ ) {
 	}
+	TaggedArgument(std::string const &tag_, uint32_t *value, std::string const &help_)
+		: TaggedArgument(
+			tag_,
+			[value](std::string arg) -> bool {
+				std::istringstream iss(arg);
+				if (iss >> *value) return true;
+				else return false;
+			},
+			tag_ + ":<uint> (default:" + std::to_string(*value) + ") " + help_ ) {
+	}
+
 	TaggedArgument(std::string const &tag_, std::string *value, std::string const &help_)
 		: TaggedArgument(
 			tag_,

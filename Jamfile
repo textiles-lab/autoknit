@@ -6,6 +6,12 @@ SubInclude TOP libgeodesic src ;
 
 MySubDir TOP ;
 
+if $(OS) = LINUX {
+	C++ += -pg ;
+	LINK += -pg ;
+}
+
+
 #---- build ----
 
 PLAN_TRANSFERS_NAMES =
