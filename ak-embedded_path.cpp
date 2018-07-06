@@ -7,8 +7,9 @@
 #include <stdexcept>
 
 #include <glm/gtx/hash.hpp>
+#include <glm/gtx/norm.hpp>
 
-void ak::embedded_path(
+void embedded_path_simple(
 	ak::Parameters const &parameters,
 	ak::Model const &model,
 	ak::EmbeddedVertex const &source,
@@ -33,7 +34,7 @@ void ak::embedded_path(
 	vertex_locs.reserve(model.vertices.size());
 	for (uint32_t vi = 0; vi < model.vertices.size(); ++vi) {
 		vertex_locs.emplace_back(loc_ev.size());
-		loc_ev.emplace_back(EmbeddedVertex::on_vertex(vi));
+		loc_ev.emplace_back(ak::EmbeddedVertex::on_vertex(vi));
 		loc_pos.emplace_back(loc_ev.back().interpolate(model.vertices));
 	}
 
@@ -70,7 +71,7 @@ void ak::embedded_path(
 		uint32_t end = begin + count;
 		edge_locs.insert(std::make_pair(e, std::make_pair(begin, end)));
 		for (uint32_t i = 0; i < count; ++i) {
-			loc_ev.emplace_back(EmbeddedVertex::on_edge(e.x, e.y, (i + 0.5f) / float(count)));
+			loc_ev.emplace_back(ak::EmbeddedVertex::on_edge(e.x, e.y, (i + 0.5f) / float(count)));
 			loc_pos.emplace_back(loc_ev.back().interpolate(model.vertices));
 		}
 		assert(loc_ev.size() == end);
@@ -216,3 +217,169 @@ void ak::embedded_path(
 	assert(path.back() == target);
 }
 
+
+void ak::embedded_path(
+	ak::Parameters const &parameters,
+	ak::Model const &model,
+	ak::EmbeddedVertex const &source,
+	ak::EmbeddedVertex const &target,
+	std::vector< ak::EmbeddedVertex > *path_ //out: path; path[0] will be source and path.back() will be target
+) {
+
+	assert(path_);
+	auto &path = *path_;
+	path.clear();
+
+	//first do a vertex-to-vertex distance computation to bound the computation:
+
+	std::vector< std::vector< uint32_t > > adj(model.vertices.size());
+
+	std::unordered_set< glm::uvec2 > edges;
+	for (auto const &tri : model.triangles) {
+		auto do_edge = [&](uint32_t a, uint32_t b) {
+			if (a > b) std::swap(a,b);
+			edges.insert(glm::uvec2(a,b));
+		};
+		do_edge(tri.x, tri.y);
+		do_edge(tri.y, tri.z);
+		do_edge(tri.z, tri.x);
+	}
+
+	for (auto const &e : edges) {
+		adj[e.x].emplace_back(e.y);
+		adj[e.y].emplace_back(e.x);
+	}
+
+	uint32_t target_idx = target.simplex.x;
+
+	std::vector< float > dis(model.vertices.size(), std::numeric_limits< float >::infinity());
+
+	std::vector< std::pair< float, std::pair< uint32_t, float > > > todo;
+
+	auto queue = [&](uint32_t at, float distance) {
+		assert(distance < dis[at]);
+		dis[at] = distance;
+
+		float heuristic = glm::length(model.vertices[target_idx] - model.vertices[at]);
+		todo.emplace_back(std::make_pair(-(heuristic + distance), std::make_pair(at, distance)));
+		std::push_heap(todo.begin(), todo.end());
+	};
+
+	queue(source.simplex.x, glm::length(source.interpolate(model.vertices) - model.vertices[source.simplex.x]));
+
+	while (!todo.empty()) {
+		std::pop_heap(todo.begin(), todo.end());
+		uint32_t at = todo.back().second.first;
+		float distance = todo.back().second.second;
+		todo.pop_back();
+
+		if (distance > dis[at]) continue;
+		assert(distance == dis[at]);
+
+		if (at == target_idx) break; //bail out early -- don't need distances to everything.
+
+		for (auto n : adj[at]) {
+			float d = distance + glm::length(model.vertices[n] - model.vertices[at]);
+			if (d < dis[n]) queue(n, d);
+		}
+	}
+
+	//okay, so this is a conservative (long) estimate of path length:
+	float dis2 = dis[target_idx] + glm::length(target.interpolate(model.vertices) - model.vertices[target_idx]);
+	dis2 = dis2*dis2;
+
+	//come up with a model containing only triangles that might be used in the path:
+
+	Model trimmed;
+	trimmed.vertices.reserve(model.vertices.size());
+	trimmed.triangles.reserve(model.triangles.size());
+
+	std::vector< uint32_t > to_trimmed(model.vertices.size(), -1U);
+	std::vector< uint32_t > from_trimmed;
+	from_trimmed.reserve(model.vertices.size());
+	auto vertex_to_trimmed = [&to_trimmed,&from_trimmed,&trimmed,&model](uint32_t v) {
+		if (to_trimmed[v] == -1U) {
+			to_trimmed[v] = trimmed.vertices.size();
+			from_trimmed.emplace_back(v);
+			trimmed.vertices.emplace_back(model.vertices[v]);
+		}
+		return to_trimmed[v];
+	};
+
+	{ //keep triangles that are close enough to source and target that the path could possible pass through them:
+		glm::vec3 src = source.interpolate(model.vertices);
+		glm::vec3 tgt = target.interpolate(model.vertices);
+		for (auto const &tri : model.triangles) {
+			glm::vec3 min = glm::min(model.vertices[tri.x], glm::min(model.vertices[tri.y], model.vertices[tri.z]));
+			glm::vec3 max = glm::max(model.vertices[tri.x], glm::max(model.vertices[tri.y], model.vertices[tri.z]));
+
+			float len2_src = glm::length2(glm::max(min, glm::min(max, src)) - src);
+			float len2_tgt = glm::length2(glm::max(min, glm::min(max, tgt)) - tgt);
+			if (len2_src + len2_tgt < dis2) {
+				trimmed.triangles.emplace_back(glm::uvec3(
+					vertex_to_trimmed(tri.x), vertex_to_trimmed(tri.y), vertex_to_trimmed(tri.z)
+				));
+			}
+		}
+	}
+
+	ak::EmbeddedVertex trimmed_source = source;
+		
+	trimmed_source.simplex.x = vertex_to_trimmed(trimmed_source.simplex.x);
+	if (trimmed_source.simplex.y != -1U) trimmed_source.simplex.y = vertex_to_trimmed(trimmed_source.simplex.y);
+	if (trimmed_source.simplex.z != -1U) trimmed_source.simplex.z = vertex_to_trimmed(trimmed_source.simplex.z);
+	trimmed_source = ak::EmbeddedVertex::canonicalize(trimmed_source.simplex, trimmed_source.weights);
+
+	ak::EmbeddedVertex trimmed_target = target;
+	trimmed_target.simplex.x = vertex_to_trimmed(trimmed_target.simplex.x);
+	if (trimmed_target.simplex.y != -1U) trimmed_target.simplex.y = vertex_to_trimmed(trimmed_target.simplex.y);
+	if (trimmed_target.simplex.z != -1U) trimmed_target.simplex.z = vertex_to_trimmed(trimmed_target.simplex.z);
+	trimmed_target = ak::EmbeddedVertex::canonicalize(trimmed_target.simplex, trimmed_target.weights);
+
+	assert(from_trimmed.size() == trimmed.vertices.size());
+
+	/*//DEBUG:
+	std::cout << "Trimmed has " << trimmed.vertices.size() << " verts and " << trimmed.triangles.size() << " tris." << std::endl;
+
+	std::cout << "source on: " << (int)source.simplex.x << ", " << (int)source.simplex.y << ", " << (int)source.simplex.z << std::endl;
+	std::cout << "trimmed_source on: " << (int)trimmed_source.simplex.x << ", " << (int)trimmed_source.simplex.y << ", " << (int)trimmed_source.simplex.z << std::endl;
+	std::cout << "target on: " << (int)target.simplex.x << ", " << (int)target.simplex.y << ", " << (int)target.simplex.z << std::endl;
+	std::cout << "trimmed_target on: " << (int)trimmed_target.simplex.x << ", " << (int)trimmed_target.simplex.y << ", " << (int)trimmed_target.simplex.z << std::endl;
+
+	//PARANOIA:
+	bool found_source = false;
+	bool found_target = false;
+	for (auto simplex : trimmed.triangles) {
+		if (simplex.x > simplex.y) std::swap(simplex.x, simplex.y);
+		if (simplex.y > simplex.z) std::swap(simplex.y, simplex.z);
+		if (simplex.x > simplex.y) std::swap(simplex.x, simplex.y);
+
+		if (simplex == trimmed_source.simplex) found_source = true;
+		if (simplex == trimmed_target.simplex) found_target = true;
+		simplex.z = -1U;
+		if (simplex == trimmed_source.simplex) found_source = true;
+		if (simplex == trimmed_target.simplex) found_target = true;
+		simplex.y = -1U;
+		if (simplex == trimmed_source.simplex) found_source = true;
+		if (simplex == trimmed_target.simplex) found_target = true;
+	}
+	assert(found_source);
+	assert(found_target);
+	*/
+
+
+	embedded_path_simple(
+		parameters,
+		trimmed,
+		trimmed_source,
+		trimmed_target,
+		&path);
+
+	for (auto &v : path) {
+		v.simplex.x = from_trimmed[v.simplex.x];
+		if (v.simplex.y != -1U) v.simplex.y = from_trimmed[v.simplex.y];
+		if (v.simplex.z != -1U) v.simplex.z = from_trimmed[v.simplex.z];
+		v = ak::EmbeddedVertex::canonicalize(v.simplex, v.weights);
+	}
+
+}

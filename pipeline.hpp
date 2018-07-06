@@ -115,6 +115,15 @@ struct EmbeddedVertex {
 		return EmbeddedVertex(glm::uvec3(a, b, -1U), glm::vec3(1.0f - mix, mix, 0.0f));
 	}
 
+	static EmbeddedVertex canonicalize(glm::uvec3 s, glm::vec3 w) {
+		if (s.x > s.y) { std::swap(s.x,s.y); std::swap(w.x,w.y); }
+		if (s.y > s.z) { std::swap(s.y,s.z); std::swap(w.y,w.z); }
+		if (s.x > s.y) { std::swap(s.x,s.y); std::swap(w.x,w.y); }
+
+		return EmbeddedVertex(s, w);
+	}
+
+
 	static EmbeddedVertex mix(EmbeddedVertex const &a, EmbeddedVertex const &b, float m) {
 		glm::uvec3 common = common_simplex(a.simplex, b.simplex);
 		return EmbeddedVertex(
