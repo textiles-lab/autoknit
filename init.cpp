@@ -20,6 +20,7 @@ std::shared_ptr< kit::Mode > kit_mode() {
 	std::string save_constraints_file = "";
 	std::string constraints_file = "";
 	uint32_t peel_test = 0;
+	uint32_t peel_step = 0;
 	ak::Parameters parameters;
 	{
 		TaggedArguments args;
@@ -31,9 +32,14 @@ std::shared_ptr< kit::Mode > kit_mode() {
 		args.emplace_back("stitch-width", &parameters.stitch_width_mm, "stitch width (mm)");
 		args.emplace_back("stitch-height", &parameters.stitch_height_mm, "stitch height (mm)");
 		args.emplace_back("peel-test", &peel_test, "run N rounds of peeling then quit");
+		args.emplace_back("peel-step", &peel_step, "run N rounds of peeling then show interface");
 		bool usage = !args.parse(kit::args);
 		if (!usage && obj_file == "") {
 			std::cerr << "ERROR: 'obj:' argument is required." << std::endl;
+			usage = true;
+		}
+		if (!usage && (peel_step != 0 && peel_test != 0)) {
+			std::cerr << "ERROR: Please specify only one of 'peel-test:' and 'peel-step:'" << std::endl;
 			usage = true;
 		}
 		if (usage) {
@@ -74,6 +80,7 @@ std::shared_ptr< kit::Mode > kit_mode() {
 	interface->set_model(model);
 	interface->set_constraints(constraints);
 
+
 	if (peel_test != 0) {
 		interface->start_peeling();
 		for (uint32_t i = 0; i < peel_test; ++i) {
@@ -81,6 +88,13 @@ std::shared_ptr< kit::Mode > kit_mode() {
 		}
 		return nullptr;
 	}
+	if (peel_step != 0) {
+		interface->start_peeling();
+		for (uint32_t i = 0; i < peel_step; ++i) {
+			interface->step_peeling(true);
+		}
+	}
+
 
 	return interface;
 }

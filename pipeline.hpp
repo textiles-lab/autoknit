@@ -242,6 +242,18 @@ struct Link {
 	uint32_t to_chain, to_vertex;
 };
 
+//NOTE:
+// in the output of link_chains, links are ordered so that if a vertex appears
+// in more than one link, the links in which it appears are adjacent, and the
+// order is increasing along the opposite chain.
+// e.g.
+//  -------a--->
+//       / |
+//  ----b--c--->
+//  the links array will contain
+//        ... (a,b) (a,c) ...
+//     or ... (b,a) (c,a) ...
+//  (depending on which chain is 'from' and which is 'to')
 void link_chains(
 	Parameters const &parameters,
 	Model const &model, //in: model

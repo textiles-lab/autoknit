@@ -106,121 +106,12 @@ void ak::build_next_active_chains(
 	std::map< ChainVertex, std::vector< ChainVertex > > active_next;
 	std::map< ChainVertex, std::vector< ChainVertex > > next_active;
 
+	//NOTE: link_chains guarantees that links are in "direction of chain" order, so old sorting code removed:
 	for (auto const &l : links) {
 		active_next[ ChainVertex(l.from_chain, l.from_vertex) ]
 			.emplace_back(l.to_chain, l.to_vertex);
 		next_active[ ChainVertex(l.to_chain, l.to_vertex) ]
 			.emplace_back(l.from_chain, l.from_vertex);
-	}
-
-	//now sort the links so that they run in increasing chain order:
-	{ //sort active->next links:
-		//need to know where stitches are to check:
-		std::vector< std::unordered_set< uint32_t > > next_stitches(next_chains.size());
-		//stitches are flagged stitches:
-		for (auto const &flags : next_flags) {
-			uint32_t ci = &flags - &next_flags[0];
-			bool is_loop = next_chains[ci][0] == next_chains[ci].back();
-			for (uint32_t i = 0; i < flags.size(); ++i) {
-				if (i + 1 == flags.size() && is_loop) break;
-				if (flags[i] == ak::FlagLinkOne || flags[i] == ak::FlagLinkAny) {
-					next_stitches[ci].insert(i);
-				}
-			}
-		}
-		//stitches are the destination of links (even if flagged discard):
-		for (auto const &l : links_in) {
-			next_stitches[l.to_chain].insert(l.to_vertex);
-		}
-
-		for (auto &fv : active_next) {
-			std::vector< ChainVertex > &v = fv.second;
-			assert(!v.empty());
-			if (v.size() == 1) continue;
-			assert(v.size() == 2);
-			assert(v[0].chain == v[1].chain); //no splits/merges
-			assert(v[0].vertex != v[1].vertex);
-			uint32_t ci = v[0].chain;
-			auto stitch_in = [&](uint32_t begin, uint32_t end) {
-				for (uint32_t i = begin; i < end; ++i) {
-					if (next_stitches[ci].count(i)) return true;
-				}
-				return false;
-			};
-			bool is_loop = (next_chains[ci][0] == next_chains[ci].back());
-			if (is_loop) {
-				if (v[0].vertex < v[1].vertex) {
-					if (stitch_in(v[0].vertex+1, v[1].vertex)) std::swap(v[0], v[1]);
-				}
-
-				if (v[0].vertex < v[1].vertex) {
-					assert(!stitch_in(v[0].vertex+1,v[1].vertex));
-					assert(stitch_in(0, v[0].vertex) || stitch_in(v[1].vertex+1, next_chains[ci].size()));
-				} else { assert(v[0].vertex > v[1].vertex);
-					assert(!stitch_in(v[0].vertex+1, next_chains[ci].size()) && !stitch_in(0, v[1].vertex));
-					assert(stitch_in(v[1].vertex+1,v[0].vertex));
-				}
-			} else {
-				if (v[0].vertex > v[1].vertex) std::swap(v[0], v[1]);
-				assert(!stitch_in(v[0].vertex+1,v[1].vertex));
-			}
-		}
-	}
-
-	//now sort the links so that they run in increasing chain order:
-	{ //sort next->active links:
-		//need to know where stitches are to check:
-		std::vector< std::unordered_set< uint32_t > > active_stitches(active_chains.size());
-		//stitches are flagged stitches:
-		for (auto const &flags : active_flags) {
-			uint32_t ci = &flags - &active_flags[0];
-			bool is_loop = (active_chains[ci][0] == active_chains[ci].back());
-			for (uint32_t i = 0; i < flags.size(); ++i) {
-				if (i + 1 == flags.size() && is_loop) break;
-				if (flags[i] == ak::FlagLinkOne || flags[i] == ak::FlagLinkAny) {
-					active_stitches[ci].insert(i);
-				}
-			}
-		}
-		//stitches are the source of links [but should always be flagged anyway]:
-		for (auto const &l : links_in) {
-			ak::Flag f = active_flags[l.from_chain][l.from_vertex];
-			assert(f == ak::FlagLinkOne || f == ak::FlagLinkAny);
-			assert(active_stitches[l.from_chain].count(l.from_vertex));
-		}
-
-		for (auto &fv : next_active) {
-			std::vector< ChainVertex > &v = fv.second;
-			assert(!v.empty());
-			if (v.size() == 1) continue;
-			assert(v.size() == 2);
-			assert(v[0].chain == v[1].chain); //no splits/merges
-			assert(v[0].vertex != v[1].vertex);
-			uint32_t ci = v[0].chain;
-			auto stitch_in = [&](uint32_t begin, uint32_t end) {
-				for (uint32_t i = begin; i < end; ++i) {
-					if (active_stitches[ci].count(i)) return true;
-				}
-				return false;
-			};
-			bool is_loop = (active_chains[ci][0] == active_chains[ci].back());
-			if (is_loop) {
-				if (v[0].vertex < v[1].vertex) {
-					if (stitch_in(v[0].vertex+1, v[1].vertex)) std::swap(v[0], v[1]);
-				}
-
-				if (v[0].vertex < v[1].vertex) {
-					assert(!stitch_in(v[0].vertex+1,v[1].vertex));
-					assert(stitch_in(0, v[0].vertex) || stitch_in(v[1].vertex+1, next_chains[ci].size()));
-				} else { assert(v[0].vertex > v[1].vertex);
-					assert(!stitch_in(v[0].vertex+1, next_chains[ci].size()) && !stitch_in(0, v[1].vertex));
-					assert(stitch_in(v[1].vertex+1,v[0].vertex));
-				}
-			} else {
-				if (v[0].vertex > v[1].vertex) std::swap(v[0], v[1]);
-				assert(!stitch_in(v[0].vertex+1,v[1].vertex));
-			}
-		}
 	}
 
 	//record whether the segments adjacent to every next stitch is are marked as "discard" or "keep":
@@ -619,6 +510,12 @@ void ak::build_next_active_chains(
 		std::cout << "\n";
 	}
 	std::cout.flush();
+
+	//DEBUG
+	for (auto const &pv : next_vertex) {
+		std::cout << "(" << pv.first.first << ", " << pv.first.second << ") -> " << pv.second << "\n";
+	}
+	std::cout.flush();
 #endif
 
 
@@ -632,7 +529,7 @@ void ak::build_next_active_chains(
 		chain.emplace_back(next_vertex.begin()->first.first);
 		chain.emplace_back(next_vertex.begin()->first.second);
 		chain.emplace_back(next_vertex.begin()->second);
-		assert(chain[0] != chain[1] && chain[0] != chain[2] && chain[1] != chain[2]);
+		//assert(chain[0] != chain[1] && chain[0] != chain[2] && chain[1] != chain[2]); //<-- not always true in two-stitch-loop cases (do we want two-stitch loops? Probably not.)
 		next_vertex.erase(next_vertex.begin());
 		while (true) {
 			auto f = next_vertex.find(std::make_pair(chain[chain.size()-2], chain[chain.size()-1]));
