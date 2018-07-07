@@ -410,28 +410,21 @@ void ak::link_chains(
 		//if (is_split_or_merge) continue; //TODO: handle splits/merges! somehow!
 
 		//compute min/max totals from active chain flags:
-		uint32_t min = 0;
-		uint32_t max = 0;
+		uint32_t active_ones = 0;
+		uint32_t active_anys = 0;
 		uint32_t DEBUG_stitch_count = 0;
 		{
-			uint32_t link_one = 0;
-			uint32_t link_any = 0;
 			assert(anm.first.first < active_flags.size());
 			bool is_loop = (active_chains[anm.first.first][0] == active_chains[anm.first.first].back());
 			for (auto const &be : match.active) {
 				for (uint32_t i = be.begin; i < be.end; ++i) {
 					if (is_loop && i + 1 == active_flags[anm.first.first].size()) continue;
 					auto f = active_flags[anm.first.first][i];
-					if (f == ak::FlagLinkOne) ++link_one;
-					else if (f == ak::FlagLinkAny) ++link_any;
+					if (f == ak::FlagLinkOne) ++active_ones;
+					else if (f == ak::FlagLinkAny) ++active_anys;
 				}
 			}
-			//link_any stitches can be decreases:
-			min = link_one + (link_any + 1) / 2;
-			//link_any stitches can be increases:
-			max = link_one + link_any * 2;
-
-			DEBUG_stitch_count = link_one + link_any;
+			DEBUG_stitch_count = active_ones + active_anys;
 		}
 
 		//compute min for next segments based on short row ends constraints:
@@ -452,9 +445,9 @@ void ak::link_chains(
 				}
 			}
 
-			if (next_ones > max) {
-				std::cerr << "ERROR: more discard/non-discard ends are required (" << next_ones << ") than are permitted by the current active flags (" << max << "); code to fix this (by removing shortest same-discard segment) not yet implemented." << std::endl;
-				assert(next_ones <= max);
+			if (next_ones > 2 * active_anys + active_ones) {
+				std::cerr << "ERROR: more discard/non-discard ends are required (" << next_ones << ") than are permitted by the current active flags (" << active_anys << "*2 + " << active_ones << "); code to fix this (by removing shortest same-discard segment) not yet implemented." << std::endl;
+				assert(next_ones <= 2 * active_anys + active_ones);
 			}
 		}
 
@@ -471,14 +464,19 @@ void ak::link_chains(
 		float stitch_width = parameters.stitch_width_mm / parameters.model_units_mm;
 		uint32_t stitches = std::max(1, int32_t(std::round(total_length / stitch_width)));
 
-		if (stitches < min || stitches > max) {
-			std::cout << "NOTE: stitches (" << stitches << ") will be clamped to possible range [" << min << ", " << max << "], which might cause some shape distortion." << std::endl;
-			stitches = std::max(min, std::min(max, stitches));
-		}
-		if (stitches < next_ones) {
-			std::cout << "NOTE: stitches (" << stitches << ") will be increased to " << next_ones << " to provide enough stitches for short-row ends." << std::endl;
-			stitches = std::max(next_ones, stitches);
-			assert(stitches <= max);
+		{ //adjust for possible links:
+			//least is to link 1-1 for every next_ones and then link everything else 2-1:
+			uint32_t lower = next_ones //next ones to link to one stitch
+				+ (std::max(0, int32_t(active_ones + active_anys) - int32_t(next_ones)) + 1) / 2 //other stitches link 2-1
+			;
+			uint32_t upper = active_ones + 2 * active_anys; //most is to increase from all anys
+			assert(lower <= upper);
+
+			if (stitches < lower || stitches > upper) {
+				std::cout << "NOTE: stitches (" << stitches << ") will be clamped to possible range [" << lower << ", " << upper << "], which might cause some shape distortion." << std::endl;
+				stitches = std::max(lower, std::min(upper, stitches));
+			}
+			std::cout << "Will make " << stitches << " stitches, given active with " << active_ones << " ones, " << active_anys << " anys; next with " << next_ones << " ones." << std::endl; //DEBUG
 		}
 
 		std::vector< NewStitch > new_stitches;
@@ -555,6 +553,7 @@ void ak::link_chains(
 		}
 		assert(new_stitches.size() == stitches);
 
+
 		std::vector< bool > new_stitch_linkone;
 		std::vector< glm::vec3 > new_stitch_locations;
 		new_stitch_locations.reserve(new_stitches.size());
@@ -594,6 +593,18 @@ void ak::link_chains(
 			}
 		}
 		assert(active_stitch_indices.size() == DEBUG_stitch_count);
+
+		{ //DEBUG:
+			uint32_t new_ones = 0;
+			for (auto o : new_stitch_linkone) {
+				if (o) ++new_ones;
+			}
+			uint32_t active_ones = 0;
+			for (auto o : active_stitch_linkone) {
+				if (o) ++active_ones;
+			}
+			std::cout << " About to connect " << active_stitch_locations.size() << " active stitches (" << active_ones << " linkones) to " << new_stitch_locations.size() << " new stitches (" << new_ones << " linkones)." << std::endl;
+		}
 
 		//actually build links:
 		{ //least-clever linking solution: FlagLinkOne's link 1-1, others link to keep arrays mostly in sync
