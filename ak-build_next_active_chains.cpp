@@ -583,7 +583,7 @@ void ak::build_next_active_chains(
 
 
 
-
+#if 0
 	//DEBUG:
 	for (uint32_t c = 0; c < next_chains.size(); ++c) {
 		std::cout << "next[" << c << "] ";
@@ -619,6 +619,7 @@ void ak::build_next_active_chains(
 		std::cout << "\n";
 	}
 	std::cout.flush();
+#endif
 
 
 	//Walk through created edges array, creating chains therefrom:

@@ -400,6 +400,12 @@ Interface::Interface() {
 		{textured_draw->getAttribLocation("TexCoord", GLProgram::MissingIsWarning), constrained_model_triangles[3]}
 	});
 
+	DEBUG_clipped_model_triangles_for_path_draw = GLVertexArray::make_binding(path_draw->program, {
+		{path_draw->getAttribLocation("Position", GLProgram::MissingIsError), DEBUG_clipped_model_triangles[0]},
+		{path_draw->getAttribLocation("Normal", GLProgram::MissingIsWarning), DEBUG_clipped_model_triangles[1]},
+		{path_draw->getAttribLocation("Color", GLProgram::MissingIsWarning), DEBUG_clipped_model_triangles[2]},
+	});
+
 
 	active_chains_tristrip_for_path_draw = GLVertexArray::make_binding(path_draw->program, {
 		{path_draw->getAttribLocation("Position", GLProgram::MissingIsError), active_chains_tristrip[0]},
@@ -521,6 +527,30 @@ void Interface::draw() {
 
 		glUseProgram(0);
 	}
+
+	if (show == ShowDEBUGClippedModel) { //draw the clipped model debug out:
+		glUseProgram(path_draw->program);
+
+		//Position-to-clip matrix:
+		glm::mat4 p2c = camera.mvp();
+		//Position-to-light matrix:
+		glm::mat4x3 p2l = camera.mv(); //glm::mat4(1.0f);
+		//Normal-to-light matrix:
+		glm::mat3 n2l = glm::inverse(glm::transpose(glm::mat3(p2l)));
+
+		glUniformMatrix4fv(path_draw_p2c, 1, GL_FALSE, glm::value_ptr(p2c));
+		glUniformMatrix4x3fv(path_draw_p2l, 1, GL_FALSE, glm::value_ptr(p2l));
+		glUniformMatrix3fv(path_draw_n2l, 1, GL_FALSE, glm::value_ptr(n2l));
+
+		glBindVertexArray(DEBUG_clipped_model_triangles_for_path_draw.array);
+
+		glDrawArrays(GL_TRIANGLES, 0, DEBUG_clipped_model_triangles.count);
+
+		glBindVertexArray(0);
+
+		glUseProgram(0);
+	}
+
 
 
 	if (show == ShowModel) { //draw marker spheres:
@@ -887,7 +917,8 @@ void Interface::handle_event(SDL_Event const &evt) {
 	} else if (evt.type == SDL_KEYDOWN) {
 		if (evt.key.keysym.scancode == SDL_SCANCODE_S) {
 			if (show == ShowModel) show = ShowConstrainedModel;
-			else if (show == ShowConstrainedModel) show = ShowModel;
+			else if (show == ShowConstrainedModel) show = ShowDEBUGClippedModel;
+			else if (show == ShowDEBUGClippedModel) show = ShowModel;
 		} else if (evt.key.keysym.scancode == SDL_SCANCODE_L) {
 			show = ShowConstrainedModel;
 			DEBUG_test_linking();
@@ -1173,6 +1204,7 @@ void Interface::start_peeling() {
 	}
 
 	update_active_chains_tristrip();
+	peel_step = 0;
 }
 
 void Interface::step_peeling(bool build_next) {
@@ -1182,8 +1214,13 @@ void Interface::step_peeling(bool build_next) {
 		update_active_chains_tristrip();
 	}
 
+	std::cout << "==== peel step " << peel_step << " ====" << std::endl;
+
 	next_chains.clear();
-	ak::peel_chains(parameters, constrained_model, interpolated_values, active_chains, &next_chains);
+	DEBUG_clipped_model.clear();
+	ak::peel_chains(parameters, constrained_model, interpolated_values, active_chains, &next_chains, &DEBUG_clipped_model);
+
+	update_DEBUG_clipped_model_triangles();
 
 	std::vector< std::vector< ak::EmbeddedVertex > > linked_next_chains;
 	std::vector< std::vector< ak::Flag > > linked_next_flags;
@@ -1204,6 +1241,7 @@ void Interface::step_peeling(bool build_next) {
 			active_chains, active_flags, linked_next_chains, linked_next_flags,
 			links,
 			&next_active_chains, &next_active_flags);
+		++peel_step;
 	} else {
 		next_active_chains.clear();
 		next_active_flags.clear();
@@ -1400,6 +1438,29 @@ void Interface::update_constrained_model_triangles() {
 
 	constrained_model_triangles.set(attribs, GL_STATIC_DRAW);
 }
+
+void Interface::update_DEBUG_clipped_model_triangles() {
+	std::vector< GLAttribBuffer< glm::vec3, glm::vec3, glm::u8vec4 >::Vertex > attribs;
+	attribs.reserve(3 * constrained_model.triangles.size());
+
+	for (auto const &t : DEBUG_clipped_model.triangles) {
+		glm::vec3 const &a = DEBUG_clipped_model.vertices[t.x];
+		glm::vec3 const &b = DEBUG_clipped_model.vertices[t.y];
+		glm::vec3 const &c = DEBUG_clipped_model.vertices[t.z];
+
+		glm::vec3 n = glm::normalize(glm::cross(b-a, c-a));
+
+		glm::u8vec4 color = glm::u8vec4(0xff, 0xff, 0xdd, 0xff);
+
+		glm::vec3 m = (a + b + c) / 3.0f;
+		attribs.emplace_back(glm::mix(a, m, 0.1f), n, color);
+		attribs.emplace_back(glm::mix(b, m, 0.1f), n, color);
+		attribs.emplace_back(glm::mix(c, m, 0.1f), n, color);
+	}
+
+	DEBUG_clipped_model_triangles.set(attribs, GL_STATIC_DRAW);
+}
+
 
 
 

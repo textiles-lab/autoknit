@@ -123,7 +123,6 @@ struct EmbeddedVertex {
 		return EmbeddedVertex(s, w);
 	}
 
-
 	static EmbeddedVertex mix(EmbeddedVertex const &a, EmbeddedVertex const &b, float m) {
 		glm::uvec3 common = common_simplex(a.simplex, b.simplex);
 		return EmbeddedVertex(
@@ -185,7 +184,6 @@ void extract_level_chains(
 	float const level, //in: level at which to extract chains
 	std::vector< std::vector< EmbeddedVertex > > *chains //chains of edges at given level
 );
-
 //NOTE: chains represented as [a,b,c,d,a] if a loop, [a,b,c,d] if a chain. Always represented in CCW order.
 
 //an active chain is a list of embedded vertices on the mesh. If it is a loop, the first and last vertex are the same.
@@ -207,6 +205,20 @@ void sample_chain(
 	//std::vector< Flag > *sampled_flags //out: flags (possibly with linkNone on points needed in chain for consistency but not sampled?)
 );
 
+//helper:
+// remove all of the model that is:
+//  - right of anything in left_of
+//  - left of anything in right_of.
+// so this leaves things that are left of left_of and right of right_of
+// (the double-negative definition above is used because it makes more sense in the case of empty components)
+void trim_model(
+	Model const &model, //in: model
+	std::vector< std::vector< EmbeddedVertex > > const &left_of,
+	std::vector< std::vector< EmbeddedVertex > > const &right_of,
+	Model *clipped, //out: portion of model's surface that is left_of the left_of chains and right_of the right_of chains
+	std::vector< EmbeddedVertex > *clipped_vertices //out: map from clipped vertices to source mesh
+);
+
 //The first active chains are along boundaries that are at minimums:
 void find_first_active_chains(
 	Parameters const &parameters,
@@ -221,7 +233,8 @@ void peel_chains(
 	Model const &model, //in: model
 	std::vector< float > const &times,          //in: time field (times @ vertices)
 	std::vector< std::vector< EmbeddedVertex > > const &active_chains, //in: current active chains
-	std::vector< std::vector< EmbeddedVertex > > *next_chains //out: next chains (may be different size than active_chains)
+	std::vector< std::vector< EmbeddedVertex > > *next_chains, //out: next chains (may be different size than active_chains)
+	Model *DEBUG_clipped_model = nullptr //out: trimmed model used when generating next chains
 );
 
 struct Link {

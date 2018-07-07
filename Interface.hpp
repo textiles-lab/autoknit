@@ -86,6 +86,7 @@ struct Interface : public kit::Mode {
 	enum {
 		ShowModel,
 		ShowConstrainedModel,
+		ShowDEBUGClippedModel,
 	} show = ShowModel;
 
 	struct {
@@ -139,12 +140,15 @@ struct Interface : public kit::Mode {
 	std::vector< float > interpolated_values;
 
 	//peeling information:
+	uint32_t peel_step = 0;
 	void start_peeling();
 	std::vector< std::vector< ak::EmbeddedVertex > > active_chains;
 	std::vector< std::vector< ak::Flag > > active_flags;
 
 	void step_peeling(bool build_next);
 	std::vector< std::vector< ak::EmbeddedVertex > > next_chains;
+	ak::Model DEBUG_clipped_model; //debug model made by peel_chains
+
 	std::vector< std::vector< ak::Flag > > next_flags;
 
 	std::vector< ak::Link > links;
@@ -172,6 +176,11 @@ struct Interface : public kit::Mode {
 	//constrained model buffer: position, normal, id, texcoord
 	GLAttribBuffer< glm::vec3, glm::vec3, glm::u8vec4, glm::vec2 > constrained_model_triangles;
 	GLVertexArray constrained_model_triangles_for_textured_draw;
+
+	void update_DEBUG_clipped_model_triangles();
+	//constrained model buffer: position, normal, color
+	GLAttribBuffer< glm::vec3, glm::vec3, glm::u8vec4 > DEBUG_clipped_model_triangles;
+	GLVertexArray DEBUG_clipped_model_triangles_for_path_draw;
 
 	void update_active_chains_tristrip();
 	//position, normal, color:
