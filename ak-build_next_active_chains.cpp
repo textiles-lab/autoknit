@@ -561,6 +561,12 @@ void ak::build_next_active_chains(
 		}
 	}
 
+	//build a trimmed slice of mesh to do linking on:
+	ak::Model clipped;
+	std::vector< ak::EmbeddedVertex > clipped_vertices;
+	std::vector< std::vector< uint32_t > > active_to_clipped, next_to_clipped;
+	trim_model(model, active_chains, next_chains, &clipped, &clipped_vertices, &active_to_clipped, &next_to_clipped);
+
 	auto output = [&](std::vector< OnChainVertex > const &ocvs) {
 		std::vector< ak::EmbeddedVertex > chain;
 		std::vector< ak::Flag > flags;
@@ -594,15 +600,49 @@ void ak::build_next_active_chains(
 					}
 				}
 			} else {
+
 				std::vector< ak::EmbeddedVertex > const &dst_chain = (ocv1.on == OnChainVertex::OnActive ? active_chains : next_chains)[ocv1.chain];
 				std::vector< ak::Flag > const &dst_flags = (ocv1.on == OnChainVertex::OnActive ? active_flags : next_flags)[ocv1.chain];
 
-				std::vector< ak::EmbeddedVertex > path;
+				std::vector< uint32_t > const &src_to_clipped = (ocv0.on == OnChainVertex::OnActive ? active_to_clipped : next_to_clipped)[ocv0.chain];
+				std::vector< uint32_t > const &dst_to_clipped = (ocv1.on == OnChainVertex::OnActive ? active_to_clipped : next_to_clipped)[ocv1.chain];
 
+				assert(src_to_clipped[ocv0.vertex] != -1U);
+				assert(dst_to_clipped[ocv1.vertex] != -1U);
+
+				std::vector< ak::EmbeddedVertex > path;
+				ak::embedded_path(parameters, clipped,
+					ak::EmbeddedVertex::on_vertex(src_to_clipped[ocv0.vertex]),
+					ak::EmbeddedVertex::on_vertex(dst_to_clipped[ocv1.vertex]),
+					&path);
+
+				//map path from embedded slice back to full mesh:
+				for (auto &ev : path) {
+					glm::uvec3 simplex = clipped_vertices[ev.simplex.x].simplex;
+					if (ev.simplex.y != -1U) simplex = ak::EmbeddedVertex::common_simplex(simplex, clipped_vertices[ev.simplex.y].simplex);
+					if (ev.simplex.z != -1U) simplex = ak::EmbeddedVertex::common_simplex(simplex, clipped_vertices[ev.simplex.z].simplex);
+
+					glm::vec3 weights = ev.weights.x * clipped_vertices[ev.simplex.x].weights_on(simplex);
+					if (ev.simplex.y != -1U) weights += ev.weights.y * clipped_vertices[ev.simplex.y].weights_on(simplex);
+					if (ev.simplex.z != -1U) weights += ev.weights.z * clipped_vertices[ev.simplex.z].weights_on(simplex);
+
+					ev = ak::EmbeddedVertex::canonicalize(simplex, weights);
+				}
+
+				assert(path.size() >= 2);
+				//shift first/last to account for vertex rounding during slicing:
+				path[0] = src_chain[ocv0.vertex];
+				path.back() = dst_chain[ocv1.vertex];
+
+
+				/* old:
+				std::vector< ak::EmbeddedVertex > path;
+				
 				ak::embedded_path(parameters, model,
 					src_chain[ocv0.vertex],
 					dst_chain[ocv1.vertex],
 					&path);
+				*/
 
 				assert(path.size() >= 2);
 				assert(path[0] == src_chain[ocv0.vertex]);
@@ -646,14 +686,5 @@ void ak::build_next_active_chains(
 	for (auto const &pp : partials) {
 		output(pp.second);
 	}
-
-
-
-/* for later:
-	ak::embedded_path(parameters, model,
-		next_chains[frag.chain][frag.inds.back()],
-		active_chains[to.chain][to.vertex],
-		&path);
-*/
 
 }
