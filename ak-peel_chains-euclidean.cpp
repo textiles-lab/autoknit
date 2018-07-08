@@ -11,7 +11,6 @@
 void ak::peel_chains(
 	ak::Parameters const &parameters,
 	ak::Model const &model, //in: model
-	std::vector< float > const &times,          //in: time field (times @ vertices)
 	std::vector< std::vector< ak::EmbeddedVertex > > const &active_chains, //in: current active chains
 	std::vector< std::vector< ak::EmbeddedVertex > > *next_chains_, //out: next chains (may be different size than active_chains)
 	Model *DEBUG_clipped_model

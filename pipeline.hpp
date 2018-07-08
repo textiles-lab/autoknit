@@ -233,7 +233,6 @@ void find_first_active_chains(
 void peel_chains(
 	Parameters const &parameters,
 	Model const &model, //in: model
-	std::vector< float > const &times,          //in: time field (times @ vertices)
 	std::vector< std::vector< EmbeddedVertex > > const &active_chains, //in: current active chains
 	std::vector< std::vector< EmbeddedVertex > > *next_chains, //out: next chains (may be different size than active_chains)
 	Model *DEBUG_clipped_model = nullptr //out: trimmed model used when generating next chains

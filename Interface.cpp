@@ -1217,7 +1217,7 @@ void Interface::step_peeling(bool build_next) {
 	std::cout << "==== peel step " << peel_step << " ====" << std::endl;
 
 	next_chains.clear();
-	ak::peel_chains(parameters, constrained_model, interpolated_values, active_chains, &next_chains); //, &DEBUG_clipped_model);
+	ak::peel_chains(parameters, constrained_model, active_chains, &next_chains); //, &DEBUG_clipped_model);
 
 	std::vector< std::vector< ak::EmbeddedVertex > > linked_next_chains;
 	std::vector< std::vector< ak::Flag > > linked_next_flags;
