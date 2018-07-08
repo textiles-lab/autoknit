@@ -21,6 +21,49 @@ void ak::trim_model(
 	auto &clipped_vertices = *clipped_vertices_;
 	clipped_vertices.clear();
 
+	{ //PARANOIA: make sure all chains are loops or edge-to-edge:
+		std::unordered_set< glm::uvec2 > edges;
+		for (auto const &tri : model.triangles) {
+			auto do_edge = [&edges](uint32_t a, uint32_t b) {
+				if (a > b) std::swap(a,b);
+				auto ret = edges.insert(glm::uvec2(a,b));
+				if (!ret.second) edges.erase(ret.first);
+			};
+			do_edge(tri.x, tri.y);
+			do_edge(tri.y, tri.z);
+			do_edge(tri.z, tri.x);
+		}
+		std::unordered_set< uint32_t > edge_verts;
+		for (auto const &e : edges) {
+			edge_verts.insert(e.x);
+			edge_verts.insert(e.y);
+		}
+
+		auto on_edge = [&edges, &edge_verts](ak::EmbeddedVertex const &ev) -> bool {
+			if (ev.simplex.z != -1U) {
+				return false;
+			} else if (ev.simplex.y != -1U) {
+				return edges.count(glm::uvec2(ev.simplex.x, ev.simplex.y)) != 0;
+			} else {
+				return edge_verts.count(ev.simplex.x) != 0;
+			}
+		};
+
+		for (auto const &chain : left_of) {
+			assert(chain.size() >= 2);
+			if (chain[0] == chain.back()) continue;
+			assert(on_edge(chain[0]));
+			assert(on_edge(chain.back()));
+		}
+
+		for (auto const &chain : right_of) {
+			assert(chain.size() >= 2);
+			if (chain[0] == chain.back()) continue;
+			assert(on_edge(chain[0]));
+			assert(on_edge(chain.back()));
+		}
+	}
+
 	//embed chains using planar map:
 	EmbeddedPlanarMap< int32_t, NegativeValue< int32_t >, SumValues< int32_t > > epm;
 	uint32_t total_chain_edges = 0;
