@@ -22,19 +22,22 @@ void next_slice(
 
 struct Stitch {
 	float t; //position along chain [0,1)
-	enum Link : char {
+	enum Flag : char {
+		Discard,
 		LinkOne,
 		LinkAny,
 	};
-	Link link; //what sort of links are allowed to this stitch
+	Flag flag; //what sort of links are allowed to this stitch (or if this stitch is just marked for removal)
 }
 
 void link_chains(
 	Parameters const &parameters,
 	Model const &slice,
+	std::vector< float > const &slice_times,
 	std::vector< std::vector< uint32_t > > const &active_chains,
 	std::vector< std::vector< Stitch > > const &active_stitches,
 	std::vector< std::vector< uint32_t > > const &next_chains,
+	//need this or slice_times (above) std::vector< std::vector< bool > > const &discard_segments,
 	std::vector< std::vector< Stitch > > *next_stitches,
 	std::vector< Link > *links
 );
@@ -43,9 +46,9 @@ void build_next_active_chains(
 	Parameters const &parameters,
 	Model const &slice,
 	std::vector< EmbeddedVertex > const &slice_on_model,
-	std::vector< std::vector< uint32_t > > const &slice_active_chains,
+	std::vector< std::vector< uint32_t > > const &active_chains,
 	std::vector< std::vector< Stitch > > const &active_stitches,
-	std::vector< std::vector< uint32_t > > const &slice_next_chains,
+	std::vector< std::vector< uint32_t > > const &next_chains,
 	std::vector< std::vector< Stitch > > const &next_stitches,
 	std::vector< Link > const &links,
 	std::vector< std::vector< EmbeddedVertex > > *next_active_chains, //out: next active chains (on model)
