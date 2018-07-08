@@ -338,7 +338,7 @@ struct EmbeddedPlanarMap {
 		std::vector< glm::uvec3 > const &tris, //in: mesh triangles
 		std::vector< ak::EmbeddedVertex > *split_verts_, //out: split vertices
 		std::vector< glm::uvec3 > *split_tris_, //out: split triangles
-		std::vector< uint32_t > *epm_to_split_ //out: epm vertices -> split vertices (-1U if doesn't appear in mesh)
+		std::vector< uint32_t > *epm_to_split_ //out: epm vertices -> split vertices
 		) {
 
 		assert(split_verts_);

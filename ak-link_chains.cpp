@@ -1,12 +1,14 @@
 #include "pipeline.hpp"
 
 #include <glm/gtx/norm.hpp>
+#include <glm/gtx/hash.hpp>
 
 #include <iostream>
 #include <map>
 #include <set>
 #include <functional>
 #include <algorithm>
+#include <unordered_set>
 
 void ak::link_chains(
 	ak::Parameters const &parameters,
@@ -17,7 +19,8 @@ void ak::link_chains(
 	std::vector< std::vector< ak::EmbeddedVertex > > const &next_chains_in, //in: next chains
 	std::vector< std::vector< ak::EmbeddedVertex > > *linked_next_chains_, //out: next chains
 	std::vector< std::vector< ak::Flag > > *linked_next_flags_, //out: flags indicating status of vertices on next chains
-	std::vector< ak::Link > *links_ //out: active_chains[from_chain][from_vertex] -> linked_next_chains[to_chain][to_vertex] links
+	std::vector< ak::Link > *links_, //out: active_chains[from_chain][from_vertex] -> linked_next_chains[to_chain][to_vertex] links
+	ak::Model *DEBUG_clipped
 ) {
 	assert(times.size() == model.vertices.size());
 
@@ -239,80 +242,138 @@ void ak::link_chains(
 	}
 
 
+	//------------------------------------------------------------------------------------
 	//find segments of active and next chains that are mutual nearest neighbors:
 
-	auto make_locations = [&model](std::vector< std::vector< ak::EmbeddedVertex > > const &chains) {
-		std::vector< std::vector< glm::vec3 > > locations;
-		locations.reserve(chains.size());
-		for (auto const &chain : chains) {
-			locations.emplace_back();
-			locations.back().reserve(chain.size());
-			for (auto const &ev : chain) {
-				locations.back().emplace_back(ev.interpolate(model.vertices));
+	ak::Model clipped;
+	std::vector< ak::EmbeddedVertex > clipped_vertices;
+	std::vector< std::vector< uint32_t > > active_to_clipped, next_to_clipped;
+	trim_model(model, active_chains, next_chains, &clipped, &clipped_vertices, &active_to_clipped, &next_to_clipped);
+
+	if (DEBUG_clipped) *DEBUG_clipped = clipped;
+
+	std::vector< std::vector< uint32_t > > active_closest;
+	std::vector< std::vector< uint32_t > > next_segment_closest;
+
+	{ //find closest pairs:
+
+		std::vector< std::vector< uint32_t > > adj(clipped.vertices.size());
+		{ //adjacency matrix -- always handy:
+			std::unordered_set< glm::uvec2 > edges;
+			for (auto const &tri : clipped.triangles) {
+				auto do_edge = [&edges](uint32_t a, uint32_t b) {
+					if (b > a) std::swap(a,b);
+					edges.insert(glm::uvec2(a,b));
+				};
+				do_edge(tri.x, tri.y);
+				do_edge(tri.y, tri.z);
+				do_edge(tri.z, tri.x);
+			}
+			for (auto const &e : edges) {
+				adj[e.x].emplace_back(e.y);
+				adj[e.y].emplace_back(e.x);
 			}
 		}
-		return locations;
-	};
 
-	std::vector< std::vector< glm::vec3 > > active_locations = make_locations(active_chains);
-	std::vector< std::vector< glm::vec3 > > next_locations = make_locations(next_chains);
+		auto closest_source_chain = [&clipped,&adj](
+			std::vector< std::vector< uint32_t > > const &sources,
+			std::vector< std::vector< uint32_t > > const &targets) {
 
-	auto make_vertex_closest = [](std::vector< std::vector< glm::vec3 > > const &locations, std::vector< std::vector< glm::vec3 > > const &targets) {
-		std::vector< std::vector< uint32_t > > closest;
-		closest.reserve(locations.size());
-		for (auto const &location : locations) {
-			closest.emplace_back();
-			closest.back().reserve(location.size());
-			for (auto const &l : location) {
-				uint32_t close = -1U;
-				float best2 = std::numeric_limits< float >::infinity();
-				for (auto const &target : targets) {
-					float dis2 = std::numeric_limits< float >::infinity();
-					for (auto const &t : target) {
-						dis2 = std::min(dis2, glm::length2(t - l));
-					}
-					if (dis2 < best2) {
-						best2 = dis2;
-						close = &target - &targets[0];
+			std::vector< float > dis(clipped.vertices.size(), std::numeric_limits< float >::infinity());
+			std::vector< uint32_t > from(clipped.vertices.size(), -1U);
+			std::vector< std::pair< float, uint32_t > > todo;
+
+			auto queue = [&dis, &todo, &from](uint32_t n, float d, uint32_t f) {
+				assert(d < dis[n]);
+				dis[n] = d;
+				from[n] = f;
+				todo.emplace_back(std::make_pair(-d, n));
+				std::push_heap(todo.begin(), todo.end());
+			};
+
+			for (auto const &chain : sources) {
+				uint32_t ci = &chain - &sources[0];
+				for (auto const &v : chain) {
+					if (v == -1U) continue;
+					if (0.0f < dis[v]) queue(v, 0.0f, ci); //some verts appear twice
+				}
+			}
+
+			while (!todo.empty()) {
+				std::pop_heap(todo.begin(), todo.end());
+				uint32_t at = todo.back().second;
+				float d = -todo.back().first;
+				todo.pop_back();
+				if (d > dis[at]) continue;
+				assert(d == dis[at]);
+				for (auto n : adj[at]) {
+					float nd = d + glm::length(clipped.vertices[n] - clipped.vertices[at]);
+					if (nd < dis[n]) queue(n, nd, from[at]);
+				}
+			}
+
+			std::vector< std::vector< uint32_t > > closest;
+			closest.reserve(targets.size());
+			for (auto const &chain : targets) {
+				closest.emplace_back();
+				closest.back().reserve(targets.size());
+				for (auto v : chain) {
+					if (v == -1U) {
+						closest.back().emplace_back(-1U);
+					} else {
+						closest.back().emplace_back(from[v]);
 					}
 				}
-				closest.back().emplace_back(close);
 			}
-		}
-		return closest;
-	};
+			return closest;
+		};
 
-	auto make_segment_closest = [](std::vector< std::vector< glm::vec3 > > const &locations, std::vector< std::vector< glm::vec3 > > const &targets) {
-		std::vector< std::vector< uint32_t > > closest;
-		closest.reserve(locations.size()-1);
-		for (auto const &location : locations) {
-			closest.emplace_back();
-			closest.back().reserve(location.size());
-			for (uint32_t li = 0; li + 1 < location.size(); ++li) {
-				glm::vec3 l = 0.5f * (location[li] + location[li+1]);
-				uint32_t close = -1U;
-				float best2 = std::numeric_limits< float >::infinity();
-				for (auto const &target : targets) {
-					float dis2 = std::numeric_limits< float >::infinity();
-					for (auto const &t : target) {
-						dis2 = std::min(dis2, glm::length2(t - l));
-					}
-					if (dis2 < best2) {
-						best2 = dis2;
-						close = &target - &targets[0];
-					}
-				}
-				closest.back().emplace_back(close);
+		active_closest = closest_source_chain(next_to_clipped, active_to_clipped);
+		std::vector< std::vector< uint32_t > > next_closest = closest_source_chain(active_to_clipped, next_to_clipped);
+
+		//HACK: next_segment_closest should be segment -> closest not vertex -> closest; approximate by using value for first vertex of each segment:
+		next_segment_closest = next_closest;
+		for (auto &closest : next_segment_closest) {
+			closest.pop_back();
+		}
+
+		//DEBUG:
+		for (auto const &ac : active_to_clipped) {
+			std::cout << "active_to_clipped[" << (&ac - &active_to_clipped[0]) << "]:";
+			for (auto c : ac) {
+				std::cout << " " << int32_t(c);
 			}
-			assert(closest.back().size() + 1 == location.size());
+			std::cout << "\n";
 		}
-		return closest;
-	};
+		std::cout.flush();
+		for (auto const &nc : next_to_clipped) {
+			std::cout << "next_to_clipped[" << (&nc - &next_to_clipped[0]) << "]:";
+			for (auto c : nc) {
+				std::cout << " " << int32_t(c);
+			}
+			std::cout << "\n";
+		}
+		std::cout.flush();
 
+		for (auto const &ac : active_closest) {
+			std::cout << "active_closest[" << (&ac - &active_closest[0]) << "]:";
+			for (auto c : ac) {
+				std::cout << " " << int32_t(c);
+			}
+			std::cout << "\n";
+		}
+		std::cout.flush();
+		for (auto const &nc : next_closest) {
+			std::cout << "next_closest[" << (&nc - &next_closest[0]) << "]:";
+			for (auto c : nc) {
+				std::cout << " " << int32_t(c);
+			}
+			std::cout << "\n";
+		}
+		std::cout.flush();
 
+	}
 
-	std::vector< std::vector< uint32_t > > active_closest = make_vertex_closest(active_locations, next_locations);
-	std::vector< std::vector< uint32_t > > next_segment_closest = make_segment_closest(next_locations, active_locations);
 
 	//sort active and next into matching sub-chains:
 	struct BeginEnd {
@@ -354,14 +415,18 @@ void ak::link_chains(
 
 	std::vector< uint32_t > active_matches(active_chains.size(), 0);
 	std::vector< uint32_t > next_matches(next_chains.size(), 0);
+	uint32_t empty_matches = 0;
 	for (auto const &anm : matches) {
-		active_matches[anm.first.first] += 1;
-		next_matches[anm.first.second] += 1;
+		if (anm.first.first != -1U) active_matches[anm.first.first] += 1;
+		if (anm.first.second != -1U) next_matches[anm.first.second] += 1;
+		if (anm.first.first == -1U || anm.first.second == -1U) ++empty_matches;
 	}
+	std::cout << "NOTE: have " << empty_matches << " segments that match with nothing." << std::endl;
 
 	{ //If there are any merges or splits, all participating next cycles are marked 'accept':
 		std::set< uint32_t > to_mark;
 		for (auto const &anm : matches) {
+			if (anm.first.first == -1U || anm.first.second == -1U) continue;
 			bool is_split_or_merge = (active_matches[anm.first.first] > 1 || active_matches[anm.first.second] > 1);
 			if (is_split_or_merge) {
 				to_mark.insert(anm.first.second);

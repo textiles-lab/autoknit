@@ -11,7 +11,9 @@ void ak::trim_model(
 	std::vector< std::vector< ak::EmbeddedVertex > > const &left_of,
 	std::vector< std::vector< ak::EmbeddedVertex > > const &right_of,
 	ak::Model *clipped_, //out: portion of model's surface that is left_of the left_of chains and right_of the right_of chains
-	std::vector< ak::EmbeddedVertex > *clipped_vertices_ //out: map from clipped vertices to source mesh
+	std::vector< ak::EmbeddedVertex > *clipped_vertices_, //out: map from clipped vertices to source mesh
+	std::vector< std::vector< uint32_t > > *left_of_vertices_, //out (optional): indices of vertices corresponding to left_of chains [may be some rounding]
+	std::vector< std::vector< uint32_t > > *right_of_vertices_ //out (optional): indices of vertices corresponding to right_of chains [may be some rounding]
 ) {
 	assert(clipped_);
 	auto &clipped = *clipped_;
@@ -67,15 +69,33 @@ void ak::trim_model(
 	//embed chains using planar map:
 	EmbeddedPlanarMap< int32_t, NegativeValue< int32_t >, SumValues< int32_t > > epm;
 	uint32_t total_chain_edges = 0;
+	std::vector< std::vector< uint32_t > > left_of_vertices;
+	left_of_vertices.reserve(left_of.size());
 	for (auto const &chain : left_of) {
-		for (uint32_t i = 0; i + 1 < chain.size(); ++i) {
-			epm.add_edge(chain[i], chain[i+1], 1);
+		left_of_vertices.emplace_back();
+		left_of_vertices.back().reserve(chain.size());
+		uint32_t prev = epm.add_vertex(chain[0]);
+		left_of_vertices.back().emplace_back(prev);
+		for (uint32_t i = 1; i < chain.size(); ++i) {
+			uint32_t cur = epm.add_vertex(chain[i]);
+			left_of_vertices.back().emplace_back(cur);
+			epm.add_edge(prev, cur, 1);
+			prev = cur;
 			++total_chain_edges;
 		}
 	}
+	std::vector< std::vector< uint32_t > > right_of_vertices;
+	right_of_vertices.reserve(left_of.size());
 	for (auto const &chain : right_of) {
-		for (uint32_t i = 0; i + 1 < chain.size(); ++i) {
-			epm.add_edge(chain[i+1], chain[i], (1 << 8) );
+		right_of_vertices.emplace_back();
+		right_of_vertices.back().reserve(chain.size());
+		uint32_t prev = epm.add_vertex(chain[0]);
+		right_of_vertices.back().emplace_back(prev);
+		for (uint32_t i = 1; i < chain.size(); ++i) {
+			uint32_t cur = epm.add_vertex(chain[i]);
+			right_of_vertices.back().emplace_back(cur);
+			epm.add_edge(cur, prev, (1 << 8) );
+			prev = cur;
 			++total_chain_edges;
 		}
 	}
@@ -112,7 +132,6 @@ void ak::trim_model(
 	}
 	
 	//tag triangles with values:
-
 	std::unordered_map< glm::uvec2, uint32_t > edge_to_tri;
 	edge_to_tri.reserve(split_tris.size() * 3);
 	for (auto const &tri : split_tris) {
@@ -199,6 +218,32 @@ void ak::trim_model(
 	for (auto const &v : clipped_vertices) {
 		clipped.vertices.emplace_back(v.interpolate(model.vertices));
 	}
+
+	//transform vertex indices for left_of and right_of vertices -> clipped model:
+	for (auto &vertices : left_of_vertices) {
+		for (auto &v : vertices) {
+			assert(v < epm_to_split.size());
+			v = epm_to_split[v];
+			if (v != -1U) {
+				assert(v < split_vert_to_clipped_vertex.size());
+				v = split_vert_to_clipped_vertex[v];
+			}
+		}
+	}
+	for (auto &vertices : right_of_vertices) {
+		for (auto &v : vertices) {
+			assert(v < epm_to_split.size());
+			v = epm_to_split[v];
+			if (v != -1U) {
+				assert(v < split_vert_to_clipped_vertex.size());
+				v = split_vert_to_clipped_vertex[v];
+			}
+		}
+	}
+
+	if (left_of_vertices_) *left_of_vertices_ = std::move(left_of_vertices);
+	if (right_of_vertices_) *right_of_vertices_ = std::move(right_of_vertices);
+
 
 	std::cout << "Trimmed model from " << model.triangles.size() << " triangles on " << model.vertices.size() << " vertices to " << clipped.triangles.size() << " triangles on " << clipped.vertices.size() << " vertices." << std::endl;
 

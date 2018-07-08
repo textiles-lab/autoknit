@@ -216,7 +216,9 @@ void trim_model(
 	std::vector< std::vector< EmbeddedVertex > > const &left_of,
 	std::vector< std::vector< EmbeddedVertex > > const &right_of,
 	Model *clipped, //out: portion of model's surface that is left_of the left_of chains and right_of the right_of chains
-	std::vector< EmbeddedVertex > *clipped_vertices //out: map from clipped vertices to source mesh
+	std::vector< EmbeddedVertex > *clipped_vertices,//out: map from clipped vertices to source mesh
+	std::vector< std::vector< uint32_t > > *left_of_vertices = nullptr, //out (optional): indices of vertices corresponding to left_of chains [may be some rounding]
+	std::vector< std::vector< uint32_t > > *right_of_vertices = nullptr //out (optional): indices of vertices corresponding to right_of chains [may be some rounding]
 );
 
 //The first active chains are along boundaries that are at minimums:
@@ -263,7 +265,8 @@ void link_chains(
 	std::vector< std::vector< EmbeddedVertex > > const &next_chains, //in: next chains
 	std::vector< std::vector< EmbeddedVertex > > *linked_next_chains, //out: next chains
 	std::vector< std::vector< Flag > > *linked_next_flags, //out: flags indicating status of vertices on next chains
-	std::vector< Link > *links //out: active_chains[from_chain][from_vertex] -> linked_next_chains[to_chain][to_vertex] links
+	std::vector< Link > *links, //out: active_chains[from_chain][from_vertex] -> linked_next_chains[to_chain][to_vertex] links
+	Model *DEBUG_clipped = nullptr //model after clipping on active/next chains
 );
 
 //helper:
