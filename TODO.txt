@@ -1,0 +1,54 @@
+TODO List + Notes
+=================
+
+Parameter re-works:
+"Slice Passing"
+ instead of re-slicing the original mesh, re-work the functions so that extracting next chains also extracts the slice supporting that chain.
+ Bonus: chain vertices become *real mesh vertices* in the slice, so probably some EmbeddedVertex wrangling goes away.
+
+"Stitch-on-chain"
+- stitches are stored by parameter value along chains (this avoids all the annoying flag-checking code)
+
+
+void next_slice(
+	Parameters const &parameters,
+	Model const &model,
+	std::vector< std::vector< EmbeddedVertex > > const &active_chains,
+	Model *slice,
+	std::vector< EmbeddedVertex > *slice_on_model,
+	std::vector< std::vector< uint32_t > > *slice_active_chains,
+	std::vector< std::vector< uint32_t > > *slice_next_chains
+);
+
+struct Stitch {
+	float t; //position along chain [0,1)
+	enum Link : char {
+		LinkOne,
+		LinkAny,
+	};
+	Link link; //what sort of links are allowed to this stitch
+}
+
+void link_chains(
+	Parameters const &parameters,
+	Model const &slice,
+	std::vector< std::vector< uint32_t > > const &active_chains,
+	std::vector< std::vector< Stitch > > const &active_stitches,
+	std::vector< std::vector< uint32_t > > const &next_chains,
+	std::vector< std::vector< Stitch > > *next_stitches,
+	std::vector< Link > *links
+);
+
+void build_next_active_chains(
+	Parameters const &parameters,
+	Model const &slice,
+	std::vector< EmbeddedVertex > const &slice_on_model,
+	std::vector< std::vector< uint32_t > > const &slice_active_chains,
+	std::vector< std::vector< Stitch > > const &active_stitches,
+	std::vector< std::vector< uint32_t > > const &slice_next_chains,
+	std::vector< std::vector< Stitch > > const &next_stitches,
+	std::vector< Link > const &links,
+	std::vector< std::vector< EmbeddedVertex > > *next_active_chains, //out: next active chains (on model)
+	std::vector< std::vector< Stitch > > *next_active_stitches
+);
+
