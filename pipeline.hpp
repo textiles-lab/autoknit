@@ -252,8 +252,8 @@ void peel_slice(
 );
 
 struct Link {
-	uint32_t from_chain, from_vertex;
-	uint32_t to_chain, to_vertex;
+	uint32_t from_chain, from_stitch;
+	uint32_t to_chain, to_stitch;
 };
 
 //NOTE:
@@ -270,15 +270,14 @@ struct Link {
 //  (depending on which chain is 'from' and which is 'to')
 void link_chains(
 	Parameters const &parameters,
-	Model const &model, //in: model
-	std::vector< float > const &times,          //in: time field (times @ vertices)
-	std::vector< std::vector< EmbeddedVertex > > const &active_chains, //in: current active chains
-	std::vector< std::vector< Flag > > const &active_flags, //in: stitches
-	std::vector< std::vector< EmbeddedVertex > > const &next_chains, //in: next chains
-	std::vector< std::vector< EmbeddedVertex > > *linked_next_chains, //out: next chains
-	std::vector< std::vector< Flag > > *linked_next_flags, //out: flags indicating status of vertices on next chains
-	std::vector< Link > *links, //out: active_chains[from_chain][from_vertex] -> linked_next_chains[to_chain][to_vertex] links
-	Model *DEBUG_clipped = nullptr //model after clipping on active/next chains
+	Model const &slice, //in: slice on which the chains reside
+	std::vector< float > const &slice_times, //in: time field (times @ vertices), for slice
+	std::vector< std::vector< uint32_t > > const &active_chains, //in: current active chains (slice vertex #'s)
+	std::vector< std::vector< Stitch > > const &active_stitches, //in: current active stitches, sorted by time
+	std::vector< std::vector< uint32_t > > const &next_chains, //in: current next chains (slice vertex #'s)
+	//need this or slice_times (above) std::vector< std::vector< bool > > const &discard_segments,
+	std::vector< std::vector< Stitch > > *next_stitches, //out: next active stitches
+	std::vector< Link > *links //out: active_chains[from_chain][from_vertex] -> linked_next_chains[to_chain][to_vertex] links
 );
 
 //helper:
