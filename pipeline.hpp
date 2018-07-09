@@ -294,16 +294,18 @@ void embedded_path(
 //maybe:
 //void reposition_course -- somehow update next course's position based on linking result.
 
+
 void build_next_active_chains(
 	Parameters const &parameters,
-	Model const &model,
-	std::vector< std::vector< EmbeddedVertex > > const &active_chains, //in: current active chains
-	std::vector< std::vector< Flag > > const &active_flags, //in: flags for current active
-	std::vector< std::vector< EmbeddedVertex > > const &next_chains, //in: next chains
-	std::vector< std::vector< Flag > > const &next_flags, //in: flags for next active
+	Model const &slice,
+	std::vector< EmbeddedVertex > const &slice_on_model, //in: vertices of slice (on model)
+	std::vector< std::vector< uint32_t > > const &active_chains,  //in: current active chains (on slice)
+	std::vector< std::vector< Stitch > > const &active_stitches, //in: current active stitches
+	std::vector< std::vector< uint32_t > > const &next_chains, //in: next chains (on slice)
+	std::vector< std::vector< Stitch > > const &next_stitches, //in: next stitches
 	std::vector< Link > const &links, //in: links between active and next
-	std::vector< std::vector< EmbeddedVertex > > *next_active_chains, //out: next active chains
-	std::vector< std::vector< Flag > > *next_active_flags //out: next stitch flags
+	std::vector< std::vector< EmbeddedVertex > > *next_active_chains, //out: next active chains (on model)
+	std::vector< std::vector< Stitch > > *next_active_stitches //out: next active stitches
 );
 
 //probably is in driver code (different cases for build_first and build_next):
