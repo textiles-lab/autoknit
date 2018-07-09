@@ -241,12 +241,14 @@ void find_first_active_chains(
 	std::vector< std::vector< Stitch > > *active_stitches //out: evenly-spaced stitch locations along boundaries.
 );
 
-void peel_chains(
+void peel_slice(
 	Parameters const &parameters,
 	Model const &model, //in: model
 	std::vector< std::vector< EmbeddedVertex > > const &active_chains, //in: current active chains
-	std::vector< std::vector< EmbeddedVertex > > *next_chains, //out: next chains (may be different size than active_chains)
-	Model *DEBUG_clipped_model = nullptr //out: trimmed model used when generating next chains
+	Model *slice, //out: slice of model from active chains to next chains
+	std::vector< EmbeddedVertex > *slice_on_model, //out: map from slice vertices to model vertices
+	std::vector< std::vector< uint32_t > > *slice_active_chains, //out: active chains on slice
+	std::vector< std::vector< uint32_t > > *slice_next_chains //out: next chains on slice
 );
 
 struct Link {

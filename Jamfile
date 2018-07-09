@@ -33,11 +33,11 @@ NAMES =
 	;
 
 AUTOKNIT_NAMES =
+	ak-peel_slice-euclidean
 	ak-trim_model
 	ak-embedded_path
 	ak-build_next_active_chains
 	ak-link_chains
-	ak-peel_chains-euclidean
 	ak-extract_level_chains
 	ak-find_first_active_chains
 	ak-sample_chain

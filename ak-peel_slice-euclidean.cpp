@@ -8,16 +8,30 @@
 #include <unordered_set>
 
 
-void ak::peel_chains(
-	ak::Parameters const &parameters,
-	ak::Model const &model, //in: model
-	std::vector< std::vector< ak::EmbeddedVertex > > const &active_chains, //in: current active chains
-	std::vector< std::vector< ak::EmbeddedVertex > > *next_chains_, //out: next chains (may be different size than active_chains)
-	Model *DEBUG_clipped_model
+void ak::peel_slice(
+	Parameters const &parameters,
+	Model const &model,
+	std::vector< std::vector< EmbeddedVertex > > const &active_chains,
+	Model *slice_,
+	std::vector< EmbeddedVertex > *slice_on_model_,
+	std::vector< std::vector< uint32_t > > *slice_active_chains_,
+	std::vector< std::vector< uint32_t > > *slice_next_chains_
 ) {
-	assert(next_chains_);
-	auto &next_chains = *next_chains_;
-	next_chains.clear();
+	assert(slice_);
+	auto &slice = *slice_;
+	slice.clear();
+
+	assert(slice_on_model_);
+	auto &slice_on_model = *slice_on_model_;
+	slice_on_model.clear();
+
+	assert(slice_active_chains_);
+	auto &slice_active_chains = *slice_active_chains_;
+	slice_active_chains.clear();
+
+	assert(slice_next_chains_);
+	auto &slice_next_chains = *slice_next_chains_;
+	slice_next_chains.clear();
 
 	{
 		//DEBUG:
@@ -27,15 +41,12 @@ void ak::peel_chains(
 			if (chain[0] == chain.back()) ++loops;
 			else ++lines;
 		}
-		std::cout << "---- peel chains on [" << loops << " loops and " << lines << " lines] ----" << std::endl;
+		std::cout << "---- peel slice on [" << loops << " loops and " << lines << " lines] ----" << std::endl;
 	}
 
 	Model clipped;
-	std::vector< ak::EmbeddedVertex > clipped_vertices;
-	ak::trim_model(model, active_chains, std::vector< std::vector< ak::EmbeddedVertex > >(), &clipped, &clipped_vertices);
-	if (DEBUG_clipped_model) {
-		*DEBUG_clipped_model = clipped;
-	}
+	std::vector< ak::EmbeddedVertex > clipped_on_model;
+	ak::trim_model(model, active_chains, std::vector< std::vector< ak::EmbeddedVertex > >(), &clipped, &clipped_on_model);
 
 	//This version of the code just uses the 3D distance to the curve.
 	//might have problems with models that get really close to themselves.
@@ -71,10 +82,9 @@ void ak::peel_chains(
 
 	//extract chains:
 
-	//for (int step = 1; step < 10; ++step) { //DEBUG: show several distances
-	{	int step = 1;
-
-		float level = step * (2.0f * parameters.stitch_height_mm / parameters.model_units_mm);
+	std::vector< std::vector< ak::EmbeddedVertex > > next_chains;
+	{
+		float level = 2.0f * parameters.stitch_height_mm / parameters.model_units_mm;
 
 		std::vector< std::vector< EmbeddedVertex > > level_chains;
 
@@ -83,15 +93,16 @@ void ak::peel_chains(
 		uint32_t loops = 0;
 		uint32_t lines = 0;
 
+		next_chains.reserve(level_chains.size());
 		for (auto &chain : level_chains) {
 			//chain is embedded on 'clipped' which is embedded on 'model'; re-embed on just 'model':
 			for (auto &v : chain) {
-				glm::uvec3 simplex = clipped_vertices[v.simplex.x].simplex;
-				if (v.simplex.y != -1U) simplex = ak::EmbeddedVertex::common_simplex(simplex, clipped_vertices[v.simplex.y].simplex);
-				if (v.simplex.z != -1U) simplex = ak::EmbeddedVertex::common_simplex(simplex, clipped_vertices[v.simplex.z].simplex);
-				glm::vec3 weights = v.weights.x * clipped_vertices[v.simplex.x].weights_on(simplex);
-				if (v.simplex.y != -1U) weights += v.weights.y * clipped_vertices[v.simplex.y].weights_on(simplex);
-				if (v.simplex.z != -1U) weights += v.weights.z * clipped_vertices[v.simplex.z].weights_on(simplex);
+				glm::uvec3 simplex = clipped_on_model[v.simplex.x].simplex;
+				if (v.simplex.y != -1U) simplex = ak::EmbeddedVertex::common_simplex(simplex, clipped_on_model[v.simplex.y].simplex);
+				if (v.simplex.z != -1U) simplex = ak::EmbeddedVertex::common_simplex(simplex, clipped_on_model[v.simplex.z].simplex);
+				glm::vec3 weights = v.weights.x * clipped_on_model[v.simplex.x].weights_on(simplex);
+				if (v.simplex.y != -1U) weights += v.weights.y * clipped_on_model[v.simplex.y].weights_on(simplex);
+				if (v.simplex.z != -1U) weights += v.weights.z * clipped_on_model[v.simplex.z].weights_on(simplex);
 				v.simplex = simplex;
 				v.weights = weights;
 			}
@@ -104,6 +115,9 @@ void ak::peel_chains(
 		}
 		std::cout << "  extracted " << loops << " loops and " << lines << " lines." << std::endl;
 	}
+
+	//now actually pull out the proper slice:
+	ak::trim_model(model, active_chains, next_chains, &slice, &slice_on_model, &slice_active_chains, &slice_next_chains);
 
 }
 
