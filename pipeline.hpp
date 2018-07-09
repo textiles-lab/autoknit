@@ -196,6 +196,17 @@ enum Flag : int8_t {
 	FlagLinkAny  = 2,
 };
 
+struct Stitch {
+	float t; //position along chain [0,1)
+	enum Flag : char {
+		FlagDiscard = -1,
+		FlagLinkOne =  1,
+		FlagLinkAny =  2,
+	};
+	Flag flag; //what sort of links are allowed to this stitch (or if this stitch is just marked for removal)
+	Stitch(float t_, Flag flag_) : t(t_), flag(flag_) { }
+};
+
 //helper used by the find_first and peel methods to sample chain at sub-stitch length scale:
 void sample_chain(
 	float vertex_spacing, //in: maximum space between chain vertices
@@ -227,7 +238,7 @@ void find_first_active_chains(
 	Model const &model, //in: model
 	std::vector< float > const &times,          //in: time field (times @ vertices)
 	std::vector< std::vector< EmbeddedVertex > > *active_chains, //out: all mesh boundaries that contain a minimum
-	std::vector< std::vector< Flag > > *active_flags //out: all mesh boundaries that contain a minimum
+	std::vector< std::vector< Stitch > > *active_stitches //out: evenly-spaced stitch locations along boundaries.
 );
 
 void peel_chains(
@@ -297,7 +308,7 @@ void build_next_active_chains(
 //probably is in driver code (different cases for build_first and build_next):
 //void extract_stitches(
 
-struct Stitch {
+struct TracedStitch {
 	EmbeddedVertex at;
 	uint32_t yarn_id = -1U;
 	uint32_t ins[2] = {-1U, -1U};
@@ -313,12 +324,12 @@ void trace_stitches(
 	std::vector< EmbeddedVertex > const &vertices, //in: copied to stitches
 	std::vector< glm::uvec2 > const &course_links, //in: ccw-oriented yarn edges
 	std::vector< glm::uvec2 > const &wale_links, //in: early-to-late oriented loop edges
-	std::vector< Stitch > *traced
+	std::vector< TracedStitch > *traced
 	//out: list of stitches
 );
 
 void schedule_stitches(
-	std::vector< Stitch > const &stitches
+	std::vector< TracedStitch > const &stitches
 	//in: list of stitches
 	//out: knitout-ish
 );

@@ -7,19 +7,19 @@
 
 void ak::find_first_active_chains(
 	ak::Parameters const &parameters,
-	ak::Model const &model, //in: model (vertices & triangles)
-	std::vector< float > const &times,          //in: time field (times @ vertices)
-	std::vector< std::vector< ak::EmbeddedVertex > > *active_chains_, //out: all mesh boundaries that contain a minimum
-	std::vector< std::vector< ak::Flag > > *active_flags_ //out: all mesh boundaries that contain a minimum
+	ak::Model const &model,
+	std::vector< float > const &times,
+	std::vector< std::vector< ak::EmbeddedVertex > > *active_chains_,
+	std::vector< std::vector< Stitch > > *active_stitches_
 ) {
 
 	assert(active_chains_);
 	auto &active_chains = *active_chains_;
 	active_chains.clear();
 
-	assert(active_flags_);
-	auto &active_flags = *active_flags_;
-	active_flags.clear();
+	assert(active_stitches_);
+	auto &active_stitches = *active_stitches_;
+	active_stitches.clear();
 
 	//PARANOIA: triangles must reference valid time values:
 	for (glm::uvec3 const &tri : model.triangles) {
@@ -27,6 +27,7 @@ void ak::find_first_active_chains(
 		assert(tri.y < times.size());
 		assert(tri.z < times.size());
 	}
+	//end PARANOIA
 
 	//find boundary loops:
 
@@ -130,55 +131,15 @@ void ak::find_first_active_chains(
 		float stitch_width = parameters.stitch_width_mm / parameters.model_units_mm;
 		uint32_t stitches = std::max(3, int32_t(std::round(total_length / stitch_width)));
 
-		active_chains.emplace_back();
-		active_flags.emplace_back();
-
-		{ //subdivide chain further
-			float stitch_step = total_length / stitches;
-			float stitch_acc = 0.5f * stitch_step;
-			for (uint32_t di = 0; di < divided_chain.size(); ++di) {
-
-				active_chains.back().emplace_back(divided_chain[di]);
-				//stitches close enough to an existing vertex get snapped:
-				if (stitch_acc < 0.01f * stitch_width) {
-					active_flags.back().emplace_back(ak::FlagLinkAny);
-					stitch_acc += stitch_step;
-				} else {
-					active_flags.back().emplace_back(ak::FlagLinkNone);
-				}
-
-				if (di + 1 == divided_chain.size()) break;
-
-
-				float length = lengths[di];
-
-				float remain = length;
-				while (stitch_acc < remain - 0.01f * stitch_width) {
-					remain -= stitch_acc;
-					active_chains.back().emplace_back(EmbeddedVertex::mix(
-						divided_chain[di], divided_chain[di+1],
-						(length - remain) / length
-					));
-					active_flags.back().emplace_back(ak::FlagLinkAny);
-					stitch_acc = stitch_step;
-				}
-				stitch_acc -= remain;
-			}
-
-			assert(active_flags.back().size() == active_chains.back().size());
-
-			assert((divided_chain[0] == divided_chain.back()) == (active_chains.back()[0] == active_chains.back().back()));
-
-			//make sure this worked:
-			uint32_t any_count = 0;
-			for (auto f : active_flags.back()) {
-				if (f == ak::FlagLinkAny) ++any_count;
-			}
-			assert(any_count == stitches);
+		active_chains.emplace_back(divided_chain);
+		active_stitches.emplace_back();
+		active_stitches.back().reserve(stitches);
+		for (uint32_t s = 0; s < stitches; ++s) {
+			active_stitches.back().emplace_back((s + 0.5f) / float(stitches), Stitch::FlagLinkAny);
 		}
 	}
 
-	assert(active_chains.size() == active_flags.size());
+	assert(active_chains.size() == active_stitches.size());
 
 	std::cout << "Found " << active_chains.size() << " first active chains." << std::endl;
 

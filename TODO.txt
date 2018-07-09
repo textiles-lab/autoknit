@@ -10,7 +10,17 @@ Parameter re-works:
 - stitches are stored by parameter value along chains (this avoids all the annoying flag-checking code)
 
 
-void next_slice(
+//The first active chains are along boundaries that are at minimums:
+void find_first_active_chains(
+	Parameters const &parameters,
+	Model const &model, //in: model
+	std::vector< float > const &times,          //in: time field (times @ vertices)
+	std::vector< std::vector< EmbeddedVertex > > *active_chains, //out: all mesh boundaries that contain a minimum
+	std::vector< std::vector< Stitch > > *active_stitches //out: stitch positions on active_chains
+);
+
+
+void peel_slice(
 	Parameters const &parameters,
 	Model const &model,
 	std::vector< std::vector< EmbeddedVertex > > const &active_chains,
