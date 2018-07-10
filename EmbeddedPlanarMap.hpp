@@ -80,22 +80,22 @@ struct IntegerEmbeddedVertex {
 
 template< typename VALUE >
 struct SameValue {
-	void operator()(VALUE *v) const { }
+	static void reverse(VALUE *v) { }
 };
 
 template< typename VALUE >
 struct NegativeValue {
-	void operator()(VALUE *v) const { *v = -*v; }
+	static void reverse(VALUE *v) { *v = -*v; }
 };
 
 template< typename VALUE >
 struct ReplaceValue {
-	void operator()(VALUE *tgt, VALUE const &src) const { *tgt = src; }
+	static void combine(VALUE *tgt, VALUE const &src) { *tgt = src; }
 };
 
 template< typename VALUE >
 struct SumValues {
-	void operator()(VALUE *tgt, VALUE const &src) const { *tgt += src; }
+	static void combine(VALUE *tgt, VALUE const &src) { *tgt += src; }
 };
 
 
@@ -114,8 +114,8 @@ struct EmbeddedPlanarMap {
 	std::unordered_map< glm::uvec3, std::vector< uint32_t > > simplex_vertices;
 	std::unordered_map< glm::uvec3, std::vector< EmbeddedEdge< VALUE > > > simplex_edges;
 
-	static REVERSE_VALUE reverse_value;
-	static COMBINE_VALUES combine_values;
+	static inline void reverse_value(VALUE *value) { REVERSE_VALUE::reverse(value); }
+	static inline void combine_values(VALUE *value, VALUE const &incoming) { COMBINE_VALUES::combine(value, incoming); }
 
 	enum LineSide : int8_t {
 		Left = 1,
