@@ -116,8 +116,65 @@ void ak::peel_slice(
 		std::cout << "  extracted " << loops << " loops and " << lines << " lines." << std::endl;
 	}
 
+	//PARANOIA:
+	for (auto const &chain : active_chains) {
+		for (auto const &v : chain) {
+			assert(v.simplex.x < model.vertices.size());
+			assert(v.simplex.y == -1U || v.simplex.y < model.vertices.size());
+			assert(v.simplex.z == -1U || v.simplex.z < model.vertices.size());
+		}
+		for (uint32_t i = 1; i < chain.size(); ++i) {
+			assert(chain[i-1] != chain[i]);
+		}
+	}
+
+	for (auto const &chain : next_chains) {
+		for (auto const &v : chain) {
+			assert(v.simplex.x < model.vertices.size());
+			assert(v.simplex.y == -1U || v.simplex.y < model.vertices.size());
+			assert(v.simplex.z == -1U || v.simplex.z < model.vertices.size());
+		}
+		for (uint32_t i = 1; i < chain.size(); ++i) {
+			assert(chain[i-1] != chain[i]);
+		}
+	}
+	//end PARANOIA
+
 	//now actually pull out the proper slice:
 	ak::trim_model(model, active_chains, next_chains, &slice, &slice_on_model, &slice_active_chains, &slice_next_chains);
 
+	//sometimes this can combine vertices, in which case the output chains should be trimmed:
+	uint32_t trimmed = 0;
+	for (auto &chain : slice_active_chains) {
+		for (auto v : chain) {
+			assert(v == -1U || v < slice.vertices.size());
+		}
+		for (uint32_t i = 1; i < chain.size(); /* later */) {
+			if (chain[i-1] == chain[i]) {
+				chain.erase(chain.begin() + i);
+				++trimmed;
+			} else {
+				++i;
+			}
+		}
+	}
+
+	for (auto &chain : slice_next_chains) {
+		for (auto v : chain) {
+			assert(v < slice.vertices.size());
+		}
+		for (uint32_t i = 1; i < chain.size(); ++i) {
+			if (chain[i-1] == chain[i]) {
+				chain.erase(chain.begin() + i);
+				++trimmed;
+			} else {
+				++i;
+			}
+		}
+	}
+
+	if (trimmed) {
+		std::cout << "Trimmed " << trimmed << " too-close-for-epm vertices from slice chains." << std::endl;
+	}
 }
 

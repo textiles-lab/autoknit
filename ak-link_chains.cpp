@@ -82,6 +82,7 @@ void ak::link_chains(
 				total_length += glm::length(b-a);
 				lengths.emplace_back(total_length);
 			}
+			assert(lengths.size() == chain.size());
 		}
 		return all_lengths;
 	};
@@ -291,6 +292,14 @@ void ak::link_chains(
 		active_closest = closest_source_chain(next_chains, active_chains);
 		next_closest = closest_source_chain(active_chains, next_chains);
 
+		//HACK: treat these as 'segment' values instead of 'vertex' (but really every segment just gets first vertex's value):
+		for (auto &c : active_closest) {
+			if (!c.empty()) c.pop_back();
+		}
+		for (auto &c : next_closest) {
+			if (!c.empty()) c.pop_back();
+		}
+
 		//DEBUG:
 		for (auto const &ac : active_closest) {
 			std::cout << "active_closest[" << (&ac - &active_closest[0]) << "]:";
@@ -330,11 +339,12 @@ void ak::link_chains(
 		uint32_t ai = &closest - &active_closest[0];
 
 		auto const &lengths = active_lengths[ai];
-		assert(lengths.size() == closest.size());
+		assert(lengths.size() == closest.size() + 1);
 
 		for (uint32_t begin = 0; begin < closest.size(); /* later */) {
 			uint32_t end = begin + 1;
 			while (end < closest.size() && closest[end] == closest[begin]) ++end;
+			assert(end < lengths.size());
 			matches[std::make_pair(ai, closest[begin])].active.emplace_back(lengths[begin] / lengths.back(), lengths[end] / lengths.back());
 			begin = end;
 		}
@@ -344,12 +354,14 @@ void ak::link_chains(
 		//TODO: make sure nothing appears more than twice in closest
 		uint32_t ni = &closest - &next_closest[0];
 
+		assert(ni < next_lengths.size());
 		auto const &lengths = next_lengths[ni];
-		assert(lengths.size() == closest.size());
+		assert(lengths.size() == closest.size() + 1);
 
 		for (uint32_t begin = 0; begin < closest.size(); /* later */) {
 			uint32_t end = begin + 1;
 			while (end < closest.size() && closest[end] == closest[begin]) ++end;
+			assert(end < lengths.size());
 			matches[std::make_pair(closest[begin], ni)].next.emplace_back(lengths[begin] / lengths.back(), lengths[end] / lengths.back());
 			begin = end;
 		}
@@ -460,10 +472,13 @@ void ak::link_chains(
 		assert(anm.first.second < next_lengths.size());
 		std::vector< float > const &lengths = next_lengths[anm.first.second];
 		float total_length = 0.0f;
+		std::cout << "Matching to"; //DEBUG
 		for (auto const &be : match.next) {
-			assert(be.end <= lengths.size());
+			std::cout << " [" << be.begin << ", " << be.end << ")"; //DEBUG
+			assert(be.begin < be.end);
 			total_length += be.end - be.begin;
 		}
+		std::cout << std::endl; //DEBUG
 		total_length *= lengths.back();
 
 		float stitch_width = parameters.stitch_width_mm / parameters.model_units_mm;

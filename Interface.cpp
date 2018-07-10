@@ -1184,6 +1184,7 @@ bool Interface::step_peeling() {
 			active_chains = old_next_active_chains;
 			active_stitches = old_next_active_stitches;
 		}
+		show = ShowTimesModel | ShowActiveChains;
 		if (active_chains.empty()) return false;
 		peel_action = PeelSlice;
 
@@ -1198,6 +1199,7 @@ bool Interface::step_peeling() {
 
 		slice_triangles_dirty = true;
 		slice_chains_tristrip_dirty = true;
+		show = ShowSlice | ShowSliceChains;
 
 		peel_action = PeelLink;
 	} else if (peel_action == PeelLink) {
@@ -1205,6 +1207,7 @@ bool Interface::step_peeling() {
 		ak::link_chains(parameters, slice, slice_times, slice_active_chains, active_stitches, slice_next_chains, &next_stitches, &links);
 
 		links_tristrip_dirty = true;
+		show = ShowSlice | ShowSliceChains | ShowLinks;
 
 		peel_action = PeelBuild;
 	} else if (peel_action == PeelBuild) {
@@ -1212,6 +1215,7 @@ bool Interface::step_peeling() {
 		ak::build_next_active_chains(parameters, slice, slice_on_model, slice_active_chains, active_stitches, slice_next_chains, next_stitches, links, &next_active_chains, &next_active_stitches);
 
 		next_active_chains_tristrip_dirty = true;
+		show = ShowSlice | ShowNextActiveChains;
 
 		peel_action = PeelRepeat;
 		peel_step += 1;
@@ -1450,7 +1454,7 @@ std::vector< std::vector< glm::vec3 > > interpolate_stitch_locations(std::vector
 			glm::vec3 b = chain[pi+1];
 			lengths.emplace_back(lengths.back() + glm::length(b-a));
 		}
-		assert(lengths.size() == chains.size());
+		assert(lengths.size() == chain.size());
 
 		locations.back().reserve(stitches[ci].size());
 		auto li = lengths.begin();

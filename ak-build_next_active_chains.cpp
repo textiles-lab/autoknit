@@ -60,6 +60,9 @@ void ak::build_next_active_chains(
 		for (auto v : chain) {
 			assert(v < slice.vertices.size());
 		}
+		for (uint32_t i = 1; i < chain.size(); ++i) {
+			assert(chain[i-1] != chain[i]);
+		}
 	}
 
 	assert(active_stitches.size() == active_chains.size());
@@ -67,6 +70,9 @@ void ak::build_next_active_chains(
 	for (auto const &chain : next_chains) {
 		for (auto v : chain) {
 			assert(v < slice.vertices.size());
+		}
+		for (uint32_t i = 1; i < chain.size(); ++i) {
+			assert(chain[i-1] != chain[i]);
 		}
 	}
 
@@ -472,13 +478,32 @@ void ak::build_next_active_chains(
 		std::cout << "\n";
 	}
 	std::cout.flush();
+#endif
 
 	//DEBUG
+
+	auto check_ocs = [&](OnChainStitch const &ocs) {
+		assert(ocs.on == OnChainStitch::OnActive || ocs.on == OnChainStitch::OnNext);
+		auto const &chains = (ocs.on == OnChainStitch::OnActive ? active_chains : next_chains);
+		assert(ocs.chain < chains.size());
+		auto const &stitches = (ocs.on == OnChainStitch::OnActive ? active_stitches : next_stitches);
+		assert(stitches.size() == chains.size());
+		auto const &stitche = stitches[ocs.chain];
+		if (ocs.type == OnChainStitch::TypeStitch) {
+			assert(ocs.stitch < stitche.size());
+		} else {
+			assert(ocs.type == OnChainStitch::TypeBegin || ocs.type == OnChainStitch::TypeEnd);
+			assert(ocs.stitch == -1U);
+		}
+	};
+
 	for (auto const &pv : next_vertex) {
 		std::cout << "(" << pv.first.first << ", " << pv.first.second << ") -> " << pv.second << "\n";
+		check_ocs(pv.first.first);
+		check_ocs(pv.first.second);
+		check_ocs(pv.second);
 	}
 	std::cout.flush();
-#endif
 
 
 	//Walk through created edges array, creating chains therefrom:
@@ -562,14 +587,17 @@ void ak::build_next_active_chains(
 			std::vector< ak::Stitch > const &src_stitches = (ocs.on == OnChainStitch::OnActive ? active_stitches : next_stitches)[ocs.chain];
 			assert(!src_chain.empty());
 			assert(src_lengths.size() == src_chain.size());
+			std::cout << (path_evs.size()-1) << " " << ocs << " ";
 			if (ocs.type == OnChainStitch::TypeBegin) {
 				assert(src_chain[0] != src_chain.back());
 				path_evs.emplace_back(ak::EmbeddedVertex::on_vertex(src_chain[0]));
 				path_lefts.emplace_back(0);
+				std::cout << "Begin: " << src_chain[0] << std::endl; //DEBUG
 			} else if (ocs.type == OnChainStitch::TypeEnd) {
 				assert(src_chain[0] != src_chain.back());
 				path_evs.emplace_back(ak::EmbeddedVertex::on_vertex(src_chain.back()));
 				path_lefts.emplace_back(src_chain.size()-2);
+				std::cout << "End: " << src_chain.back() << std::endl; //DEBUG
 			} else { assert(ocs.type == OnChainStitch::TypeStitch);
 				assert(ocs.stitch < src_stitches.size());
 				float l = src_lengths.back() * src_stitches[ocs.stitch].t;
@@ -581,6 +609,7 @@ void ak::build_next_active_chains(
 				assert(i > 0);
 				path_evs.emplace_back(ak::EmbeddedVertex::on_edge(src_chain[i-1], src_chain[i], m));
 				path_lefts.emplace_back(i-1);
+				std::cout << "Stitch: " << src_chain[i-1] << "-" << src_chain[i] << " at " << m << std::endl; //DEBUG
 			}
 		}
 
@@ -599,27 +628,32 @@ void ak::build_next_active_chains(
 			chain.emplace_back(ev);
 		};
 
-		for (uint32_t i = 0; i + 1 < path.size(); ++i) {
-			auto const &a = path[i];
-			auto const &a_ev = path_evs[i];
-			auto const &a_left = path_lefts[i];
-			std::vector< uint32_t > const &a_chain = (a.on == OnChainStitch::OnActive ? active_chains : next_chains)[a.chain];
+		for (uint32_t pi = 0; pi + 1 < path.size(); ++pi) {
+			auto const &a = path[pi];
+			auto const &a_ev = path_evs[pi];
+			auto const &a_left = path_lefts[pi];
+			std::vector< uint32_t > const &a_chain = (a.on == OnChainStitch::OnActive ? active_chains : next_chains).at(a.chain);
 			assert(a_left + 1 < a_chain.size());
-			auto const &b = path[i+1];
-			auto const &b_ev = path_evs[i+1];
-			auto const &b_left = path_lefts[i+1];
-			std::vector< uint32_t > const &b_chain = (b.on == OnChainStitch::OnActive ? active_chains : next_chains)[b.chain];
+			auto const &b = path[pi+1];
+			auto const &b_ev = path_evs[pi+1];
+			auto const &b_left = path_lefts[pi+1];
+			std::vector< uint32_t > const &b_chain = (b.on == OnChainStitch::OnActive ? active_chains : next_chains).at(b.chain);
 			assert(b_left + 1 < b_chain.size());
 
-			if (i == 0) append_ev(a_ev);
+			check_ocs(a); //DEBUG
+			check_ocs(b); //DEBUG
+			std::cout << "From " << a << " to " << b << std::endl; //DEBUG
+
+			if (pi == 0) append_ev(a_ev);
 			else assert(!chain.empty() && chain.back() == a_ev);
 			if (a.type == OnChainStitch::TypeBegin) {
-				assert(i == 0);
+				assert(pi == 0);
 				assert(a_left == 0);
 			} else { assert(a.type == OnChainStitch::TypeStitch);
-				std::vector< ak::Stitch > const &a_stitches = (a.on == OnChainStitch::OnActive ? active_stitches : next_stitches)[a.stitch];
+				std::vector< ak::Stitch > const &a_stitches = (a.on == OnChainStitch::OnActive ? active_stitches : next_stitches).at(a.chain);
+				assert(a.stitch < a_stitches.size());
 				ak::Stitch::Flag a_flag = a_stitches[a.stitch].flag;
-				if (i == 0) stitches.emplace_back(length, a_flag);
+				if (pi == 0) stitches.emplace_back(length, a_flag);
 				else assert(!stitches.empty() && stitches.back().t == length && stitches.back().flag == a_flag);
 			}
 
@@ -627,8 +661,9 @@ void ak::build_next_active_chains(
 				assert(a.chain == b.chain);
 				bool is_loop = (a_chain[0] == a_chain.back());
 				if (a_left != b_left) {
+					assert(b_left + 1 < a_chain.size()); //RIIIIIGHT?
 					uint32_t v = a_left;
-					while (true) {
+					do {
 						//advance v
 						assert(v + 1 < a_chain.size());
 						v += 1;
@@ -640,6 +675,7 @@ void ak::build_next_active_chains(
 					} while (v != b_left);
 				}
 			} else {
+				//std::cout << "Building embedded path." << std::endl; //DEBUG
 				//find an embedded path between a and b:
 				std::vector< ak::EmbeddedVertex > ab;
 				ak::embedded_path( parameters, slice, a_ev, b_ev, &ab);
@@ -652,10 +688,11 @@ void ak::build_next_active_chains(
 
 			append_ev(b_ev);
 			if (b.type == OnChainStitch::TypeEnd) {
-				assert(i + 2 == path.size());
+				assert(pi + 2 == path.size());
 				assert(b_left == b_chain.size() - 2);
 			} else { assert(b.type == OnChainStitch::TypeStitch);
-				std::vector< ak::Stitch > const &b_stitches = (b.on == OnChainStitch::OnActive ? active_stitches : next_stitches)[b.stitch];
+				std::vector< ak::Stitch > const &b_stitches = (b.on == OnChainStitch::OnActive ? active_stitches : next_stitches).at(b.chain);
+				assert(b.stitch < b_stitches.size());
 				ak::Stitch::Flag b_flag = b_stitches[b.stitch].flag;
 				stitches.emplace_back(length, b_flag);
 			}
@@ -702,4 +739,29 @@ void ak::build_next_active_chains(
 		output(pp.second);
 	}
 
+	//HACK: sometimes duplicate vertices after splatting back to model somehow:
+	uint32_t trimmed = 0;
+	for (auto &chain : next_active_chains) {
+		for (uint32_t i = 1; i < chain.size(); /* later */) {
+			if (chain[i-1] == chain[i]) {
+				chain.erase(chain.begin() + i);
+				++trimmed;
+			} else {
+				++i;
+			}
+		}
+	}
+
+	if (trimmed) {
+		std::cout << "Trimmed " << trimmed << " identical-after-moving-to-model vertices from next active chains." << std::endl;
+	}
+
+
+	//PARANOIA:
+	assert(next_active_stitches.size() == next_active_chains.size());
+	for (auto const &chain : next_active_chains) {
+		for (uint32_t i = 1; i < chain.size(); ++i) {
+			assert(chain[i-1] != chain[i]);
+		}
+	}
 }
