@@ -147,7 +147,7 @@ void ak::peel_slice(
 	uint32_t trimmed = 0;
 	for (auto &chain : slice_active_chains) {
 		for (auto v : chain) {
-			assert(v == -1U || v < slice.vertices.size());
+			assert(v < slice.vertices.size());
 		}
 		for (uint32_t i = 1; i < chain.size(); /* later */) {
 			if (chain[i-1] == chain[i]) {

@@ -98,6 +98,11 @@ struct SumValues {
 	static void combine(VALUE *tgt, VALUE const &src) { *tgt += src; }
 };
 
+template< typename VALUE >
+struct CopyValue {
+	static void split(VALUE const &src, VALUE *first, VALUE *second) { *first = *second = src; }
+};
+
 
 template< typename VALUE >
 struct EmbeddedEdge {
@@ -107,7 +112,7 @@ struct EmbeddedEdge {
 	VALUE value;
 };
 
-template< typename VALUE, class REVERSE_VALUE = SameValue< VALUE >, class COMBINE_VALUES = ReplaceValue< VALUE > >
+template< typename VALUE, class REVERSE_VALUE = SameValue< VALUE >, class COMBINE_VALUES = ReplaceValue< VALUE >, class SPLIT_VALUE = CopyValue< VALUE > >
 struct EmbeddedPlanarMap {
 	std::vector< IntegerEmbeddedVertex > vertices;
 
@@ -116,6 +121,7 @@ struct EmbeddedPlanarMap {
 
 	static inline void reverse_value(VALUE *value) { REVERSE_VALUE::reverse(value); }
 	static inline void combine_values(VALUE *value, VALUE const &incoming) { COMBINE_VALUES::combine(value, incoming); }
+	static inline void split_value(VALUE const &value, VALUE *first, VALUE *second) { SPLIT_VALUE::split(value, first, second); }
 
 	enum LineSide : int8_t {
 		Left = 1,
@@ -260,8 +266,10 @@ struct EmbeddedPlanarMap {
 			assert(vi < vertices.size());
 			glm::ivec2 v = glm::vec2(vertices[vi].weights_on(common));
 			if (point_in_segment(v, a, b)) {
-				add_edge(ai, vi, value);
-				add_edge(vi, bi, value);
+				VALUE value_first, value_second;
+				split_value(value, &value_first, &value_second);
+				add_edge(ai, vi, value_first);
+				add_edge(vi, bi, value_second);
 				return;
 			}
 		}
@@ -314,10 +322,15 @@ struct EmbeddedPlanarMap {
 				VALUE value2 = edges[e].value;
 				edges.erase(edges.begin() + e);
 
-				add_edge(ai2, pti, value2);
-				add_edge(pti, bi2, value2);
-				add_edge(ai, pti, value);
-				add_edge(pti, bi, value);
+				VALUE value2_first, value2_second;
+				split_value(value2, &value2_first, &value2_second);
+				add_edge(ai2, pti, value2_first);
+				add_edge(pti, bi2, value2_second);
+
+				VALUE value_first, value_second;
+				split_value(value, &value_first, &value_second);
+				add_edge(ai, pti, value_first);
+				add_edge(pti, bi, value_second);
 
 				return;
 			}
