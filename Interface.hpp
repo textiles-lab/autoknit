@@ -83,11 +83,21 @@ struct Interface : public kit::Mode {
 		}
 	} dragging;
 
-	enum {
-		ShowModel,
-		ShowConstrainedModel,
-		ShowDEBUGClippedModel,
-	} show = ShowModel;
+	enum : uint32_t {
+		ShowModel            = (1 << 0),
+		ShowConstraints      = (1 << 1),
+		ShowTimesModel       = (1 << 2),
+		ShowSlice            = (1 << 3),
+		ShowActiveChains     = (1 << 4),
+		ShowSliceChains      = (1 << 5),
+		ShowLinks            = (1 << 6),
+		ShowNextActiveChains = (1 << 7),
+
+		ShowModelBits = ShowModel | ShowTimesModel | ShowSlice,
+		ShowStepBits = ShowActiveChains | ShowSliceChains | ShowLinks | ShowNextActiveChains,
+	};
+	uint32_t show = ShowModel;
+
 
 	struct {
 		glm::vec2 at = glm::vec2(std::numeric_limits< float >::quiet_NaN());
@@ -118,92 +128,126 @@ struct Interface : public kit::Mode {
 	//parameters:
 	ak::Parameters parameters;
 
+	//-------------------------------
 	//original model:
 	ak::Model model;
 	void set_model(ak::Model const &model);
+
+	//visualization:
 	//model buffer: (vertices, normals, ids)
-	void update_model_triangles();
 	GLAttribBuffer< glm::vec3, glm::vec3, glm::u8vec4 > model_triangles;
 	GLVertexArray model_triangles_for_model_draw;
+	bool model_triangles_dirty = true;
+	void update_model_triangles();
 
+	//-------------------------------
 	//constraints:
 	std::vector< ak::Constraint > constraints;
-	void set_constraints(std::vector< ak::Constraint > const &constraints);
-	void update_constraints();
-	bool constraints_dirty = true;
-	std::vector< std::vector< glm::vec3 > > DEBUG_constraint_paths;
-	std::vector< std::vector< glm::vec3 > > DEBUG_constraint_loops;
 	ak::Model constrained_model;
 	std::vector< float > constrained_values;
+	std::vector< std::vector< glm::vec3 > > DEBUG_constraint_paths;
+	std::vector< std::vector< glm::vec3 > > DEBUG_constraint_loops;
+	void clear_constraints();
 
-	//interpolation (also computed by update_constraints):
-	std::vector< float > interpolated_values;
+	void set_constraints(std::vector< ak::Constraint > const &constraints);
+	bool constraints_dirty = true;
+	void update_constraints();
 
-	//peeling information:
-	uint32_t peel_step = 0;
-	void start_peeling();
-	std::vector< std::vector< ak::EmbeddedVertex > > active_chains;
-	std::vector< std::vector< ak::Flag > > active_flags;
-
-	void step_peeling(bool build_next);
-	std::vector< std::vector< ak::EmbeddedVertex > > next_chains;
-	ak::Model DEBUG_clipped_model; //debug model made by peel_chains
-
-	std::vector< std::vector< ak::Flag > > next_flags;
-
-	std::vector< ak::Link > links;
-
-	//from build_next_active:
-	std::vector< std::vector< ak::EmbeddedVertex > > next_active_chains;
-	std::vector< std::vector< ak::Flag > > next_active_flags;
-
-
+	//data wrangling:
 	std::string save_constraints_file = ""; //if not "", will save constraints to this file after every change
 	void save_constraints();
 
-	void update_DEBUG_constraint_paths_tristrip();
-	//position, normal, color:
-	GLAttribBuffer< glm::vec3, glm::vec3, glm::u8vec4 > DEBUG_constraint_paths_tristrip;
-	GLVertexArray DEBUG_constraint_paths_tristrip_for_path_draw;
+	//constraints paths/loops; position, normal, color:
+	GLAttribBuffer< glm::vec3, glm::vec3, glm::u8vec4 > constraints_tristrip;
+	GLVertexArray constraints_tristrip_for_path_draw;
+	bool constraints_tristrip_dirty = true;
+	void update_constraints_tristrip();
 
-	void update_DEBUG_constraint_loops_tristrip();
-	//position, normal, color:
-	GLAttribBuffer< glm::vec3, glm::vec3, glm::u8vec4 > DEBUG_constraint_loops_tristrip;
-	GLVertexArray DEBUG_constraint_loops_tristrip_for_path_draw;
+	//-------------------------------
+	//interpolation:
+	std::vector< float > times;
+	void clear_times();
+	bool times_dirty = true;
+	void update_times();
 
-
-	void update_constrained_model_triangles();
+	//visualization: (constrained model colored with times)
 	//constrained model buffer: position, normal, id, texcoord
-	GLAttribBuffer< glm::vec3, glm::vec3, glm::u8vec4, glm::vec2 > constrained_model_triangles;
-	GLVertexArray constrained_model_triangles_for_textured_draw;
+	GLAttribBuffer< glm::vec3, glm::vec3, glm::u8vec4, glm::vec2 > times_model_triangles;
+	GLVertexArray times_model_triangles_for_textured_draw;
+	bool times_model_triangles_dirty = true;
+	void update_times_model_triangles();
 
-	void update_DEBUG_clipped_model_triangles();
-	//constrained model buffer: position, normal, color
-	GLAttribBuffer< glm::vec3, glm::vec3, glm::u8vec4 > DEBUG_clipped_model_triangles;
-	GLVertexArray DEBUG_clipped_model_triangles_for_path_draw;
 
-	void update_active_chains_tristrip();
-	//position, normal, color:
+	//-------------------------------
+	//peeling:
+	uint32_t peel_step = 0;
+	enum {
+		PeelBegin = 0,
+		PeelSlice = 1,
+		PeelLink = 2,
+		PeelBuild = 3,
+		PeelRepeat = 4,
+	} peel_action = PeelBegin;
+
+	// - - - - - - - - - - - - - - - - 
+	//peeling - begin / step:
+	std::vector< std::vector< ak::EmbeddedVertex > > active_chains;
+	std::vector< std::vector< ak::Stitch > > active_stitches;
+
+	//active chains + stitches; position, normal, color:
 	GLAttribBuffer< glm::vec3, glm::vec3, glm::u8vec4 > active_chains_tristrip;
 	GLVertexArray active_chains_tristrip_for_path_draw;
+	bool active_chains_tristrip_dirty = true;
+	void update_active_chains_tristrip();
 
-	void update_next_chains_tristrip();
-	//position, normal, color:
-	GLAttribBuffer< glm::vec3, glm::vec3, glm::u8vec4 > next_chains_tristrip;
-	GLVertexArray next_chains_tristrip_for_path_draw;
+	// - - - - - - - - - - - - - - - - 
+	//peeling - slice:
+	ak::Model slice;
+	std::vector< ak::EmbeddedVertex > slice_on_model;
+	std::vector< std::vector< uint32_t > > slice_active_chains;
+	std::vector< std::vector< uint32_t > > slice_next_chains;
+	std::vector< float > slice_times;
 
-	void update_links_tristrip();
-	//position, normal, color:
+	//sliced model: position, normal, color
+	GLAttribBuffer< glm::vec3, glm::vec3, glm::u8vec4 > slice_triangles;
+	GLVertexArray slice_triangles_for_path_draw;
+	bool slice_triangles_dirty = true;
+	void update_slice_triangles();
+
+	//chains on slice; position, normal, color:
+	GLAttribBuffer< glm::vec3, glm::vec3, glm::u8vec4 > slice_chains_tristrip;
+	GLVertexArray slice_chains_tristrip_for_path_draw;
+	bool slice_chains_tristrip_dirty = true;
+	void update_slice_chains_tristrip();
+
+	// - - - - - - - - - - - - - - - - 
+	//peeling - link:
+	std::vector< std::vector< ak::Stitch > > next_stitches;
+	std::vector< ak::Link > links;
+
+	//links (+ stitches); position, normal, color:
 	GLAttribBuffer< glm::vec3, glm::vec3, glm::u8vec4 > links_tristrip;
 	GLVertexArray links_tristrip_for_path_draw;
+	bool links_tristrip_dirty = true;
+	void update_links_tristrip();
 
-	void update_next_active_chains_tristrip();
-	//position, normal, color:
+	// - - - - - - - - - - - - - - - - 
+	//peeling - build:
+	std::vector< std::vector< ak::EmbeddedVertex > > next_active_chains;
+	std::vector< std::vector< ak::Stitch > > next_active_stitches;
+
+	//active chains + stitches; position, normal, color:
 	GLAttribBuffer< glm::vec3, glm::vec3, glm::u8vec4 > next_active_chains_tristrip;
 	GLVertexArray next_active_chains_tristrip_for_path_draw;
+	bool next_active_chains_tristrip_dirty = true;
+	void update_next_active_chains_tristrip();
+
+	// - - - - - - - - - - - - - - - - 
+	//driver functions that step through the above:
+	void clear_peeling();
+	bool step_peeling();
 
 
-	
 	//link bottom constraints directly to top constraints (to test linking function)
 	void DEBUG_test_linking();
 

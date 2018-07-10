@@ -82,16 +82,16 @@ std::shared_ptr< kit::Mode > kit_mode() {
 
 
 	if (peel_test != 0) {
-		interface->start_peeling();
+		interface->clear_peeling();
 		for (uint32_t i = 0; i < peel_test; ++i) {
-			interface->step_peeling(true);
+			interface->step_peeling();
 		}
 		return nullptr;
 	}
 	if (peel_step != 0) {
-		interface->start_peeling();
+		interface->clear_peeling();
 		for (uint32_t i = 0; i < peel_step; ++i) {
-			interface->step_peeling(true);
+			interface->step_peeling();
 		}
 	}
 

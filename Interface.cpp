@@ -380,32 +380,18 @@ Interface::Interface() {
 		{model_draw->getAttribLocation("ID", GLProgram::MissingIsWarning), model_triangles[2]}
 	});
 
-	DEBUG_constraint_paths_tristrip_for_path_draw = GLVertexArray::make_binding(path_draw->program, {
-		{path_draw->getAttribLocation("Position", GLProgram::MissingIsError), DEBUG_constraint_paths_tristrip[0]},
-		{path_draw->getAttribLocation("Normal", GLProgram::MissingIsWarning), DEBUG_constraint_paths_tristrip[1]},
-		{path_draw->getAttribLocation("Color", GLProgram::MissingIsWarning), DEBUG_constraint_paths_tristrip[2]}
+	constraints_tristrip_for_path_draw = GLVertexArray::make_binding(path_draw->program, {
+		{path_draw->getAttribLocation("Position", GLProgram::MissingIsError), constraints_tristrip[0]},
+		{path_draw->getAttribLocation("Normal", GLProgram::MissingIsWarning), constraints_tristrip[1]},
+		{path_draw->getAttribLocation("Color", GLProgram::MissingIsWarning), constraints_tristrip[2]}
 	});
 
-	DEBUG_constraint_loops_tristrip_for_path_draw = GLVertexArray::make_binding(path_draw->program, {
-		{path_draw->getAttribLocation("Position", GLProgram::MissingIsError), DEBUG_constraint_loops_tristrip[0]},
-		{path_draw->getAttribLocation("Normal", GLProgram::MissingIsWarning), DEBUG_constraint_loops_tristrip[1]},
-		{path_draw->getAttribLocation("Color", GLProgram::MissingIsWarning), DEBUG_constraint_loops_tristrip[2]}
+	times_model_triangles_for_textured_draw = GLVertexArray::make_binding(textured_draw->program, {
+		{textured_draw->getAttribLocation("Position", GLProgram::MissingIsError), times_model_triangles[0]},
+		{textured_draw->getAttribLocation("Normal", GLProgram::MissingIsWarning), times_model_triangles[1]},
+		{textured_draw->getAttribLocation("ID", GLProgram::MissingIsWarning), times_model_triangles[2]},
+		{textured_draw->getAttribLocation("TexCoord", GLProgram::MissingIsWarning), times_model_triangles[3]}
 	});
-
-
-	constrained_model_triangles_for_textured_draw = GLVertexArray::make_binding(textured_draw->program, {
-		{textured_draw->getAttribLocation("Position", GLProgram::MissingIsError), constrained_model_triangles[0]},
-		{textured_draw->getAttribLocation("Normal", GLProgram::MissingIsWarning), constrained_model_triangles[1]},
-		{textured_draw->getAttribLocation("ID", GLProgram::MissingIsWarning), constrained_model_triangles[2]},
-		{textured_draw->getAttribLocation("TexCoord", GLProgram::MissingIsWarning), constrained_model_triangles[3]}
-	});
-
-	DEBUG_clipped_model_triangles_for_path_draw = GLVertexArray::make_binding(path_draw->program, {
-		{path_draw->getAttribLocation("Position", GLProgram::MissingIsError), DEBUG_clipped_model_triangles[0]},
-		{path_draw->getAttribLocation("Normal", GLProgram::MissingIsWarning), DEBUG_clipped_model_triangles[1]},
-		{path_draw->getAttribLocation("Color", GLProgram::MissingIsWarning), DEBUG_clipped_model_triangles[2]},
-	});
-
 
 	active_chains_tristrip_for_path_draw = GLVertexArray::make_binding(path_draw->program, {
 		{path_draw->getAttribLocation("Position", GLProgram::MissingIsError), active_chains_tristrip[0]},
@@ -413,10 +399,16 @@ Interface::Interface() {
 		{path_draw->getAttribLocation("Color", GLProgram::MissingIsWarning), active_chains_tristrip[2]}
 	});
 
-	next_chains_tristrip_for_path_draw = GLVertexArray::make_binding(path_draw->program, {
-		{path_draw->getAttribLocation("Position", GLProgram::MissingIsError), next_chains_tristrip[0]},
-		{path_draw->getAttribLocation("Normal", GLProgram::MissingIsWarning), next_chains_tristrip[1]},
-		{path_draw->getAttribLocation("Color", GLProgram::MissingIsWarning), next_chains_tristrip[2]}
+	slice_triangles_for_path_draw = GLVertexArray::make_binding(path_draw->program, {
+		{path_draw->getAttribLocation("Position", GLProgram::MissingIsError), slice_triangles[0]},
+		{path_draw->getAttribLocation("Normal", GLProgram::MissingIsWarning), slice_triangles[1]},
+		{path_draw->getAttribLocation("Color", GLProgram::MissingIsWarning), slice_triangles[2]},
+	});
+
+	slice_chains_tristrip_for_path_draw = GLVertexArray::make_binding(path_draw->program, {
+		{path_draw->getAttribLocation("Position", GLProgram::MissingIsError), slice_chains_tristrip[0]},
+		{path_draw->getAttribLocation("Normal", GLProgram::MissingIsWarning), slice_chains_tristrip[1]},
+		{path_draw->getAttribLocation("Color", GLProgram::MissingIsWarning), slice_chains_tristrip[2]}
 	});
 
 	links_tristrip_for_path_draw = GLVertexArray::make_binding(path_draw->program, {
@@ -424,7 +416,6 @@ Interface::Interface() {
 		{path_draw->getAttribLocation("Normal", GLProgram::MissingIsWarning), links_tristrip[1]},
 		{path_draw->getAttribLocation("Color", GLProgram::MissingIsWarning), links_tristrip[2]}
 	});
-
 
 	next_active_chains_tristrip_for_path_draw = GLVertexArray::make_binding(path_draw->program, {
 		{path_draw->getAttribLocation("Position", GLProgram::MissingIsError), next_active_chains_tristrip[0]},
@@ -480,7 +471,8 @@ void Interface::draw() {
 
 	glEnable(GL_DEPTH_TEST);
 
-	if (show == ShowModel && model_triangles.count) { //draw the model:
+	if (show & ShowModel) { //draw the model:
+		if (model_triangles_dirty) update_model_triangles();
 		glUseProgram(model_draw->program);
 
 		//Position-to-clip matrix:
@@ -503,7 +495,8 @@ void Interface::draw() {
 		glUseProgram(0);
 	}
 
-	if (show == ShowConstrainedModel) { //draw the constrained model:
+	if (show & ShowTimesModel) { //draw the constrained model:
+		if (times_model_triangles_dirty) update_times_model_triangles();
 		glUseProgram(textured_draw->program);
 
 		//Position-to-clip matrix:
@@ -517,10 +510,10 @@ void Interface::draw() {
 		glUniformMatrix4x3fv(textured_draw_p2l, 1, GL_FALSE, glm::value_ptr(p2l));
 		glUniformMatrix3fv(textured_draw_n2l, 1, GL_FALSE, glm::value_ptr(n2l));
 
-		glBindVertexArray(constrained_model_triangles_for_textured_draw.array);
+		glBindVertexArray(times_model_triangles_for_textured_draw.array);
 		glBindTexture(GL_TEXTURE_2D, time_tex->texture);
 
-		glDrawArrays(GL_TRIANGLES, 0, constrained_model_triangles.count);
+		glDrawArrays(GL_TRIANGLES, 0, times_model_triangles.count);
 
 		glBindTexture(GL_TEXTURE_2D, 0);
 		glBindVertexArray(0);
@@ -528,7 +521,8 @@ void Interface::draw() {
 		glUseProgram(0);
 	}
 
-	if (show == ShowDEBUGClippedModel) { //draw the clipped model debug out:
+	if (show & ShowSlice) { //draw the clipped model debug out:
+		if (slice_triangles_dirty) update_slice_triangles();
 		glUseProgram(path_draw->program);
 
 		//Position-to-clip matrix:
@@ -542,9 +536,9 @@ void Interface::draw() {
 		glUniformMatrix4x3fv(path_draw_p2l, 1, GL_FALSE, glm::value_ptr(p2l));
 		glUniformMatrix3fv(path_draw_n2l, 1, GL_FALSE, glm::value_ptr(n2l));
 
-		glBindVertexArray(DEBUG_clipped_model_triangles_for_path_draw.array);
+		glBindVertexArray(slice_triangles_for_path_draw.array);
 
-		glDrawArrays(GL_TRIANGLES, 0, DEBUG_clipped_model_triangles.count);
+		glDrawArrays(GL_TRIANGLES, 0, slice_triangles.count);
 
 		glBindVertexArray(0);
 
@@ -552,8 +546,7 @@ void Interface::draw() {
 	}
 
 
-
-	if (show == ShowModel) { //draw marker spheres:
+	if (show & ShowModel) { //draw marker spheres:
 		glUseProgram(marker_draw->program);
 		glBindVertexArray(sphere_tristrip_for_marker_draw->array);
 
@@ -579,8 +572,6 @@ void Interface::draw() {
 
 			glDrawArrays(GL_TRIANGLE_STRIP, 0, sphere_tristrip->count);
 		};
-
-	
 
 		//constrained vertices (do draw into ID buffer):
 		float min_time = -1.0f;
@@ -610,12 +601,6 @@ void Interface::draw() {
 			sphere(hovered.point, 0.02f, glm::vec3(0.4f, 0.4f, 0.4f), glm::u8vec4(0x00));
 		}
 
-		//constrained path spheres (don't draw into ID buffer):
-		for (auto const &path : DEBUG_constraint_paths) {
-			for (auto const &v : path) {
-				sphere(v, 0.02f, glm::vec3(0.4f, 0.4f, 0.4f), glm::u8vec4(0x00));
-			}
-		}
 		glColorMaski(1, GL_TRUE, GL_TRUE, GL_TRUE, GL_TRUE);
 
 		glBindVertexArray(0);
@@ -623,17 +608,15 @@ void Interface::draw() {
 	}
 
 	//draw constraint paths:
-	if (DEBUG_constraint_paths_tristrip.count && (show == ShowModel)) {
+	if (show & ShowConstraints) {
+		if (constraints_tristrip_dirty) update_constraints_tristrip();
 
-		//Position-to-clip matrix:
 		glm::mat4 p2c = camera.mvp();
-		//Position-to-light matrix:
 		glm::mat4x3 p2l = camera.mv();
-		//Normal-to-light matrix:
 		glm::mat3 n2l = glm::inverse(glm::transpose(glm::mat3(p2l)));
 
 		glUseProgram(path_draw->program);
-		glBindVertexArray(DEBUG_constraint_paths_tristrip_for_path_draw.array);
+		glBindVertexArray(constraints_tristrip_for_path_draw.array);
 
 		glUniformMatrix4fv(path_draw_p2c, 1, GL_FALSE, glm::value_ptr(p2c));
 		glUniformMatrix4x3fv(path_draw_p2l, 1, GL_FALSE, glm::value_ptr(p2l));
@@ -644,37 +627,7 @@ void Interface::draw() {
 		//don't draw into ID array:
 		glColorMaski(1, GL_FALSE, GL_FALSE, GL_FALSE, GL_FALSE);
 
-		glDrawArrays(GL_TRIANGLE_STRIP, 0, DEBUG_constraint_paths_tristrip.count);
-
-		glColorMaski(1, GL_TRUE, GL_TRUE, GL_TRUE, GL_TRUE);
-
-		glBindVertexArray(0);
-		glUseProgram(0);
-	}
-
-	//draw constraint loops:
-	if (DEBUG_constraint_loops_tristrip.count && (show == ShowModel)) {
-
-		//Position-to-clip matrix:
-		glm::mat4 p2c = camera.mvp();
-		//Position-to-light matrix:
-		glm::mat4x3 p2l = camera.mv();
-		//Normal-to-light matrix:
-		glm::mat3 n2l = glm::inverse(glm::transpose(glm::mat3(p2l)));
-
-		glUseProgram(path_draw->program);
-		glBindVertexArray(DEBUG_constraint_loops_tristrip_for_path_draw.array);
-
-		glUniformMatrix4fv(path_draw_p2c, 1, GL_FALSE, glm::value_ptr(p2c));
-		glUniformMatrix4x3fv(path_draw_p2l, 1, GL_FALSE, glm::value_ptr(p2l));
-		glUniformMatrix3fv(path_draw_n2l, 1, GL_FALSE, glm::value_ptr(n2l));
-
-		glUniform4f(path_draw_id, 0 / 255.0f, 0 / 255.0f, 0 / 255.0f, 0 / 255.0f);
-
-		//don't draw into ID array:
-		glColorMaski(1, GL_FALSE, GL_FALSE, GL_FALSE, GL_FALSE);
-
-		glDrawArrays(GL_TRIANGLE_STRIP, 0, DEBUG_constraint_loops_tristrip.count);
+		glDrawArrays(GL_TRIANGLE_STRIP, 0, constraints_tristrip.count);
 
 		glColorMaski(1, GL_TRUE, GL_TRUE, GL_TRUE, GL_TRUE);
 
@@ -683,13 +636,11 @@ void Interface::draw() {
 	}
 
 	//draw active chains (peeling):
-	if (active_chains_tristrip.count && (show == ShowConstrainedModel)) {
+	if (show & ShowActiveChains) {
+		if (active_chains_tristrip_dirty) update_active_chains_tristrip();
 
-		//Position-to-clip matrix:
 		glm::mat4 p2c = camera.mvp();
-		//Position-to-light matrix:
 		glm::mat4x3 p2l = camera.mv();
-		//Normal-to-light matrix:
 		glm::mat3 n2l = glm::inverse(glm::transpose(glm::mat3(p2l)));
 
 		glUseProgram(path_draw->program);
@@ -712,18 +663,16 @@ void Interface::draw() {
 		glUseProgram(0);
 	}
 
-	//draw next chains:
-	if (next_chains_tristrip.count && (show == ShowConstrainedModel)) {
+	//draw slice-relative chains (peeling):
+	if (show & ShowSliceChains) {
+		if (slice_chains_tristrip_dirty) update_slice_chains_tristrip();
 
-		//Position-to-clip matrix:
 		glm::mat4 p2c = camera.mvp();
-		//Position-to-light matrix:
 		glm::mat4x3 p2l = camera.mv();
-		//Normal-to-light matrix:
 		glm::mat3 n2l = glm::inverse(glm::transpose(glm::mat3(p2l)));
 
 		glUseProgram(path_draw->program);
-		glBindVertexArray(next_chains_tristrip_for_path_draw.array);
+		glBindVertexArray(slice_chains_tristrip_for_path_draw.array);
 
 		glUniformMatrix4fv(path_draw_p2c, 1, GL_FALSE, glm::value_ptr(p2c));
 		glUniformMatrix4x3fv(path_draw_p2l, 1, GL_FALSE, glm::value_ptr(p2l));
@@ -734,37 +683,7 @@ void Interface::draw() {
 		//don't draw into ID array:
 		glColorMaski(1, GL_FALSE, GL_FALSE, GL_FALSE, GL_FALSE);
 
-		glDrawArrays(GL_TRIANGLE_STRIP, 0, next_chains_tristrip.count);
-
-		glColorMaski(1, GL_TRUE, GL_TRUE, GL_TRUE, GL_TRUE);
-
-		glBindVertexArray(0);
-		glUseProgram(0);
-	}
-
-	//draw next active chains:
-	if (next_active_chains_tristrip.count && (show == ShowConstrainedModel)) {
-
-		//Position-to-clip matrix:
-		glm::mat4 p2c = camera.mvp();
-		//Position-to-light matrix:
-		glm::mat4x3 p2l = camera.mv();
-		//Normal-to-light matrix:
-		glm::mat3 n2l = glm::inverse(glm::transpose(glm::mat3(p2l)));
-
-		glUseProgram(path_draw->program);
-		glBindVertexArray(next_active_chains_tristrip_for_path_draw.array);
-
-		glUniformMatrix4fv(path_draw_p2c, 1, GL_FALSE, glm::value_ptr(p2c));
-		glUniformMatrix4x3fv(path_draw_p2l, 1, GL_FALSE, glm::value_ptr(p2l));
-		glUniformMatrix3fv(path_draw_n2l, 1, GL_FALSE, glm::value_ptr(n2l));
-
-		glUniform4f(path_draw_id, 0 / 255.0f, 0 / 255.0f, 0 / 255.0f, 0 / 255.0f);
-
-		//don't draw into ID array:
-		glColorMaski(1, GL_FALSE, GL_FALSE, GL_FALSE, GL_FALSE);
-
-		glDrawArrays(GL_TRIANGLE_STRIP, 0, next_active_chains_tristrip.count);
+		glDrawArrays(GL_TRIANGLE_STRIP, 0, slice_chains_tristrip.count);
 
 		glColorMaski(1, GL_TRUE, GL_TRUE, GL_TRUE, GL_TRUE);
 
@@ -773,14 +692,12 @@ void Interface::draw() {
 	}
 
 
-	//draw links:
-	if (links_tristrip.count && (show == ShowConstrainedModel)) {
+	//draw links + next stitches:
+	if (show & ShowLinks) {
+		if (links_tristrip_dirty) update_links_tristrip();
 
-		//Position-to-clip matrix:
 		glm::mat4 p2c = camera.mvp();
-		//Position-to-light matrix:
 		glm::mat4x3 p2l = camera.mv();
-		//Normal-to-light matrix:
 		glm::mat3 n2l = glm::inverse(glm::transpose(glm::mat3(p2l)));
 
 		glUseProgram(path_draw->program);
@@ -803,7 +720,33 @@ void Interface::draw() {
 		glUseProgram(0);
 	}
 
+	//draw next active chains:
+	if (show & ShowNextActiveChains) {
+		if (next_active_chains_tristrip_dirty) update_next_active_chains_tristrip();
 
+		glm::mat4 p2c = camera.mvp();
+		glm::mat4x3 p2l = camera.mv();
+		glm::mat3 n2l = glm::inverse(glm::transpose(glm::mat3(p2l)));
+
+		glUseProgram(path_draw->program);
+		glBindVertexArray(next_active_chains_tristrip_for_path_draw.array);
+
+		glUniformMatrix4fv(path_draw_p2c, 1, GL_FALSE, glm::value_ptr(p2c));
+		glUniformMatrix4x3fv(path_draw_p2l, 1, GL_FALSE, glm::value_ptr(p2l));
+		glUniformMatrix3fv(path_draw_n2l, 1, GL_FALSE, glm::value_ptr(n2l));
+
+		glUniform4f(path_draw_id, 0 / 255.0f, 0 / 255.0f, 0 / 255.0f, 0 / 255.0f);
+
+		//don't draw into ID array:
+		glColorMaski(1, GL_FALSE, GL_FALSE, GL_FALSE, GL_FALSE);
+
+		glDrawArrays(GL_TRIANGLE_STRIP, 0, next_active_chains_tristrip.count);
+
+		glColorMaski(1, GL_TRUE, GL_TRUE, GL_TRUE, GL_TRUE);
+
+		glBindVertexArray(0);
+		glUseProgram(0);
+	}
 
 	GL_ERRORS();
 
@@ -916,18 +859,17 @@ void Interface::handle_event(SDL_Event const &evt) {
 		if (camera.radius < 0.1f) camera.radius = 0.1f;
 	} else if (evt.type == SDL_KEYDOWN) {
 		if (evt.key.keysym.scancode == SDL_SCANCODE_S) {
-			if (show == ShowModel) show = ShowConstrainedModel;
-			else if (show == ShowConstrainedModel) show = ShowDEBUGClippedModel;
-			else if (show == ShowDEBUGClippedModel) show = ShowModel;
+			if (show & ShowModel) show = (show & ~ShowModelBits) | ShowTimesModel;
+			else if (show & ShowTimesModel) show = (show & ~ShowModelBits) | ShowSlice;
+			else /*if (show & ShowSlice)*/ show = (show & ~ShowModelBits) | ShowModel;
 		} else if (evt.key.keysym.scancode == SDL_SCANCODE_L) {
-			show = ShowConstrainedModel;
-			DEBUG_test_linking();
+			//show = ShowConstrainedModel;
+			//DEBUG_test_linking();
 		} else if (evt.key.keysym.scancode == SDL_SCANCODE_P) {
-			show = ShowConstrainedModel;
-			if (active_chains.empty()) {
-				start_peeling();
+			if (evt.key.keysym.mod & KMOD_SHIFT) {
+				clear_peeling();
 			} else {
-				step_peeling(!(evt.key.keysym.mod & KMOD_SHIFT));
+				step_peeling();
 			}
 		} else if (evt.key.keysym.scancode == SDL_SCANCODE_C) {
 			if (hovered.cons < constraints.size()) {
@@ -1114,12 +1056,173 @@ void Interface::alloc_fbs() {
 
 void Interface::set_model(ak::Model const &new_model) {
 	model = new_model;
-	update_model_triangles();
+	model_triangles_dirty = true;
+	set_constraints(std::vector< ak::Constraint >());
 
 	reset_camera();
 }
 
+
+void Interface::clear_constraints() {
+	constraints.clear();
+	constrained_model.clear();
+	constrained_values.clear();
+	DEBUG_constraint_paths.clear();
+	DEBUG_constraint_loops.clear();
+
+	constraints_dirty = true;
+	constraints_tristrip_dirty = true;
+
+	DEBUG_constraint_paths.clear();
+	DEBUG_constraint_loops.clear();
+
+	clear_times();
+}
+
+void Interface::set_constraints(std::vector< ak::Constraint > const &constraints_) {
+	clear_constraints();
+	constraints = constraints_;
+}
+
+void Interface::update_constraints() {
+	constraints_dirty = false;
+
+	save_constraints();
+
+	constrained_model.clear();
+	constrained_values.clear();
+	DEBUG_constraint_paths.clear();
+	DEBUG_constraint_loops.clear();
+
+	ak::embed_constraints(parameters, model, constraints, &constrained_model, &constrained_values, &DEBUG_constraint_paths, &DEBUG_constraint_loops);
+
+	constraints_tristrip_dirty = true;
+
+	clear_times();
+}
+
+void Interface::save_constraints() {
+	if (save_constraints_file == "") return;
+	ak::save_constraints(model, constraints, save_constraints_file);
+}
+
+void Interface::clear_times() {
+	times.clear();
+
+	times_dirty = true;
+	times_model_triangles_dirty = true;
+
+	clear_peeling();
+}
+
+void Interface::update_times() {
+	times_dirty = false;
+
+	if (constraints_dirty) update_constraints();
+
+	try {
+		ak::interpolate_values(constrained_model, constrained_values, &times);
+	} catch (std::exception &e) {
+		std::cout << "ERROR during interpoation: " << e.what() << std::endl;
+		times.clear();
+	}
+
+	times_model_triangles_dirty = true;
+
+	clear_peeling();
+}
+
+void Interface::clear_peeling() {
+	peel_step = 0;
+	peel_action = PeelBegin;
+
+	active_chains.clear();
+	active_stitches.clear();
+	active_chains_tristrip_dirty = true;
+
+	slice.clear();
+	slice_on_model.clear();
+	slice_active_chains.clear();
+	slice_next_chains.clear();
+	slice_times.clear();
+	slice_triangles_dirty = true;
+	slice_chains_tristrip_dirty = true;
+
+	next_stitches.clear();
+	links.clear();
+	links_tristrip_dirty = true;
+
+	next_active_chains.clear();
+	next_active_stitches.clear();
+	next_active_chains_tristrip_dirty = true;
+
+}
+
+bool Interface::step_peeling() {
+	if (times_dirty) update_times();
+	if (times.empty()) return false; //can't step if no time info
+
+	std::cout << "==== peel step " << peel_step << " ====" << std::endl;
+	if (peel_action == PeelBegin || peel_action == PeelRepeat) {
+		auto old_peel_step = peel_step;
+		auto old_peel_action = peel_action;
+		auto old_next_active_chains = next_active_chains;
+		auto old_next_active_stitches = next_active_stitches;
+		clear_peeling();
+		peel_step = old_peel_step;
+		peel_action = old_peel_action;
+
+		if (peel_action == PeelBegin) {
+			std::cout << " -- begin --" << std::endl;
+			//read lower boundary:
+			ak::find_first_active_chains(parameters, constrained_model, times, &active_chains, &active_stitches);
+
+			assert(peel_step == 0);
+		} else { assert(peel_action == PeelRepeat);
+			std::cout << " -- repeat --" << std::endl;
+			//copy active chains from next_active arrays:
+			active_chains = old_next_active_chains;
+			active_stitches = old_next_active_stitches;
+		}
+		if (active_chains.empty()) return false;
+		peel_action = PeelSlice;
+
+	} else if (peel_action == PeelSlice) {
+		std::cout << " -- slice --" << std::endl;
+		ak::peel_slice(parameters, constrained_model, active_chains, &slice, &slice_on_model, &slice_active_chains, &slice_next_chains);
+		slice_times.clear();
+		slice_times.reserve(slice_on_model.size());
+		for (auto &ev : slice_on_model) {
+			slice_times.emplace_back(ev.interpolate(times));
+		}
+
+		slice_triangles_dirty = true;
+		slice_chains_tristrip_dirty = true;
+
+		peel_action = PeelLink;
+	} else if (peel_action == PeelLink) {
+		std::cout << " -- link --" << std::endl;
+		ak::link_chains(parameters, slice, slice_times, slice_active_chains, active_stitches, slice_next_chains, &next_stitches, &links);
+
+		links_tristrip_dirty = true;
+
+		peel_action = PeelBuild;
+	} else if (peel_action == PeelBuild) {
+		std::cout << " -- build --" << std::endl;
+		ak::build_next_active_chains(parameters, slice, slice_on_model, slice_active_chains, active_stitches, slice_next_chains, next_stitches, links, &next_active_chains, &next_active_stitches);
+
+		next_active_chains_tristrip_dirty = true;
+
+		peel_action = PeelRepeat;
+		peel_step += 1;
+	}
+
+	return true;
+}
+
 void Interface::update_model_triangles() {
+	model_triangles_dirty = false;
+
 	std::vector< GLAttribBuffer< glm::vec3, glm::vec3, glm::u8vec4 >::Vertex > attribs;
 	attribs.reserve(3 * model.triangles.size());
 
@@ -1148,107 +1251,6 @@ void Interface::update_model_triangles() {
 	GL_ERRORS();
 }
 
-void Interface::set_constraints(std::vector< ak::Constraint > const &new_constraints) {
-	constraints = new_constraints;
-	constraints_dirty = true;
-	update_constraints();
-}
-
-void Interface::update_constraints() {
-	constraints_dirty = false;
-	save_constraints();
-
-	constrained_model.clear();
-	constrained_values.clear();
-	DEBUG_constraint_paths.clear();
-	DEBUG_constraint_loops.clear();
-
-	interpolated_values.clear();
-
-	ak::embed_constraints(parameters, model, constraints, &constrained_model, &constrained_values, &DEBUG_constraint_paths, &DEBUG_constraint_loops);
-
-	update_DEBUG_constraint_paths_tristrip();
-	update_DEBUG_constraint_loops_tristrip();
-
-	try {
-		ak::interpolate_values(constrained_model, constrained_values, &interpolated_values);
-	} catch (std::exception &e) {
-		std::cout << "ERROR during interpoation: " << e.what() << std::endl;
-		interpolated_values.clear();
-	}
-
-	update_constrained_model_triangles();
-
-	active_chains.clear();
-	active_flags.clear();
-	next_chains.clear();
-}
-
-void Interface::save_constraints() {
-	if (save_constraints_file == "") return;
-	ak::save_constraints(model, constraints, save_constraints_file);
-}
-
-void Interface::start_peeling() {
-	if (constraints_dirty) update_constraints();
-
-	active_chains.clear();
-	active_flags.clear();
-
-	next_chains.clear();
-
-	if (constrained_values.empty()) {
-		std::cerr << "WARNING: no constrained values to start peeling." << std::endl;
-	} else {
-		ak::find_first_active_chains(parameters, constrained_model, interpolated_values, &active_chains, &active_flags);
-	}
-
-	update_active_chains_tristrip();
-	peel_step = 0;
-}
-
-void Interface::step_peeling(bool build_next) {
-	if (!next_active_chains.empty()) {
-		active_chains = next_active_chains;
-		active_flags = next_active_flags;
-		update_active_chains_tristrip();
-	}
-
-	std::cout << "==== peel step " << peel_step << " ====" << std::endl;
-
-	next_chains.clear();
-	ak::peel_chains(parameters, constrained_model, active_chains, &next_chains); //, &DEBUG_clipped_model);
-
-	std::vector< std::vector< ak::EmbeddedVertex > > linked_next_chains;
-	std::vector< std::vector< ak::Flag > > linked_next_flags;
-	links.clear();
-
-	DEBUG_clipped_model.clear();
-	ak::link_chains(parameters, constrained_model, interpolated_values,
-		active_chains, active_flags, next_chains,
-		&linked_next_chains, &linked_next_flags, &links,
-		&DEBUG_clipped_model);
-	update_DEBUG_clipped_model_triangles();
-
-	next_chains = linked_next_chains;
-	next_flags = linked_next_flags;
-
-	update_next_chains_tristrip();
-	update_links_tristrip();
-
-	if (build_next) {
-		ak::build_next_active_chains(parameters, constrained_model,
-			active_chains, active_flags, linked_next_chains, linked_next_flags,
-			links,
-			&next_active_chains, &next_active_flags);
-		++peel_step;
-	} else {
-		next_active_chains.clear();
-		next_active_flags.clear();
-	}
-	
-	update_next_active_chains_tristrip();
-}
 
 static void make_sphere(
 	std::vector< GLAttribBuffer< glm::vec3, glm::vec3, glm::u8vec4 >::Vertex > *attribs,
@@ -1335,7 +1337,9 @@ static void make_tube(
 	attribs->emplace_back(attribs->back());
 }
 
-void Interface::update_DEBUG_constraint_paths_tristrip() {
+void Interface::update_constraints_tristrip() {
+	constraints_tristrip_dirty = false;
+
 	assert(DEBUG_constraint_paths.size() == constraints.size());
 
 	std::vector< GLAttribBuffer< glm::vec3, glm::vec3, glm::u8vec4 >::Vertex > attribs;
@@ -1359,21 +1363,6 @@ void Interface::update_DEBUG_constraint_paths_tristrip() {
 		}
 	}
 
-	DEBUG_constraint_paths_tristrip.set(attribs, GL_STATIC_DRAW);
-}
-
-void Interface::update_DEBUG_constraint_loops_tristrip() {
-	assert(DEBUG_constraint_loops.size() == constraints.size());
-
-	std::vector< GLAttribBuffer< glm::vec3, glm::vec3, glm::u8vec4 >::Vertex > attribs;
-
-	float min_time = -1.0f;
-	float max_time = 1.0f;
-	for (auto const &c : constraints) {
-		min_time = glm::min(min_time, c.value);
-		max_time = glm::max(max_time, c.value);
-	}
-
 	for (auto const &path : DEBUG_constraint_loops) {
 		glm::vec3 color = time_color((constraints[&path - &DEBUG_constraint_loops[0]].value - min_time) / (max_time - min_time));
 		glm::u8vec4 color8 = glm::u8vec4(255 * color.r, 255 * color.g, 255 * color.b, 255);
@@ -1386,29 +1375,30 @@ void Interface::update_DEBUG_constraint_loops_tristrip() {
 		}
 	}
 
-	DEBUG_constraint_loops_tristrip.set(attribs, GL_STATIC_DRAW);
+	constraints_tristrip.set(attribs, GL_STATIC_DRAW);
 }
 
+void Interface::update_times_model_triangles() {
+	times_model_triangles_dirty = false;
 
-void Interface::update_constrained_model_triangles() {
 	std::vector< GLAttribBuffer< glm::vec3, glm::vec3, glm::u8vec4, glm::vec2 >::Vertex > attribs;
 	attribs.reserve(3 * constrained_model.triangles.size());
 
 	float min =-1.0f;
 	float max = 1.0f;
 
-	for (auto v : interpolated_values) {
+	for (auto v : times) {
 		min = std::min(min, v);
 		max = std::max(max, v);
 	}
 
 	std::vector< glm::vec2 > texcoords;
-	if (interpolated_values.empty()) {
+	if (times.empty()) {
 		texcoords.assign(constrained_model.vertices.size(), glm::vec2(0.5f, 0.5f));
 	} else {
-		assert(interpolated_values.size() == constrained_model.vertices.size());
-		texcoords.reserve(interpolated_values.size());
-		for (auto v : interpolated_values) {
+		assert(times.size() == constrained_model.vertices.size());
+		texcoords.reserve(times.size());
+		for (auto v : times) {
 			texcoords.emplace_back(
 				(((v - min) / (max - min)) * (TimeTexSize-1) + 0.5f) / float(TimeTexSize),
 				0.5f);
@@ -1436,17 +1426,154 @@ void Interface::update_constrained_model_triangles() {
 		attribs.emplace_back(glm::mix(c, m, 0.1f), n, id, texcoords[t.z]);
 	}
 
-	constrained_model_triangles.set(attribs, GL_STATIC_DRAW);
+	times_model_triangles.set(attribs, GL_STATIC_DRAW);
 }
 
-void Interface::update_DEBUG_clipped_model_triangles() {
+
+std::vector< std::vector< glm::vec3 > > interpolate_stitch_locations(std::vector< std::vector< glm::vec3 > > const &chains, std::vector< std::vector< ak::Stitch > > const &stitches) {
+	assert(stitches.size() == chains.size());
+
+	std::vector< std::vector< glm::vec3 > > locations;
+	locations.reserve(locations.size());
+
+	for (auto const &chain : chains) {
+		locations.emplace_back();
+
+		uint32_t ci = &chain - &chains[0];
+		if (stitches[ci].empty()) continue;
+
+		std::vector< float > lengths;
+		lengths.reserve(chain.size());
+		lengths.emplace_back(0.0f);
+		for (uint32_t pi = 0; pi + 1 < chain.size(); ++pi) {
+			glm::vec3 a = chain[pi];
+			glm::vec3 b = chain[pi+1];
+			lengths.emplace_back(lengths.back() + glm::length(b-a));
+		}
+		assert(lengths.size() == chains.size());
+
+		locations.back().reserve(stitches[ci].size());
+		auto li = lengths.begin();
+		for (auto const &s : stitches[ci]) {
+			float l = s.t * lengths.back();
+			while (li != lengths.end() && *li <= l) ++li;
+			assert(li != lengths.end());
+			assert(li != lengths.begin());
+			float m = (l - *(li-1)) / (*li - *(li-1));
+			uint32_t i = li - lengths.begin();
+			locations.back().emplace_back( glm::mix(chain[i-1], chain[i], m) );
+		}
+	}
+
+	return locations;
+}
+
+
+void make_chains_tristrip(
+	std::vector< GLAttribBuffer< glm::vec3, glm::vec3, glm::u8vec4 >::Vertex > *attribs_,
+	std::vector< std::vector< glm::vec3 > > const &chains,
+	std::vector< std::vector< ak::Stitch > > const &stitches,
+	glm::u8vec4 color8,
+	float r) {
+
+	assert(attribs_);
+	auto &attribs = *attribs_;
+
+	for (auto const &chain : chains) {
+		//the chain itself:
+		for (uint32_t pi = 0; pi + 1 < chain.size(); ++pi) {
+			glm::vec3 a = chain[pi];
+			glm::vec3 b = chain[pi+1];
+			//TODO: some sort of direction indication?
+
+			make_sphere(&attribs, a, r, color8);
+			make_tube(&attribs, a, b, r, color8);
+		}
+		if (chain[0] != chain.back()) make_sphere(&attribs, chain.back(), r, color8);
+	}
+}
+
+void make_stitches_tristrip(
+	std::vector< GLAttribBuffer< glm::vec3, glm::vec3, glm::u8vec4 >::Vertex > *attribs_,
+	std::vector< std::vector< glm::vec3 > > const &chains,
+	std::vector< std::vector< ak::Stitch > > const &stitches,
+	float r) {
+	assert(attribs_);
+	auto &attribs = *attribs_;
+
+	std::vector< std::vector< glm::vec3 > > stitch_locations = interpolate_stitch_locations(chains, stitches);
+
+	for (uint32_t ci = 0; ci < chains.size(); ++ci) {
+		for (auto const &s : stitches[ci]) {
+			glm::vec3 at = stitch_locations[ci][&s - &stitches[ci][0]];
+
+			glm::u8vec4 col = glm::u8vec4(0xff, 0x00, 0xff, 0xff);
+			float sr = 1.5f * r;
+			if (s.flag == ak::Stitch::FlagDiscard) {
+				col = glm::u8vec4(0xff, 0x00, 0x00, 0xff);
+			} else if (s.flag == ak::Stitch::FlagLinkOne) {
+				col = glm::u8vec4(0x88, 0x88, 0x88, 0xff);
+			} else if (s.flag == ak::Stitch::FlagLinkAny) {
+				col = glm::u8vec4(0xdd, 0xdd, 0xdd, 0xff);
+			}
+			make_sphere(&attribs, at, sr, col);
+		}
+	}
+}
+
+std::vector< std::vector< glm::vec3 > > interpolate_locations( ak::Model const &model, std::vector< std::vector< ak::EmbeddedVertex > > const &chains) {
+	std::vector< std::vector< glm::vec3 > > locations;
+	locations.reserve(chains.size());
+	for (auto const &chain : chains) {
+		locations.emplace_back();
+		locations.back().reserve(chain.size());
+		for (auto const &ev : chain) {
+			locations.back().emplace_back(ev.interpolate(model.vertices));
+		}
+	}
+	return locations;
+}
+
+std::vector< std::vector< glm::vec3 > > copy_locations( ak::Model const &model, std::vector< std::vector< uint32_t > > const &chains) {
+	std::vector< std::vector< glm::vec3 > > locations;
+	locations.reserve(chains.size());
+	for (auto const &chain : chains) {
+		locations.emplace_back();
+		locations.back().reserve(chain.size());
+		for (auto v : chain) {
+			locations.back().emplace_back(model.vertices[v]);
+		}
+	}
+	return locations;
+}
+
+
+void Interface::update_active_chains_tristrip() {
+	active_chains_tristrip_dirty = false;
+
+	std::vector< GLAttribBuffer< glm::vec3, glm::vec3, glm::u8vec4 >::Vertex > attribs;
+
+	std::vector< std::vector< glm::vec3 > > active_locations = interpolate_locations(constrained_model, active_chains);
+	make_chains_tristrip(&attribs,
+		active_locations, active_stitches,
+		glm::u8vec4(0x00, 0xff, 0x88, 0xff),
+		0.01f);
+	make_stitches_tristrip(&attribs,
+		active_locations, active_stitches,
+		0.01f);
+	active_chains_tristrip.set(attribs, GL_STATIC_DRAW);
+}
+
+void Interface::update_slice_triangles() {
+	slice_triangles_dirty = false;
+
 	std::vector< GLAttribBuffer< glm::vec3, glm::vec3, glm::u8vec4 >::Vertex > attribs;
 	attribs.reserve(3 * constrained_model.triangles.size());
 
-	for (auto const &t : DEBUG_clipped_model.triangles) {
-		glm::vec3 const &a = DEBUG_clipped_model.vertices[t.x];
-		glm::vec3 const &b = DEBUG_clipped_model.vertices[t.y];
-		glm::vec3 const &c = DEBUG_clipped_model.vertices[t.z];
+	for (auto const &t : slice.triangles) {
+		glm::vec3 const &a = slice.vertices[t.x];
+		glm::vec3 const &b = slice.vertices[t.y];
+		glm::vec3 const &c = slice.vertices[t.z];
 
 		glm::vec3 n = glm::normalize(glm::cross(b-a, c-a));
 
@@ -1458,105 +1585,78 @@ void Interface::update_DEBUG_clipped_model_triangles() {
 		attribs.emplace_back(glm::mix(c, m, 0.1f), n, color);
 	}
 
-	DEBUG_clipped_model_triangles.set(attribs, GL_STATIC_DRAW);
+	slice_triangles.set(attribs, GL_STATIC_DRAW);
 }
 
-
-
-
-void update_chains_tristrip(ak::Model const &model,
-	std::vector< std::vector< ak::EmbeddedVertex > > const &chains,
-	std::vector< std::vector< ak::Flag > > const &flags,
-	glm::u8vec4 color8,
-	float r,
-	GLAttribBuffer< glm::vec3, glm::vec3, glm::u8vec4 > * tristrip_) {
-
-	assert(tristrip_);
-	auto &tristrip = *tristrip_;
+void Interface::update_slice_chains_tristrip() {
+	slice_chains_tristrip_dirty = false;
 
 	std::vector< GLAttribBuffer< glm::vec3, glm::vec3, glm::u8vec4 >::Vertex > attribs;
-
-	for (auto const &chain : chains) {
-		for (uint32_t pi = 0; pi + 1 < chain.size(); ++pi) {
-			glm::vec3 a = chain[pi].interpolate(model.vertices);
-			glm::vec3 b = chain[pi+1].interpolate(model.vertices);
-			//TODO: some sort of direction indication?
-			make_tube(&attribs, a, b, r, color8);
-		}
-		uint32_t ci = &chain - &chains[0];
-		assert(ci < flags.size());
-		std::vector< ak::Flag > const &flag = flags[ci];
-		assert(flag.size() == chain.size());
-		for (uint32_t pi = 0; pi < chain.size(); ++pi) {
-			if (pi == 0 && (chain[0] == chain.back())) {
-				assert(flag[0] == flag.back());
-				continue;
-			}
-			glm::vec3 at = chain[pi].interpolate(model.vertices);
-			glm::u8vec4 col = glm::u8vec4(0xff, 0x00, 0xff, 0xff);
-			float sr = 1.5f * r;
-			if (flag[pi] == ak::FlagDiscard) {
-				col = glm::u8vec4(0xff, 0x00, 0x00, 0xff);
-			} else if (flag[pi] == ak::FlagLinkNone) {
-				sr = r;
-				col = glm::u8vec4(0x22, 0x22, 0x22, 0xff);
-			} else if (flag[pi] == ak::FlagLinkOne) {
-				col = glm::u8vec4(0x88, 0x88, 0x88, 0xff);
-			} else if (flag[pi] == ak::FlagLinkAny) {
-				col = glm::u8vec4(0xdd, 0xdd, 0xdd, 0xff);
-			}
-			make_sphere(&attribs, at, sr, col);
-		}
-
-	}
-
-	tristrip.set(attribs, GL_STATIC_DRAW);
+	std::vector< std::vector< glm::vec3 > > active_locations = copy_locations(slice, slice_active_chains);
+	make_chains_tristrip(&attribs,
+		active_locations, active_stitches,
+		glm::u8vec4(0x22, 0x22, 0xff, 0xff),
+		0.01f);
+	make_stitches_tristrip(&attribs,
+		active_locations, active_stitches,
+		0.01f);
+	make_chains_tristrip(&attribs,
+		copy_locations(slice, slice_next_chains), std::vector< std::vector< ak::Stitch > >(),
+		glm::u8vec4(0xff, 0x22, 0x22, 0xff),
+		0.01f);
+	slice_chains_tristrip.set(attribs, GL_STATIC_DRAW);
 }
 
-
-void Interface::update_active_chains_tristrip() {
-	update_chains_tristrip(constrained_model, active_chains, active_flags,
-		glm::u8vec4(0xff, 0x00, 0x88, 0xff),
-		0.01f,
-		&active_chains_tristrip);
-}
-
-void Interface::update_next_chains_tristrip() {
-	update_chains_tristrip(constrained_model, next_chains, next_flags,
-		glm::u8vec4(0x00, 0xff, 0x88, 0xff),
-		0.01f,
-		&next_chains_tristrip);
-}
-
-
-void Interface::update_next_active_chains_tristrip() {
-	update_chains_tristrip(constrained_model, next_active_chains, next_active_flags,
-		glm::u8vec4(0x00, 0x88, 0x88, 0xff),
-		0.015f,
-		&next_active_chains_tristrip);
-}
 
 void Interface::update_links_tristrip() {
+	links_tristrip_dirty = false;
+
 	std::vector< GLAttribBuffer< glm::vec3, glm::vec3, glm::u8vec4 >::Vertex > attribs;
 
-	for (auto const &link : links) {
-		assert(link.from_chain < active_chains.size());
-		assert(link.from_vertex < active_chains[link.from_chain].size());
-		assert(link.to_chain < next_chains.size());
-		assert(link.to_vertex < next_chains[link.to_chain].size());
+	std::vector< std::vector< glm::vec3 > > from = interpolate_stitch_locations(copy_locations(slice, slice_active_chains), active_stitches);
+	std::vector< std::vector< glm::vec3 > > to = interpolate_stitch_locations(copy_locations(slice, slice_next_chains), next_stitches);
 
-		glm::vec3 a = active_chains[link.from_chain][link.from_vertex].interpolate(constrained_model.vertices);
-		glm::vec3 b = next_chains[link.to_chain][link.to_vertex].interpolate(constrained_model.vertices);
+	for (auto const &link : links) {
+		assert(link.from_chain < from.size());
+		assert(link.from_stitch < from[link.from_chain].size());
+		assert(link.to_chain < to.size());
+		assert(link.to_stitch < to[link.to_chain].size());
+
+		glm::vec3 const &a = from[link.from_chain][link.from_stitch];
+		glm::vec3 const &b = to[link.to_chain][link.to_stitch];
 
 		make_tube(&attribs, a, b, 0.02f, glm::u8vec4(0x00, 0xff, 0x00, 0xff));
 	}
 
+	make_stitches_tristrip(&attribs,
+		copy_locations(slice, slice_next_chains), next_stitches,
+		0.01f);
+
 	links_tristrip.set(attribs, GL_STATIC_DRAW);
 }
+
+void Interface::update_next_active_chains_tristrip() {
+	next_active_chains_tristrip_dirty = false;
+
+	std::vector< GLAttribBuffer< glm::vec3, glm::vec3, glm::u8vec4 >::Vertex > attribs;
+
+	std::vector< std::vector< glm::vec3 > > next_active_locations = interpolate_locations(constrained_model, next_active_chains);
+	make_chains_tristrip(&attribs,
+		next_active_locations, next_active_stitches,
+		glm::u8vec4(0x00, 0xff, 0x88, 0xff),
+		0.01f);
+	make_stitches_tristrip(&attribs,
+		next_active_locations, next_active_stitches,
+		0.01f);
+	next_active_chains_tristrip.set(attribs, GL_STATIC_DRAW);
+}
+
+
 
 
 void Interface::DEBUG_test_linking() {
 	
+#if 0
 	constrained_model.clear();
 	constrained_values.clear();
 	DEBUG_constraint_paths.clear();
@@ -1606,6 +1706,7 @@ void Interface::DEBUG_test_linking() {
 	next_flags =  linked_next_flags;
 
 	update_links_tristrip();
+#endif
 
 }
 

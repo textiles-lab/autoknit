@@ -189,13 +189,6 @@ void extract_level_chains(
 //an active chain is a list of embedded vertices on the mesh. If it is a loop, the first and last vertex are the same.
 // active chains are accompanied by flags for each vertex, indicating whether that vertex has been selected to be a stitch.
 
-enum Flag : int8_t {
-	FlagDiscard = -1,
-	FlagLinkNone = 0, //for non-stitches or already-linked stitches
-	FlagLinkOne  = 1, //for short-row ends -- must link to and from one stitch only
-	FlagLinkAny  = 2,
-};
-
 struct Stitch {
 	float t; //position along chain [0,1)
 	enum Flag : char {
