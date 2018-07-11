@@ -412,7 +412,12 @@ void ak::link_chains(
 			std::cout << "Ignoring match with empty active chain." << std::endl;
 			continue;
 		} else if (match.next.empty()) {
-			std::cout << "Ignoring match with empty next chain." << std::endl;
+			if (active_matches[anm.first.first] == 1) {
+				std::cout << "WARNING: active chain matches nothing at all; will not be linked and will thus be discarded." << std::endl;
+			} else {
+				std::cout << "Ignoring match with empty next chain." << std::endl;
+			}
+
 			continue;
 		}
 		assert(!match.active.empty());

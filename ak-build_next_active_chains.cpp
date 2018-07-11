@@ -78,6 +78,7 @@ void ak::build_next_active_chains(
 
 	assert(next_stitches.size() == next_chains.size());
 
+
 	for (auto const &l : links_in) {
 		assert(l.from_chain < active_chains.size());
 		assert(l.from_stitch < active_stitches[l.from_chain].size());
@@ -92,6 +93,12 @@ void ak::build_next_active_chains(
 	assert(next_active_stitches_);
 	auto &next_active_stitches = *next_active_stitches_;
 	next_active_stitches.clear();
+
+	//any active chain with no links out is considered inactive and discarded:
+	std::vector< bool > discard_active(active_chains.size(), true);
+	for (auto const &l : links_in) {
+		discard_active[l.from_chain] = false;
+	}
 
 	//filter to links that target non-discarded stitches only:
 	std::vector< ak::Link > links;
@@ -352,6 +359,11 @@ void ak::build_next_active_chains(
 
 	//now edges from active chains:
 	for (uint32_t ac = 0; ac < active_chains.size(); ++ac) {
+		if (discard_active[ac]) {
+			std::cout << "Will discard active chain of " << active_stitches[ac].size() << " stitches because it had no outgoing links." << std::endl;
+			continue;
+		}
+
 		auto const &chain = active_chains[ac];
 		bool is_loop = (chain[0] == chain.back());
 		auto const &stitches = active_stitches[ac];
