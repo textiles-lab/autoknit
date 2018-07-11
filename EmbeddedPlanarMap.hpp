@@ -393,6 +393,7 @@ struct EmbeddedPlanarMap {
 		}
 
 		uint32_t did_reflex = 0;
+		uint32_t did_simple = 0;
 
 		std::vector< glm::uvec3 > DEBUG_split_tris;
 
@@ -618,6 +619,7 @@ struct EmbeddedPlanarMap {
 						assert(found);
 					}
 				} else {
+					++did_simple;
 					//simple fan triangulation:
 					for (uint32_t i = 1; i + 1 < loop.size(); ++i) {
 						split_tris.emplace_back(source_verts[loop[0]], source_verts[loop[i]], source_verts[loop[i+1]]);
@@ -629,7 +631,7 @@ struct EmbeddedPlanarMap {
 			}
 		}
 
-		if (did_reflex) std::cout << "  Note: used reflex-vertex special-case code in " << did_reflex << " cases." << std::endl;
+		if (did_reflex) std::cout << "  Note: used reflex-vertex special-case code in " << did_reflex << " of " << (did_reflex + did_simple) << " cases." << std::endl;
 
 	}
 };

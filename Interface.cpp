@@ -1162,7 +1162,6 @@ bool Interface::step_peeling() {
 	if (times_dirty) update_times();
 	if (times.empty()) return false; //can't step if no time info
 
-	std::cout << "==== peel step " << peel_step << " ====" << std::endl;
 	if (peel_action == PeelBegin || peel_action == PeelRepeat) {
 		auto old_peel_step = peel_step;
 		auto old_peel_action = peel_action;
@@ -1173,13 +1172,13 @@ bool Interface::step_peeling() {
 		peel_action = old_peel_action;
 
 		if (peel_action == PeelBegin) {
-			std::cout << " -- begin --" << std::endl;
+			std::cout << " -- peel begin [step " << peel_step << "]--" << std::endl;
 			//read lower boundary:
 			ak::find_first_active_chains(parameters, constrained_model, times, &active_chains, &active_stitches);
 
 			assert(peel_step == 0);
 		} else { assert(peel_action == PeelRepeat);
-			std::cout << " -- repeat --" << std::endl;
+			std::cout << " -- repeat [step " << peel_step << "]--" << std::endl;
 			//copy active chains from next_active arrays:
 			active_chains = old_next_active_chains;
 			active_stitches = old_next_active_stitches;
@@ -1187,9 +1186,10 @@ bool Interface::step_peeling() {
 		show = ShowTimesModel | ShowActiveChains;
 		if (active_chains.empty()) return false;
 		peel_action = PeelSlice;
+		peel_step += 1;
 
 	} else if (peel_action == PeelSlice) {
-		std::cout << " -- slice --" << std::endl;
+		std::cout << " -- slice [step " << peel_step << "]--" << std::endl;
 		ak::peel_slice(parameters, constrained_model, active_chains, &slice, &slice_on_model, &slice_active_chains, &slice_next_chains);
 		slice_times.clear();
 		slice_times.reserve(slice_on_model.size());
@@ -1202,16 +1202,18 @@ bool Interface::step_peeling() {
 		show = ShowSlice | ShowSliceChains;
 
 		peel_action = PeelLink;
+		peel_step += 1;
 	} else if (peel_action == PeelLink) {
-		std::cout << " -- link --" << std::endl;
+		std::cout << " -- link [step " << peel_step << "]--" << std::endl;
 		ak::link_chains(parameters, slice, slice_times, slice_active_chains, active_stitches, slice_next_chains, &next_stitches, &links);
 
 		links_tristrip_dirty = true;
 		show = ShowSlice | ShowSliceChains | ShowLinks;
 
 		peel_action = PeelBuild;
+		peel_step += 1;
 	} else if (peel_action == PeelBuild) {
-		std::cout << " -- build --" << std::endl;
+		std::cout << " -- build [step " << peel_step << "]--" << std::endl;
 		ak::build_next_active_chains(parameters, slice, slice_on_model, slice_active_chains, active_stitches, slice_next_chains, next_stitches, links, &next_active_chains, &next_active_stitches);
 
 		next_active_chains_tristrip_dirty = true;

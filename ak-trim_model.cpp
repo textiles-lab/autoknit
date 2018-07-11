@@ -6,6 +6,10 @@
 
 #include <iostream>
 
+inline std::ostream &operator<<(std::ostream &out, ak::EmbeddedVertex const &ev) {
+	out << "(" << ev.weights.x << ", " << ev.weights.y << ", " << ev.weights.z << ")@[" << int32_t(ev.simplex.x) << ", " << int32_t(ev.simplex.y) << ", " << int32_t(ev.simplex.z) << "]";
+	return out;
+}
 
 //EPM value that can track edge splits:
 struct Edge {
@@ -18,7 +22,7 @@ struct Edge {
 		SplitFirst, //a,b are same edge index
 		SplitSecond, //a,b are edge edge index
 	} type;
-	Edge(uint32_t a_, uint32_t b_, Type type_) : a(a_), b(b_), type(type_) { }
+	Edge(Type type_, uint32_t a_, uint32_t b_) : a(a_), b(b_), type(type_) { }
 };
 std::vector< Edge > edges;
 
@@ -110,6 +114,7 @@ void ak::trim_model(
 
 	edges.clear(); //global list used for edge tracking in epm; awkward but should work.
 	EmbeddedPlanarMap< Value, Value::Reverse, Value::Combine, Value::Split > epm;
+	std::unordered_set< glm::uvec2 > empty_edges; //when it's the same vertex after rounding
 	uint32_t total_chain_edges = 0;
 	uint32_t fresh_id = 0;
 	for (auto const &chain : left_of) {
@@ -118,6 +123,10 @@ void ak::trim_model(
 		for (uint32_t i = 1; i < chain.size(); ++i) {
 			uint32_t cur = epm.add_vertex(chain[i]);
 			uint32_t cur_id = fresh_id++;
+			if (prev == cur) {
+				std::cout << "NOTE: vertex " << chain[i-1] << " and " << chain[i] << " (in a left_of chain) round to the same value." << std::endl; //DEBUG
+				empty_edges.insert(glm::uvec2(prev_id, cur_id));
+			}
 			Value value;
 			value.sum = 1;
 			edges.emplace_back(Edge::Initial, prev_id, cur_id);
@@ -128,14 +137,17 @@ void ak::trim_model(
 			++total_chain_edges;
 		}
 	}
-	std::vector< std::vector< uint32_t > > right_of_vertices;
-	right_of_vertices.reserve(left_of.size());
+
 	for (auto const &chain : right_of) {
 		uint32_t prev = epm.add_vertex(chain[0]);
 		uint32_t prev_id = fresh_id++;
 		for (uint32_t i = 1; i < chain.size(); ++i) {
 			uint32_t cur = epm.add_vertex(chain[i]);
 			uint32_t cur_id = fresh_id++;
+			if (prev == cur) {
+				std::cout << "NOTE: vertex " << chain[i-1] << " and " << chain[i] << " (in a right_of chain) round to the same value." << std::endl; //DEBUG
+				empty_edges.insert(glm::uvec2(prev_id, cur_id));
+			}
 			Value value;
 			value.sum = (1 << 8);
 			edges.emplace_back(Edge::Initial, cur_id, prev_id);
@@ -267,128 +279,199 @@ void ak::trim_model(
 	}
 
 	//read out left_of_vertices and right_of_vertices from edge information:
+	std::vector< std::vector< uint32_t > > left_of_epm, right_of_epm;
 	{
-		std::unordered_map< glm::uvec2, std::vector< uint32_t > > edge_chains;
-		{ //for each original id->id edge, extract the chain of vertices that it expands to:
-			struct Source {
-				uint32_t a, b; //a / b vertices
-				uint32_t num, den; //position along (subdivided?) edge
-			};
-			std::vector< std::vector< Source > > sources;
-			sources.reserve(edges.size());
-			for (uint32_t e = 0; e < edges.size(); ++e) {
-				assert(e == sources.size());
-				sources.emplace_back();
-				if (edges[e].type == Edge::Initial) {
-					sources.back().emplace_back(edges[e].a, edges[e].b, 1, 2);
-				} else if (e.type == Edge::Reverse) {
-					assert(edges[e].a == edges[e].b);
-					assert(edges[e].a < e);
-					for (auto const &s : sources[edges[e].a]) {
-						sources.back().emplace_back(s.b, s.a, s.den - s.num, s.den);
+		//for each original id->id edge, extract the chain of vertices that it expands to:
+		struct Source {
+			Source(uint32_t a_, uint32_t b_, uint32_t num_, uint32_t den_) : a(a_), b(b_), num(num_), den(den_) { }
+			uint32_t a, b; //a / b vertices
+			uint32_t num, den; //position along (subdivided?) edge
+		};
+		std::vector< std::vector< Source > > sources;
+		sources.reserve(edges.size());
+		for (uint32_t e = 0; e < edges.size(); ++e) {
+			assert(e == sources.size());
+			sources.emplace_back();
+			if (edges[e].type == Edge::Initial) {
+				assert(edges[e].a != edges[e].b);
+				sources.back().emplace_back(edges[e].a, edges[e].b, 1, 2);
+			} else if (edges[e].type == Edge::Reverse) {
+				assert(edges[e].a == edges[e].b);
+				assert(edges[e].a < e);
+				for (auto const &s : sources[edges[e].a]) {
+					sources.back().emplace_back(s.b, s.a, s.den - s.num, s.den);
+				}
+			} else if (edges[e].type == Edge::Combine) {
+				assert(edges[e].a < e);
+				assert(edges[e].b < e);
+				for (auto const &s : sources[edges[e].a]) {
+					sources.back().emplace_back(s.a, s.b, s.den - s.num, s.den);
+				}
+				for (auto const &s : sources[edges[e].b]) {
+					sources.back().emplace_back(s.a, s.b, s.den - s.num, s.den);
+				}
+			} else if (edges[e].type == Edge::SplitFirst) {
+				assert(edges[e].a == edges[e].b);
+				assert(edges[e].a < e);
+				for (auto const &s : sources[edges[e].a]) {
+					sources.back().emplace_back(s.a, s.b, s.num * 2 - 1, s.den * 2);
+				}
+			} else if (edges[e].type == Edge::SplitSecond) {
+				assert(edges[e].a == edges[e].b);
+				assert(edges[e].a < e);
+				for (auto const &s : sources[edges[e].a]) {
+					assert(uint32_t(s.den * 2) > s.den); //make sure we're not overflowing
+					sources.back().emplace_back(s.a, s.b, s.num * 2 + 1, s.den * 2);
+				}
+			} else {
+				assert(false);
+			}
+		}
+
+		struct SubEdge {
+			SubEdge(uint32_t a_, uint32_t b_, uint32_t num_, uint32_t den_) : a(a_), b(b_), num(num_), den(den_) { }
+			uint32_t a, b; //a / b vertices (epm indices)
+			uint32_t num, den; //position of center
+		};
+
+		//now iterate actual epm edges and check where they end up mapping.
+		std::unordered_map< glm::uvec2, std::vector< SubEdge > > edge_subedges; //<-- indexed by 'vertex_id' values, contains epm.vertices indices
+		for (auto const &se : epm.simplex_edges) {
+			for (auto const &ee : se.second) {
+				assert(ee.value.edge < sources.size());
+				assert(!sources[ee.value.edge].empty());
+				//copy subedge(s) corresponding to this edge to their source edges:
+				for (auto const &s : sources[ee.value.edge]) {
+					assert(s.a != s.b);
+					if (s.a < s.b) {
+						edge_subedges[glm::uvec2(s.a, s.b)].emplace_back(ee.first, ee.second, s.num, s.den);
+					} else {
+						edge_subedges[glm::uvec2(s.b, s.a)].emplace_back(ee.second, ee.first, s.den - s.num, s.den);
 					}
-				} else if (e.type == Edge::Combine) {
-					assert(edges[e].a < e);
-					assert(edges[e].b < e);
-					for (auto const &s : sources[edges[e].a]) {
-						sources.back().emplace_back(s.a, s.b, s.den - s.num, s.den);
-					}
-					for (auto const &s : sources[edges[e].b]) {
-						sources.back().emplace_back(s.a, s.b, s.den - s.num, s.den);
-					}
-				} else if (e.type == Edge::SplitFirst) {
-					assert(edges[e].a == edges[e].b);
-					assert(edges[e].a < e);
-					for (auto const &s : sources[edges[e].a]) {
-						sources.back().emplace_back(s.a, s.b, s.num * 2 - 1, s.den * 2);
-					}
-				} else if (e.type == Edge::SplitSecond) {
-					assert(edges[e].a == edges[e].b);
-					assert(edges[e].a < e);
-					for (auto const &s : sources[edges[e].a]) {
-						assert(uint32_t(s.den * 2) > s.den); //make sure we're not overflowing
-						sources.back().emplace_back(s.a, s.b, s.num * 2 + 1, s.den * 2);
-					}
-				} else {
-					assert(false);
 				}
 			}
-			//<-- I WAS HERE
-			//now iterate actual epm edges and check where they end up mapping.
 		}
-
-		Reverse, //a,b are the same edge index
-		Combine, //a,b are edge indices
-		SplitFirst, //a,b are same edge index
-		SplitSecond, //a,b are edge edge
+		//make sure subedge chains are logically sorted:
+		for (auto &ese : edge_subedges) {
+			std::vector< SubEdge > &subedges = ese.second;
+			assert(!subedges.empty());
+			std::stable_sort(subedges.begin(), subedges.end(), [](SubEdge const &a, SubEdge const &b){
+				//    a.num / a.den < b.num / b.den
+				// => a.num * b.den < b.num * a.den
+				return uint64_t(a.num) * uint64_t(b.den) < uint64_t(b.num) * uint64_t(a.den);
+			});
+			for (uint32_t i = 0; i + 1 < subedges.size(); ++i) {
+				assert(subedges[i].b == subedges[i+1].a);
 			}
-			std::unordered_map< glm::uvec2, 
 		}
 
+		//okay, now read back vertex chains by querying by ID values:
+
+		uint32_t fresh_id = 0;
+		left_of_epm.reserve(left_of.size());
 		for (auto const &chain : left_of) {
-		uint32_t prev = epm.add_vertex(chain[0]);
-		uint32_t prev_id = fresh_id++;
-		for (uint32_t i = 1; i < chain.size(); ++i) {
-			uint32_t cur = epm.add_vertex(chain[i]);
-			uint32_t cur_id = fresh_id++;
-			Value value;
-			value.sum = 1;
-			edges.emplace_back(Edge::Initial, prev_id, cur_id);
-			value.edge = edges.size() - 1;
-			epm.add_edge(prev, cur, value);
-			prev = cur;
-			prev_id = cur_id;
-			++total_chain_edges;
+			left_of_epm.emplace_back();
+			std::vector< uint32_t > &epm_chain = left_of_epm.back();
+			uint32_t prev_id = fresh_id++;
+			for (uint32_t i = 1; i < chain.size(); ++i) {
+				uint32_t cur_id = fresh_id++;
+				auto f = edge_subedges.find(glm::uvec2(prev_id, cur_id));
+				if (empty_edges.count(glm::uvec2(prev_id, cur_id))) {
+					assert(f == edge_subedges.end());
+				} else {
+					assert(f != edge_subedges.end());
+					for (auto const &se : f->second) {
+						if (epm_chain.empty()) epm_chain.emplace_back(se.a);
+						else assert(epm_chain.back() == se.a);
+						epm_chain.emplace_back(se.b);
+					}
+				}
+				prev_id = cur_id;
+			}
+			assert((chain[0] == chain.back()) == (epm_chain[0] == epm_chain.back()));
+		}
+		right_of_epm.reserve(right_of.size());
+		for (auto const &chain : right_of) {
+			right_of_epm.emplace_back();
+			std::vector< uint32_t > &epm_chain = right_of_epm.back();
+			uint32_t prev_id = fresh_id++;
+			for (uint32_t i = 1; i < chain.size(); ++i) {
+				uint32_t cur_id = fresh_id++;
+				auto f = edge_subedges.find(glm::uvec2(prev_id, cur_id));
+				if (empty_edges.count(glm::uvec2(prev_id, cur_id))) {
+					assert(f == edge_subedges.end());
+				} else {
+					assert(f != edge_subedges.end());
+					for (auto const &se : f->second) {
+						if (epm_chain.empty()) epm_chain.emplace_back(se.a);
+						else assert(epm_chain.back() == se.a);
+						epm_chain.emplace_back(se.b);
+					}
+				}
+				prev_id = cur_id;
+			}
+			assert((chain[0] == chain.back()) == (epm_chain[0] == epm_chain.back()));
 		}
 	}
-	std::vector< std::vector< uint32_t > > right_of_vertices;
-	right_of_vertices.reserve(left_of.size());
-	for (auto const &chain : right_of) {
-		uint32_t prev = epm.add_vertex(chain[0]);
-		uint32_t prev_id = fresh_id++;
-		for (uint32_t i = 1; i < chain.size(); ++i) {
-			uint32_t cur = epm.add_vertex(chain[i]);
-			uint32_t cur_id = fresh_id++;
-			Value value;
-			value.sum = (1 << 8);
-			edges.emplace_back(Edge::Initial, cur_id, prev_id);
-			value.edge = edges.size() - 1;
 
-			epm.add_edge(cur, prev, value);
-			prev = cur;
-			prev_id = cur_id;
-			++total_chain_edges;
-		}
-	}
-
-	}
-#if 0
 	//transform vertex indices for left_of and right_of vertices -> clipped model:
-	for (auto &vertices : left_of_vertices) {
-		for (auto &v : vertices) {
+	uint32_t lost_verts = 0;
+	auto transform_chain = [&](std::vector< uint32_t > const &epm_chain) {
+		assert(!epm_chain.empty());
+		std::vector< uint32_t > split_chain;
+		split_chain.reserve(epm_chain.size());
+		bool had_gap = false;
+		for (auto v : epm_chain) {
 			assert(v < epm_to_split.size());
 			v = epm_to_split[v];
-			if (v != -1U) {
-				assert(v < split_vert_to_clipped_vertex.size());
-				v = split_vert_to_clipped_vertex[v];
+			assert(v != -1U);
+			assert(v < split_vert_to_clipped_vertex.size());
+			v = split_vert_to_clipped_vertex[v];
+			if (v == -1U) {
+				//ignore, will compute loss later, I guess
+				++lost_verts;
+				had_gap = true;
+			} else {
+				assert(v != -1U);
+				if (split_chain.empty()) {
+					split_chain.emplace_back(v);
+					had_gap = false;
+				} else if (had_gap) {
+					assert(v == split_chain.back());
+					had_gap = false;
+				} else {
+					assert(v != split_chain.back());
+					split_chain.emplace_back(v);
+				}
 			}
 		}
-	}
-	for (auto &vertices : right_of_vertices) {
-		for (auto &v : vertices) {
-			assert(v < epm_to_split.size());
-			v = epm_to_split[v];
-			if (v != -1U) {
-				assert(v < split_vert_to_clipped_vertex.size());
-				v = split_vert_to_clipped_vertex[v];
-			}
+		assert(!split_chain.empty());
+		assert((epm_chain[0] == epm_chain.back()) == (split_chain[0] == split_chain.back()));
+		return split_chain;
+	};
+	if (left_of_vertices_) {
+		lost_verts = 0;
+		left_of_vertices_->clear();
+		left_of_vertices_->reserve(left_of_epm.size());
+		for (auto const &chain : left_of_epm) {
+			left_of_vertices_->emplace_back(transform_chain(chain));
+		}
+		if (lost_verts) {
+			std::cout << "WARNING: lost " << lost_verts << " vertices in left_of chains during trimming." << std::endl;
 		}
 	}
-#endif
+	if (right_of_vertices_) {
+		lost_verts = 0;
+		right_of_vertices_->clear();
+		right_of_vertices_->reserve(right_of_epm.size());
+		for (auto const &chain : right_of_epm) {
+			right_of_vertices_->emplace_back(transform_chain(chain));
+		}
+		if (lost_verts) {
+			std::cout << "WARNING: lost " << lost_verts << " vertices in right_of chains during trimming." << std::endl;
+		}
 
-	if (left_of_vertices_) *left_of_vertices_ = std::move(left_of_vertices);
-	if (right_of_vertices_) *right_of_vertices_ = std::move(right_of_vertices);
-
+	}
 
 	std::cout << "Trimmed model from " << model.triangles.size() << " triangles on " << model.vertices.size() << " vertices to " << clipped.triangles.size() << " triangles on " << clipped.vertices.size() << " vertices." << std::endl;
 

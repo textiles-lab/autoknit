@@ -343,7 +343,7 @@ void ak::build_next_active_chains(
 					std::make_pair(prev_ocs, cur_ocs),
 					next_ocs
 				));
-				std::cout << "Inserted [" << ret.first->first.first << ", " << ret.first->first.second << "] -> " << ret.first->second << std::endl; //DEBUG
+				//std::cout << "Inserted [" << ret.first->first.first << ", " << ret.first->first.second << "] -> " << ret.first->second << std::endl; //DEBUG
 				assert(ret.second);
 			}
 		}
@@ -385,7 +385,7 @@ void ak::build_next_active_chains(
 					std::make_pair(prev_ocs, cur_ocs),
 					next_ocs
 				));
-				std::cout << "Inserted [" << ret.first->first.first << ", " << ret.first->first.second << "] -> " << ret.first->second << std::endl; //DEBUG
+				//std::cout << "Inserted [" << ret.first->first.first << ", " << ret.first->first.second << "] -> " << ret.first->second << std::endl; //DEBUG
 				assert(ret.second);
 			} else {
 				//have a link. check for discarded segments:
@@ -403,7 +403,7 @@ void ak::build_next_active_chains(
 							std::make_pair(prev_ocs, cur_ocs),
 								OnChainStitch(OnChainStitch::OnNext, n.chain, n.stitch)
 							));
-						std::cout << "Inserted [" << ret.first->first.first << ", " << ret.first->first.second << "] -> " << ret.first->second << std::endl; //DEBUG
+						//std::cout << "Inserted [" << ret.first->first.first << ", " << ret.first->first.second << "] -> " << ret.first->second << std::endl; //DEBUG
 						assert(ret.second);
 					} else {
 						assert(fa->second.size() == 2 && fa->second.back() == ChainStitch(ac, as));
@@ -427,7 +427,7 @@ void ak::build_next_active_chains(
 							std::make_pair(OnChainStitch(OnChainStitch::OnNext, n.chain, n.stitch), cur_ocs),
 								next_ocs
 							));
-						std::cout << "Inserted [" << ret.first->first.first << ", " << ret.first->first.second << "] -> " << ret.first->second << std::endl; //DEBUG
+						//std::cout << "Inserted [" << ret.first->first.first << ", " << ret.first->first.second << "] -> " << ret.first->second << std::endl; //DEBUG
 						assert(ret.second);
 					} else {
 						assert(fa->second.size() == 2 && fa->second[0] == ChainStitch(ac, as));
@@ -478,7 +478,6 @@ void ak::build_next_active_chains(
 		std::cout << "\n";
 	}
 	std::cout.flush();
-#endif
 
 	//DEBUG
 
@@ -505,6 +504,7 @@ void ak::build_next_active_chains(
 	}
 	std::cout.flush();
 
+#endif
 
 	//Walk through created edges array, creating chains therefrom:
 
@@ -587,17 +587,17 @@ void ak::build_next_active_chains(
 			std::vector< ak::Stitch > const &src_stitches = (ocs.on == OnChainStitch::OnActive ? active_stitches : next_stitches)[ocs.chain];
 			assert(!src_chain.empty());
 			assert(src_lengths.size() == src_chain.size());
-			std::cout << (path_evs.size()-1) << " " << ocs << " ";
+			//std::cout << (path_evs.size()-1) << " " << ocs << " "; //DEBUG
 			if (ocs.type == OnChainStitch::TypeBegin) {
 				assert(src_chain[0] != src_chain.back());
 				path_evs.emplace_back(ak::EmbeddedVertex::on_vertex(src_chain[0]));
 				path_lefts.emplace_back(0);
-				std::cout << "Begin: " << src_chain[0] << std::endl; //DEBUG
+				//std::cout << "Begin: " << src_chain[0] << std::endl; //DEBUG
 			} else if (ocs.type == OnChainStitch::TypeEnd) {
 				assert(src_chain[0] != src_chain.back());
 				path_evs.emplace_back(ak::EmbeddedVertex::on_vertex(src_chain.back()));
 				path_lefts.emplace_back(src_chain.size()-2);
-				std::cout << "End: " << src_chain.back() << std::endl; //DEBUG
+				//std::cout << "End: " << src_chain.back() << std::endl; //DEBUG
 			} else { assert(ocs.type == OnChainStitch::TypeStitch);
 				assert(ocs.stitch < src_stitches.size());
 				float l = src_lengths.back() * src_stitches[ocs.stitch].t;
@@ -609,7 +609,7 @@ void ak::build_next_active_chains(
 				assert(i > 0);
 				path_evs.emplace_back(ak::EmbeddedVertex::on_edge(src_chain[i-1], src_chain[i], m));
 				path_lefts.emplace_back(i-1);
-				std::cout << "Stitch: " << src_chain[i-1] << "-" << src_chain[i] << " at " << m << std::endl; //DEBUG
+				//std::cout << "Stitch: " << src_chain[i-1] << "-" << src_chain[i] << " at " << m << std::endl; //DEBUG
 			}
 		}
 
@@ -640,9 +640,9 @@ void ak::build_next_active_chains(
 			std::vector< uint32_t > const &b_chain = (b.on == OnChainStitch::OnActive ? active_chains : next_chains).at(b.chain);
 			assert(b_left + 1 < b_chain.size());
 
-			check_ocs(a); //DEBUG
-			check_ocs(b); //DEBUG
-			std::cout << "From " << a << " to " << b << std::endl; //DEBUG
+			//check_ocs(a); //DEBUG
+			//check_ocs(b); //DEBUG
+			//std::cout << "From " << a << " to " << b << std::endl; //DEBUG
 
 			if (pi == 0) append_ev(a_ev);
 			else assert(!chain.empty() && chain.back() == a_ev);
