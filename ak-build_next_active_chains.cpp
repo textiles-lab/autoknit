@@ -615,6 +615,7 @@ void ak::build_next_active_chains(
 
 		std::vector< ak::EmbeddedVertex > chain;
 		std::vector< ak::Stitch > stitches;
+		std::vector< uint32_t > remove_stitches; //indices of stitches to remove in a moment.
 		float length = 0.0f;
 
 		auto append_ev = [&chain,&slice,&length](ak::EmbeddedVertex const &ev) {
@@ -655,6 +656,10 @@ void ak::build_next_active_chains(
 				ak::Stitch::Flag a_flag = a_stitches[a.stitch].flag;
 				if (pi == 0) stitches.emplace_back(length, a_flag);
 				else assert(!stitches.empty() && stitches.back().t == length && stitches.back().flag == a_flag);
+
+				if (a.on != b.on && a.on == OnChainStitch::OnActive) {
+					remove_stitches.emplace_back(stitches.size()-1);
+				}
 			}
 
 			if (a.on == b.on) {
@@ -695,9 +700,13 @@ void ak::build_next_active_chains(
 				assert(b.stitch < b_stitches.size());
 				ak::Stitch::Flag b_flag = b_stitches[b.stitch].flag;
 				stitches.emplace_back(length, b_flag);
+
+				if (a.on != b.on && b.on == OnChainStitch::OnActive) {
+					remove_stitches.emplace_back(stitches.size()-1);
+				}
 			}
 		}
-
+	
 		//should turn loops into loops:
 		assert((chain[0] == chain.back()) == (path[0] == path.back()));
 
@@ -706,7 +715,29 @@ void ak::build_next_active_chains(
 			assert(!stitches.empty());
 			assert(stitches[0].flag == stitches.back().flag);
 			assert(stitches[0].t == 0.0f && stitches.back().t == length);
+			//if last was tagged for removal, well, tag first instead:
+			if (!remove_stitches.empty() && remove_stitches.back() == stitches.size() - 1) {
+				remove_stitches.back() = 0;
+			}
 			stitches.pop_back();
+		}
+
+		{ //remove any stitches marked for discard:
+			for (auto s : remove_stitches) {
+				assert(s < stitches.size());
+				stitches[s].flag = ak::Stitch::FlagDiscard;
+			}
+			auto out = stitches.begin();
+			for (auto in = stitches.begin(); in != stitches.end(); ++in) {
+				assert(out <= in);
+				if (in->flag != ak::Stitch::FlagDiscard) {
+					*(out++) = *in;
+				}
+			}
+			if (out != stitches.end()) {
+				std::cout << "Removed " << stitches.end() - out << " stitches under short-row ends." << std::endl;
+				stitches.erase(out, stitches.end());
+			}
 		}
 
 		//convert stitch t values from lengths to [0,1) range:

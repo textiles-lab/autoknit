@@ -381,7 +381,7 @@ void ak::link_chains(
 		std::set< uint32_t > to_mark;
 		for (auto const &anm : matches) {
 			if (anm.first.first == -1U || anm.first.second == -1U) continue;
-			bool is_split_or_merge = (active_matches[anm.first.first] > 1 || active_matches[anm.first.second] > 1);
+			bool is_split_or_merge = (active_matches[anm.first.first] > 1 || next_matches[anm.first.second] > 1);
 			if (is_split_or_merge) {
 				to_mark.insert(anm.first.second);
 			}
@@ -418,9 +418,8 @@ void ak::link_chains(
 		assert(!match.active.empty());
 		assert(!match.next.empty());
 
-		//bool is_split_or_merge = (active_matches[anm.first.first] > 1 || active_matches[anm.first.second] > 1);
-
-		//if (is_split_or_merge) continue; //TODO: handle splits/merges! somehow!
+		bool is_split_or_merge = (active_matches[anm.first.first] > 1 || next_matches[anm.first.second] > 1);
+		//if is_split_or_merge will only link 1-1
 
 		//compute min/max totals from active stitches:
 		uint32_t active_ones = 0;
@@ -491,6 +490,14 @@ void ak::link_chains(
 			;
 			uint32_t upper = active_ones + 2 * active_anys; //most is to increase from all anys
 			assert(lower <= upper);
+
+			if (is_split_or_merge) {
+				assert(lower <= active_ones + active_anys && active_ones + active_anys <= upper);
+				std::cout << "NOTE: setting stitches from " << stitches << " to ";
+				stitches = active_ones + active_anys;
+				std::cout << stitches << " to make split/merge 1-1." << std::endl;
+				//stitches = active_ones + active_anys;
+			}
 
 			if (stitches < lower || stitches > upper) {
 				std::cout << "NOTE: stitches (" << stitches << ") will be clamped to possible range [" << lower << ", " << upper << "], which might cause some shape distortion." << std::endl;
@@ -654,9 +661,9 @@ void ak::link_chains(
 		std::vector< glm::vec3 > active_stitch_locations;
 		std::vector< bool > active_stitch_linkones;
 		extract_stitch_info(
-			active_chains[anm.first.second],
-			active_lengths[anm.first.second],
-			active_stitches[anm.first.second],
+			active_chains[anm.first.first],
+			active_lengths[anm.first.first],
+			active_stitches[anm.first.first],
 			match.active,
 			&active_stitch_indices,
 			&active_stitch_locations,
