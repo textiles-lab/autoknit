@@ -299,7 +299,7 @@ void ak::link_chains(
 		for (auto &c : next_closest) {
 			if (!c.empty()) c.pop_back();
 		}
-
+#if 0
 		//DEBUG:
 		for (auto const &ac : active_closest) {
 			std::cout << "active_closest[" << (&ac - &active_closest[0]) << "]:";
@@ -317,7 +317,7 @@ void ak::link_chains(
 			std::cout << "\n";
 		}
 		std::cout.flush();
-
+#endif
 	}
 
 	struct BeginEnd {

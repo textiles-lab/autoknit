@@ -152,7 +152,6 @@ void ak::trim_model(
 			value.sum = (1 << 8);
 			edges.emplace_back(Edge::Initial, cur_id, prev_id);
 			value.edge = edges.size() - 1;
-
 			epm.add_edge(cur, prev, value);
 			prev = cur;
 			prev_id = cur_id;
@@ -305,10 +304,10 @@ void ak::trim_model(
 				assert(edges[e].a < e);
 				assert(edges[e].b < e);
 				for (auto const &s : sources[edges[e].a]) {
-					sources.back().emplace_back(s.a, s.b, s.den - s.num, s.den);
+					sources.back().emplace_back(s.a, s.b, s.num, s.den);
 				}
 				for (auto const &s : sources[edges[e].b]) {
-					sources.back().emplace_back(s.a, s.b, s.den - s.num, s.den);
+					sources.back().emplace_back(s.a, s.b, s.num, s.den);
 				}
 			} else if (edges[e].type == Edge::SplitFirst) {
 				assert(edges[e].a == edges[e].b);
@@ -344,8 +343,10 @@ void ak::trim_model(
 				for (auto const &s : sources[ee.value.edge]) {
 					assert(s.a != s.b);
 					if (s.a < s.b) {
+						//if (s.den > 2) std::cout << s.a << "/" << s.b << " -> [" << ee.first << "-" << ee.second << "] (non-flipped)" << std::endl; //DEBUG
 						edge_subedges[glm::uvec2(s.a, s.b)].emplace_back(ee.first, ee.second, s.num, s.den);
 					} else {
+						//if (s.den > 2) std::cout << s.b << "/" << s.a << " -> [" << ee.second << "-" << ee.first << "] (flipped)" << std::endl; //DEBUG
 						edge_subedges[glm::uvec2(s.b, s.a)].emplace_back(ee.second, ee.first, s.den - s.num, s.den);
 					}
 				}
@@ -360,6 +361,13 @@ void ak::trim_model(
 				// => a.num * b.den < b.num * a.den
 				return uint64_t(a.num) * uint64_t(b.den) < uint64_t(b.num) * uint64_t(a.den);
 			});
+			/*if (subedges.size() > 1) {
+				//DEBUG:
+				for (auto &s : subedges) {
+					std::cout << " [" << s.a << "-" << s.b << "]@(" << s.num << "/" << s.den << ")";
+				}
+				std::cout << std::endl;
+			}*/
 			for (uint32_t i = 0; i + 1 < subedges.size(); ++i) {
 				assert(subedges[i].b == subedges[i+1].a);
 			}
