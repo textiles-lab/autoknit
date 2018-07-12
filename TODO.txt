@@ -11,6 +11,10 @@ ak-peel_slice will sometimes create a disconnected next chain (one that doesn't 
   This will require some changes to level_chains, as well as the time fn being passed to peel_slice.
 
 
+Balancing still required in ak-link.
+
+DTW nice-to-have in ak-link.
+
 Still need to write tracing code.
 
 Still need to hook up / test scheduling code (I sort of dread this; I think the re-write started here was "wrong" in some sense that I otherwise don't recall).
