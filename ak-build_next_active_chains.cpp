@@ -61,7 +61,8 @@ void ak::build_next_active_chains(
 	std::vector< std::vector< ak::Stitch > > const &next_stitches, //in: next stitches
 	std::vector< ak::Link > const &links_in, //in: links between active and next
 	std::vector< std::vector< ak::EmbeddedVertex > > *next_active_chains_, //out: next active chains (on model)
-	std::vector< std::vector< ak::Stitch > > *next_active_stitches_ //out: next active stitches
+	std::vector< std::vector< ak::Stitch > > *next_active_stitches_, //out: next active stitches
+	ak::RowColGraph *graph_ //in/out (optional): graph to update
 ) {
 	for (auto const &chain : active_chains) {
 		for (auto v : chain) {
@@ -100,6 +101,23 @@ void ak::build_next_active_chains(
 	assert(next_active_stitches_);
 	auto &next_active_stitches = *next_active_stitches_;
 	next_active_stitches.clear();
+
+	//PARANOIA:
+	if (graph_) {
+		for (auto const &stitches : active_stitches) {
+			for (auto const &s : stitches) {
+				assert(s.vertex != -1U);
+				assert(s.vertex < graph_->vertices.size());
+			}
+		}
+		for (auto const &stitches : next_stitches) {
+			for (auto const &s : stitches) {
+				assert(s.vertex == -1U);
+			}
+		}
+
+	}
+
 
 	//any active chain with no links out is considered inactive and discarded:
 	std::vector< bool > discard_active(active_chains.size(), true);
@@ -141,7 +159,6 @@ void ak::build_next_active_chains(
 		next_active[ ChainStitch(l.to_chain, l.to_stitch) ]
 			.emplace_back(l.from_chain, l.from_stitch);
 	}
-
 
 	//record whether the segments adjacent to every next stitch is are marked as "discard" or "keep":
 	std::vector< std::vector< std::pair< bool, bool > > > keep_adj(next_chains.size());
@@ -257,6 +274,104 @@ void ak::build_next_active_chains(
 			}
 		}
 	}
+
+	//need lengths to figure out where stitches are on chains:
+	//(duplicated, inelegantly, from link-chains)
+	auto make_lengths = [&slice](std::vector< std::vector< uint32_t > > const &chains) {
+		std::vector< std::vector< float > > all_lengths;
+		all_lengths.reserve(chains.size());
+		for (auto const &chain : chains) {
+			all_lengths.emplace_back();
+			std::vector< float > &lengths = all_lengths.back();
+			lengths.reserve(chain.size());
+			float total_length = 0.0f;
+			lengths.emplace_back(total_length);
+			for (uint32_t vi = 1; vi < chain.size(); ++vi) {
+				glm::vec3 const &a = slice.vertices[chain[vi-1]];
+				glm::vec3 const &b = slice.vertices[chain[vi]];
+				total_length += glm::length(b-a);
+				lengths.emplace_back(total_length);
+			}
+		}
+		return all_lengths;
+	};
+	std::vector< std::vector< float > > active_lengths = make_lengths(active_chains);
+	std::vector< std::vector< float > > next_lengths = make_lengths(next_chains);
+
+	std::vector< std::vector< uint32_t > > next_vertices;
+	next_vertices.reserve(next_chains.size());
+	//build graph info if requested:
+	if (!graph_) {
+		//blank vertex info if no graph:
+		for (auto const &stitches : next_stitches) {
+			next_vertices.emplace_back(stitches.size(), -1U);
+		}
+	} else { assert(graph_);
+		//for non-discard stitches on next chains, write down vertices:
+		for (uint32_t nc = 0; nc < next_chains.size(); ++nc) {
+			auto const &chain = next_chains[nc];
+			bool is_loop = (chain[0] == chain.back());
+			auto const &stitches = next_stitches[nc];
+			auto const &ka = keep_adj[nc];
+
+			auto const &lengths = next_lengths[nc];
+
+			next_vertices.emplace_back();
+			auto &vertices = next_vertices.back();
+			vertices.reserve(stitches.size());
+
+			auto li = lengths.begin();
+			for (uint32_t ns = 0; ns < stitches.size(); ++ns) {
+				assert(stitches[ns].vertex == -1U);
+				if (stitches[ns].flag == ak::Stitch::FlagDiscard) {
+					vertices.emplace_back(-1U);
+					continue;
+				} else {
+					float l = lengths.back() * stitches[ns].t;
+
+					while (li != lengths.end() && *li <= l) ++li;
+					assert(li != lengths.begin());
+					assert(li != lengths.end());
+					float m = (l - *(li-1)) / (*li - *(li -1));
+					uint32_t i = li - lengths.begin();
+
+					vertices.emplace_back(graph_->vertices.size());
+					graph_->vertices.emplace_back();
+					graph_->vertices.back().at = ak::EmbeddedVertex::mix(
+						slice_on_model[chain[i-1]], slice_on_model[chain[i]], m
+					);
+				}
+			}
+			assert(ka.size() == stitches.size());
+			assert(vertices.size() == stitches.size());
+			uint32_t prev = (is_loop ? vertices.back() : -1U);
+			for (uint32_t ns = 0; ns < stitches.size(); ++ns) {
+				uint32_t cur = vertices[ns];
+				if (ka[ns].first) {
+					assert(cur != -1U);
+					assert(prev != -1U);
+					assert(cur < graph_->vertices.size() && prev < graph_->vertices.size());
+					assert(graph_->vertices[cur].row_in == -1U);
+					graph_->vertices[cur].row_in = prev;
+					assert(graph_->vertices[prev].row_out == -1U);
+					graph_->vertices[prev].row_out = cur;
+				}
+				prev = cur;
+			}
+		}
+
+		for (auto const &l : links) {
+			uint32_t fv = active_stitches[l.from_chain][l.from_stitch].vertex;
+			uint32_t tv = next_vertices[l.to_chain][l.to_stitch];
+			assert(fv < graph_->vertices.size());
+			assert(tv < graph_->vertices.size());
+			graph_->vertices[fv].add_col_out(tv);
+			graph_->vertices[tv].add_col_in(fv);
+		}
+
+	}
+
+
 
 	//TODO: dump all links and keeps in glorious ascii-art for "debugging purposes"
 
@@ -569,28 +684,7 @@ void ak::build_next_active_chains(
 
 
 
-	//need lengths to figure out where stitches are on chains:
-	//(duplicated, inelegantly, from link-chains)
-	auto make_lengths = [&slice](std::vector< std::vector< uint32_t > > const &chains) {
-		std::vector< std::vector< float > > all_lengths;
-		all_lengths.reserve(chains.size());
-		for (auto const &chain : chains) {
-			all_lengths.emplace_back();
-			std::vector< float > &lengths = all_lengths.back();
-			lengths.reserve(chain.size());
-			float total_length = 0.0f;
-			lengths.emplace_back(total_length);
-			for (uint32_t vi = 1; vi < chain.size(); ++vi) {
-				glm::vec3 const &a = slice.vertices[chain[vi-1]];
-				glm::vec3 const &b = slice.vertices[chain[vi]];
-				total_length += glm::length(b-a);
-				lengths.emplace_back(total_length);
-			}
-		}
-		return all_lengths;
-	};
-	std::vector< std::vector< float > > active_lengths = make_lengths(active_chains);
-	std::vector< std::vector< float > > next_lengths = make_lengths(next_chains);
+
 
 	auto output = [&](std::vector< OnChainStitch > const &path) {
 		assert(path.size() >= 2);
@@ -674,8 +768,14 @@ void ak::build_next_active_chains(
 				std::vector< ak::Stitch > const &a_stitches = (a.on == OnChainStitch::OnActive ? active_stitches : next_stitches).at(a.chain);
 				assert(a.stitch < a_stitches.size());
 				ak::Stitch::Flag a_flag = a_stitches[a.stitch].flag;
-				if (pi == 0) stitches.emplace_back(length, a_flag);
-				else assert(!stitches.empty() && stitches.back().t == length && stitches.back().flag == a_flag);
+				uint32_t a_vertex;
+				if (a.on == OnChainStitch::OnActive) {
+					a_vertex = active_stitches.at(a.chain).at(a.stitch).vertex;
+				} else {
+					a_vertex = next_vertices.at(a.chain).at(a.stitch);
+				}
+				if (pi == 0) stitches.emplace_back(length, a_flag, a_vertex);
+				else assert(!stitches.empty() && stitches.back().t == length && stitches.back().flag == a_flag && stitches.back().vertex == a_vertex);
 
 				if (a.on != b.on && a.on == OnChainStitch::OnActive) {
 					remove_stitches.emplace_back(stitches.size()-1);
@@ -719,7 +819,14 @@ void ak::build_next_active_chains(
 				std::vector< ak::Stitch > const &b_stitches = (b.on == OnChainStitch::OnActive ? active_stitches : next_stitches).at(b.chain);
 				assert(b.stitch < b_stitches.size());
 				ak::Stitch::Flag b_flag = b_stitches[b.stitch].flag;
-				stitches.emplace_back(length, b_flag);
+				uint32_t b_vertex;
+				if (b.on == OnChainStitch::OnActive) {
+					b_vertex = active_stitches.at(b.chain).at(b.stitch).vertex;
+				} else {
+					b_vertex = next_vertices.at(b.chain).at(b.stitch);
+				}
+
+				stitches.emplace_back(length, b_flag, b_vertex);
 
 				if (a.on != b.on && b.on == OnChainStitch::OnActive) {
 					remove_stitches.emplace_back(stitches.size()-1);
@@ -734,6 +841,7 @@ void ak::build_next_active_chains(
 		if (path[0] == path.back()) {
 			assert(!stitches.empty());
 			assert(stitches[0].flag == stitches.back().flag);
+			assert(stitches[0].vertex == stitches.back().vertex);
 			assert(stitches[0].t == 0.0f && stitches.back().t == length);
 			//if last was tagged for removal, well, tag first instead:
 			if (!remove_stitches.empty() && remove_stitches.back() == stitches.size() - 1) {
@@ -780,6 +888,7 @@ void ak::build_next_active_chains(
 
 		next_active_chains.emplace_back(chain);
 		next_active_stitches.emplace_back(stitches);
+
 	};
 
 	std::cout << "Found " << loops.size() << " loops and " << partials.size() << " chains." << std::endl;
@@ -813,6 +922,16 @@ void ak::build_next_active_chains(
 	for (auto const &chain : next_active_chains) {
 		for (uint32_t i = 1; i < chain.size(); ++i) {
 			assert(chain[i-1] != chain[i]);
+		}
+	}
+
+	//PARANOIA:
+	if (graph_) {
+		for (auto const &stitches : next_active_stitches) {
+			for (auto const &s : stitches) {
+				assert(s.vertex != -1U);
+				assert(s.vertex < graph_->vertices.size());
+			}
 		}
 	}
 }

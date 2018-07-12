@@ -393,6 +393,12 @@ Interface::Interface() {
 		{textured_draw->getAttribLocation("TexCoord", GLProgram::MissingIsWarning), times_model_triangles[3]}
 	});
 
+	rowcol_graph_tristrip_for_path_draw = GLVertexArray::make_binding(path_draw->program, {
+		{path_draw->getAttribLocation("Position", GLProgram::MissingIsError), rowcol_graph_tristrip[0]},
+		{path_draw->getAttribLocation("Normal", GLProgram::MissingIsWarning), rowcol_graph_tristrip[1]},
+		{path_draw->getAttribLocation("Color", GLProgram::MissingIsWarning), rowcol_graph_tristrip[2]}
+	});
+
 	active_chains_tristrip_for_path_draw = GLVertexArray::make_binding(path_draw->program, {
 		{path_draw->getAttribLocation("Position", GLProgram::MissingIsError), active_chains_tristrip[0]},
 		{path_draw->getAttribLocation("Normal", GLProgram::MissingIsWarning), active_chains_tristrip[1]},
@@ -634,6 +640,35 @@ void Interface::draw() {
 		glBindVertexArray(0);
 		glUseProgram(0);
 	}
+
+	//draw current row-column graph (peeling):
+	if (true || (show & ShowRowColGraph)) {
+		if (rowcol_graph_tristrip_dirty) update_rowcol_graph_tristrip();
+
+		glm::mat4 p2c = camera.mvp();
+		glm::mat4x3 p2l = camera.mv();
+		glm::mat3 n2l = glm::inverse(glm::transpose(glm::mat3(p2l)));
+
+		glUseProgram(path_draw->program);
+		glBindVertexArray(rowcol_graph_tristrip_for_path_draw.array);
+
+		glUniformMatrix4fv(path_draw_p2c, 1, GL_FALSE, glm::value_ptr(p2c));
+		glUniformMatrix4x3fv(path_draw_p2l, 1, GL_FALSE, glm::value_ptr(p2l));
+		glUniformMatrix3fv(path_draw_n2l, 1, GL_FALSE, glm::value_ptr(n2l));
+
+		glUniform4f(path_draw_id, 0 / 255.0f, 0 / 255.0f, 0 / 255.0f, 0 / 255.0f);
+
+		//don't draw into ID array:
+		glColorMaski(1, GL_FALSE, GL_FALSE, GL_FALSE, GL_FALSE);
+
+		glDrawArrays(GL_TRIANGLE_STRIP, 0, rowcol_graph_tristrip.count);
+
+		glColorMaski(1, GL_TRUE, GL_TRUE, GL_TRUE, GL_TRUE);
+
+		glBindVertexArray(0);
+		glUseProgram(0);
+	}
+
 
 	//draw active chains (peeling):
 	if (show & ShowActiveChains) {
@@ -1136,6 +1171,9 @@ void Interface::clear_peeling() {
 	peel_step = 0;
 	peel_action = PeelBegin;
 
+	rowcol_graph.clear();
+	rowcol_graph_tristrip_dirty = true;
+
 	active_chains.clear();
 	active_stitches.clear();
 	active_chains_tristrip_dirty = true;
@@ -1167,14 +1205,19 @@ bool Interface::step_peeling() {
 		auto old_peel_action = peel_action;
 		auto old_next_active_chains = next_active_chains;
 		auto old_next_active_stitches = next_active_stitches;
+		auto old_rowcol_graph = rowcol_graph;
+		auto old_rowcol_graph_tristrip_dirty = rowcol_graph_tristrip_dirty;
 		clear_peeling();
 		peel_step = old_peel_step;
 		peel_action = old_peel_action;
+		rowcol_graph = old_rowcol_graph;
+		rowcol_graph_tristrip_dirty = old_rowcol_graph_tristrip_dirty;
 
 		if (peel_action == PeelBegin) {
 			std::cout << " -- peel begin [step " << peel_step << "]--" << std::endl;
 			//read lower boundary:
-			ak::find_first_active_chains(parameters, constrained_model, times, &active_chains, &active_stitches);
+			ak::find_first_active_chains(parameters, constrained_model, times, &active_chains, &active_stitches, &rowcol_graph);
+			rowcol_graph_tristrip_dirty = true;
 
 			assert(peel_step == 0);
 		} else { assert(peel_action == PeelRepeat);
@@ -1214,8 +1257,9 @@ bool Interface::step_peeling() {
 		peel_step += 1;
 	} else if (peel_action == PeelBuild) {
 		std::cout << " -- build [step " << peel_step << "]--" << std::endl;
-		ak::build_next_active_chains(parameters, slice, slice_on_model, slice_active_chains, active_stitches, slice_next_chains, next_stitches, links, &next_active_chains, &next_active_stitches);
+		ak::build_next_active_chains(parameters, slice, slice_on_model, slice_active_chains, active_stitches, slice_next_chains, next_stitches, links, &next_active_chains, &next_active_stitches, &rowcol_graph);
 
+		rowcol_graph_tristrip_dirty = true;
 		next_active_chains_tristrip_dirty = true;
 		show = ShowSlice | ShowNextActiveChains;
 
@@ -1552,6 +1596,76 @@ std::vector< std::vector< glm::vec3 > > copy_locations( ak::Model const &model, 
 	}
 	return locations;
 }
+
+void Interface::update_rowcol_graph_tristrip() {
+	rowcol_graph_tristrip_dirty = false;
+
+	std::vector< GLAttribBuffer< glm::vec3, glm::vec3, glm::u8vec4 >::Vertex > attribs;
+
+	std::vector< glm::vec3 > locations;
+	locations.reserve(rowcol_graph.vertices.size());
+	for (auto const &v : rowcol_graph.vertices) {
+		locations.emplace_back(v.at.interpolate(constrained_model.vertices));
+	}
+	//vertices:
+	float stitch_r = 0.02f;
+	float row_r = 0.7f * stitch_r;
+	float col_r = 0.7f * stitch_r;
+	for (uint32_t vi = 0; vi < rowcol_graph.vertices.size(); ++vi) {
+		make_sphere(&attribs,
+			locations[vi],
+			stitch_r, glm::u8vec4(0xff, 0x00, 0xff, 0xff)
+		);
+		auto const &v = rowcol_graph.vertices[vi];
+		if (v.row_in != -1U) {
+			make_tube(&attribs,
+				locations[vi],
+				0.5f * (locations[v.row_in] + locations[vi]),
+				row_r, glm::u8vec4(0xdd, 0xdd, 0x88, 0xff)
+			);
+		}
+		if (v.row_out != -1U) {
+			make_tube(&attribs,
+				locations[vi],
+				0.5f * (locations[v.row_out] + locations[vi]),
+				row_r, glm::u8vec4(0x66, 0x66, 0x88, 0xff)
+			);
+		}
+		if (v.col_in[0] != -1U) {
+			make_tube(&attribs,
+				locations[vi],
+				0.5f * (locations[v.col_in[0]] + locations[vi]),
+				col_r, glm::u8vec4(0xdd, 0x00, 0x66, 0xff)
+			);
+		}
+		if (v.col_in[1] != -1U) {
+			make_tube(&attribs,
+				locations[vi],
+				0.5f * (locations[v.col_in[1]] + locations[vi]),
+				col_r, glm::u8vec4(0xdd, 0xff, 0x66, 0xff)
+			);
+		}
+
+		if (v.col_out[0] != -1U) {
+			make_tube(&attribs,
+				locations[vi],
+				0.5f * (locations[v.col_out[0]] + locations[vi]),
+				col_r, glm::u8vec4(0x66, 0x00, 0x66, 0xff)
+			);
+		}
+		if (v.col_out[1] != -1U) {
+			make_tube(&attribs,
+				locations[vi],
+				0.5f * (locations[v.col_out[1]] + locations[vi]),
+				col_r, glm::u8vec4(0x66, 0xff, 0x66, 0xff)
+			);
+		}
+
+	}
+
+	rowcol_graph_tristrip.set(attribs, GL_STATIC_DRAW);
+}
+
 
 
 void Interface::update_active_chains_tristrip() {

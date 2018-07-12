@@ -92,6 +92,7 @@ struct Interface : public kit::Mode {
 		ShowSliceChains      = (1 << 5),
 		ShowLinks            = (1 << 6),
 		ShowNextActiveChains = (1 << 7),
+		ShowRowColGraph      = (1 << 8),
 
 		ShowModelBits = ShowModel | ShowTimesModel | ShowSlice,
 		ShowStepBits = ShowActiveChains | ShowSliceChains | ShowLinks | ShowNextActiveChains,
@@ -188,6 +189,14 @@ struct Interface : public kit::Mode {
 		PeelBuild = 3,
 		PeelRepeat = 4,
 	} peel_action = PeelBegin;
+
+	ak::RowColGraph rowcol_graph;
+	
+	GLAttribBuffer< glm::vec3, glm::vec3, glm::u8vec4 > rowcol_graph_tristrip;
+	GLVertexArray rowcol_graph_tristrip_for_path_draw;
+	bool rowcol_graph_tristrip_dirty = true;
+	void update_rowcol_graph_tristrip();
+
 
 	// - - - - - - - - - - - - - - - - 
 	//peeling - begin / step:

@@ -10,7 +10,8 @@ void ak::find_first_active_chains(
 	ak::Model const &model,
 	std::vector< float > const &times,
 	std::vector< std::vector< ak::EmbeddedVertex > > *active_chains_,
-	std::vector< std::vector< Stitch > > *active_stitches_
+	std::vector< std::vector< Stitch > > *active_stitches_,
+	ak::RowColGraph *graph_
 ) {
 
 	assert(active_chains_);
@@ -116,17 +117,12 @@ void ak::find_first_active_chains(
 		sample_chain(parameters.get_chain_sample_spacing(), model, embedded_chain, &divided_chain);
 
 		//further subdivide and place stitches:
-		std::vector< float > lengths;
-		lengths.reserve(divided_chain.size()-1);
 		float total_length = 0.0f;
-		for (uint32_t ci = 0; ci + 1 < divided_chain.size(); ++ci) {
-			glm::vec3 a = divided_chain[ci].interpolate(model.vertices);
-			glm::vec3 b = divided_chain[ci+1].interpolate(model.vertices);
-			float l = glm::length(b-a);
-			lengths.emplace_back(l);
-			total_length += l;
+		for (uint32_t ci = 1; ci < divided_chain.size(); ++ci) {
+			glm::vec3 a = divided_chain[ci-1].interpolate(model.vertices);
+			glm::vec3 b = divided_chain[ci].interpolate(model.vertices);
+			total_length += glm::length(b-a);
 		}
-		assert(lengths.size() == divided_chain.size()-1);
 
 		float stitch_width = parameters.stitch_width_mm / parameters.model_units_mm;
 		uint32_t stitches = std::max(3, int32_t(std::round(total_length / stitch_width)));
@@ -142,5 +138,53 @@ void ak::find_first_active_chains(
 	assert(active_chains.size() == active_stitches.size());
 
 	std::cout << "Found " << active_chains.size() << " first active chains." << std::endl;
+
+	if (graph_) {
+		for (uint32_t ci = 0; ci < active_chains.size(); ++ci) {
+			auto const &chain = active_chains[ci];
+
+			std::vector< float > lengths;
+			lengths.reserve(chain.size());
+			lengths.emplace_back(0.0f);
+			for (uint32_t i = 1; i < chain.size(); ++i) {
+				glm::vec3 a = chain[i-1].interpolate(model.vertices);
+				glm::vec3 b = chain[i].interpolate(model.vertices);
+				lengths.emplace_back(lengths.back() + glm::length(b-a));
+			}
+			assert(lengths.size() == chain.size());
+
+			auto li = lengths.begin();
+			for (auto &s : active_stitches[ci]) {
+				float l = lengths.back() * s.t;
+
+				while (li != lengths.end() && *li <= l) ++li;
+				assert(li != lengths.begin());
+				assert(li != lengths.end());
+
+				float m = (l - *(li-1)) / (*li - *(li -1));
+				uint32_t i = li - lengths.begin();
+
+				assert(s.vertex == -1U);
+				s.vertex = graph_->vertices.size();
+				graph_->vertices.emplace_back();
+				graph_->vertices.back().at = ak::EmbeddedVertex::mix(
+					chain[i-1], chain[i], m
+				);
+			}
+
+			uint32_t prev = (chain[0] == chain.back() ? active_stitches[ci].back().vertex : -1U);
+			for (auto &s : active_stitches[ci]) {
+				if (prev != -1U) {
+					assert(prev < graph_->vertices.size());
+					assert(s.vertex < graph_->vertices.size());
+					assert(graph_->vertices[prev].row_out == -1U);
+					graph_->vertices[prev].row_out = s.vertex;
+					assert(graph_->vertices[s.vertex].row_in == -1U);
+					graph_->vertices[s.vertex].row_in = prev;
+				}
+				prev = s.vertex;
+			}
+		}
+	}
 
 }

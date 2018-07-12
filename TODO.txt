@@ -10,5 +10,7 @@ ak-peel_slice will sometimes create a disconnected next chain (one that doesn't 
  --> Should fix by checking that each next chain contains a bind-off location [time function maximum, I guess? could also just tag edges]
   This will require some changes to level_chains, as well as the time fn being passed to peel_slice.
 
-No code yet to actually accumulate stitches and links through the steps. Minimally, build_next_active_chains needs to provide a source (chain,stitch) for each next_active_stitches element.
-Fancier/easier would be to assign a unique ID to each (non-discarded) active/next Stitch and make sure these get tracked.
+
+Still need to write tracing code.
+
+Still need to hook up / test scheduling code (I sort of dread this; I think the re-write started here was "wrong" in some sense that I otherwise don't recall).

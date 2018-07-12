@@ -191,14 +191,41 @@ void extract_level_chains(
 
 struct Stitch {
 	float t; //position along chain [0,1)
+	uint32_t vertex; //used to track stitches when building RowColGraph
 	enum Flag : char {
 		FlagDiscard = -1,
 		FlagLinkOne =  1,
 		FlagLinkAny =  2,
 	};
 	Flag flag; //what sort of links are allowed to this stitch (or if this stitch is just marked for removal)
-	Stitch(float t_, Flag flag_) : t(t_), flag(flag_) { }
+	Stitch(float t_, Flag flag_, uint32_t vertex_ = -1U) : t(t_), vertex(vertex_), flag(flag_) { }
 };
+
+
+struct RowColGraph {
+	struct Vertex {
+		EmbeddedVertex at;
+		uint32_t row_in = -1U;
+		uint32_t row_out = -1U;
+		uint32_t col_in[2] = {-1U, -1U};
+		uint32_t col_out[2] = {-1U, -1U};
+		void add_col_in(uint32_t i) {
+			if (col_in[0] == -1U) col_in[0] = i;
+			else if (col_in[1] == -1U) col_in[1] = i;
+			else assert(col_in[0] == -1U || col_in[1] == -1U); //no room!
+		}
+		void add_col_out(uint32_t i) {
+			if (col_out[0] == -1U) col_out[0] = i;
+			else if (col_out[1] == -1U) col_out[1] = i;
+			else assert(col_out[0] == -1U || col_out[1] == -1U); //no room!
+		}
+	};
+	std::vector< Vertex > vertices;
+	void clear() {
+		vertices.clear();
+	}
+};
+
 
 //helper used by the find_first and peel methods to sample chain at sub-stitch length scale:
 void sample_chain(
@@ -231,7 +258,8 @@ void find_first_active_chains(
 	Model const &model, //in: model
 	std::vector< float > const &times,          //in: time field (times @ vertices)
 	std::vector< std::vector< EmbeddedVertex > > *active_chains, //out: all mesh boundaries that contain a minimum
-	std::vector< std::vector< Stitch > > *active_stitches //out: evenly-spaced stitch locations along boundaries.
+	std::vector< std::vector< Stitch > > *active_stitches, //out: evenly-spaced stitch locations along boundaries.
+	RowColGraph *graph = nullptr //in/out: graph to update [optional]
 );
 
 void peel_slice(
@@ -298,11 +326,10 @@ void build_next_active_chains(
 	std::vector< std::vector< Stitch > > const &next_stitches, //in: next stitches
 	std::vector< Link > const &links, //in: links between active and next
 	std::vector< std::vector< EmbeddedVertex > > *next_active_chains, //out: next active chains (on model)
-	std::vector< std::vector< Stitch > > *next_active_stitches //out: next active stitches
+	std::vector< std::vector< Stitch > > *next_active_stitches, //out: next active stitches
+	RowColGraph *graph = nullptr //in/out: graph to update [optional]
 );
 
-//probably is in driver code (different cases for build_first and build_next):
-//void extract_stitches(
 
 struct TracedStitch {
 	EmbeddedVertex at;
