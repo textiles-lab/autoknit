@@ -347,9 +347,9 @@ void ak::build_next_active_chains(
 			uint32_t prev = (is_loop ? vertices.back() : -1U);
 			for (uint32_t ns = 0; ns < stitches.size(); ++ns) {
 				uint32_t cur = vertices[ns];
-				if (ka[ns].first) {
+				if (ka[ns].first && prev != -1U) {
 					assert(cur != -1U);
-					assert(prev != -1U);
+					//assert(prev != -1U); //<-- have to add to condition above because previous can be -1U in chains
 					assert(cur < graph_->vertices.size() && prev < graph_->vertices.size());
 					assert(graph_->vertices[cur].row_in == -1U);
 					graph_->vertices[cur].row_in = prev;

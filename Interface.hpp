@@ -97,7 +97,7 @@ struct Interface : public kit::Mode {
 		ShowModelBits = ShowModel | ShowTimesModel | ShowSlice,
 		ShowStepBits = ShowActiveChains | ShowSliceChains | ShowLinks | ShowNextActiveChains,
 	};
-	uint32_t show = ShowModel | ShowConstraints;
+	uint32_t show = ShowModel | ShowConstraints | ShowRowColGraph;
 
 
 	struct {

@@ -642,7 +642,7 @@ void Interface::draw() {
 	}
 
 	//draw current row-column graph (peeling):
-	if (true || (show & ShowRowColGraph)) {
+	if (show & ShowRowColGraph) {
 		if (rowcol_graph_tristrip_dirty) update_rowcol_graph_tristrip();
 
 		glm::mat4 p2c = camera.mvp();
@@ -897,6 +897,8 @@ void Interface::handle_event(SDL_Event const &evt) {
 			if (show & ShowModel) show = (show & ~ShowModelBits) | ShowTimesModel;
 			else if (show & ShowTimesModel) show = (show & ~ShowModelBits) | ShowSlice;
 			else /*if (show & ShowSlice)*/ show = (show & ~ShowModelBits) | ShowModel;
+		} else if (evt.key.keysym.scancode == SDL_SCANCODE_G) {
+			show = show ^ ShowRowColGraph;
 		} else if (evt.key.keysym.scancode == SDL_SCANCODE_L) {
 			//show = ShowConstrainedModel;
 			//DEBUG_test_linking();
@@ -1608,41 +1610,42 @@ void Interface::update_rowcol_graph_tristrip() {
 		locations.emplace_back(v.at.interpolate(constrained_model.vertices));
 	}
 	//vertices:
-	float stitch_r = 0.02f;
-	float row_r = 0.7f * stitch_r;
-	float col_r = 0.7f * stitch_r;
+	float row_r = 0.075f * parameters.stitch_width_mm / parameters.model_units_mm;
+	float col_r = row_r;
+	float stitch_r = 1.5f * row_r;
+	#define COL(H) glm::u8vec4(uint32_t(H) >> 24, uint32_t(H) >> 16, uint32_t(H) >> 8, uint32_t(H))
 	for (uint32_t vi = 0; vi < rowcol_graph.vertices.size(); ++vi) {
 		make_sphere(&attribs,
 			locations[vi],
-			stitch_r, glm::u8vec4(0xff, 0x00, 0xff, 0xff)
+			stitch_r, glm::u8vec4(0x80, 0x80, 0x80, 0xff)
 		);
 		auto const &v = rowcol_graph.vertices[vi];
 		if (v.row_in != -1U) {
 			make_tube(&attribs,
 				locations[vi],
 				0.5f * (locations[v.row_in] + locations[vi]),
-				row_r, glm::u8vec4(0xdd, 0xdd, 0x88, 0xff)
+				row_r, COL(0xddd6bbff)
 			);
 		}
 		if (v.row_out != -1U) {
 			make_tube(&attribs,
 				locations[vi],
 				0.5f * (locations[v.row_out] + locations[vi]),
-				row_r, glm::u8vec4(0x66, 0x66, 0x88, 0xff)
+				row_r, COL(0xd0cab1ff)
 			);
 		}
 		if (v.col_in[0] != -1U) {
 			make_tube(&attribs,
 				locations[vi],
 				0.5f * (locations[v.col_in[0]] + locations[vi]),
-				col_r, glm::u8vec4(0xdd, 0x00, 0x66, 0xff)
+				col_r, (v.col_in[1] == -1U ? COL(0xe1cfe6ff) : COL(0xffdc6aff))
 			);
 		}
 		if (v.col_in[1] != -1U) {
 			make_tube(&attribs,
 				locations[vi],
 				0.5f * (locations[v.col_in[1]] + locations[vi]),
-				col_r, glm::u8vec4(0xdd, 0xff, 0x66, 0xff)
+				col_r, COL(0xffdc6aff)
 			);
 		}
 
@@ -1650,18 +1653,19 @@ void Interface::update_rowcol_graph_tristrip() {
 			make_tube(&attribs,
 				locations[vi],
 				0.5f * (locations[v.col_out[0]] + locations[vi]),
-				col_r, glm::u8vec4(0x66, 0x00, 0x66, 0xff)
+				col_r, (v.col_out[1] == -1U ? COL(0xd2b7daff) : COL(0xfec200ff) )
 			);
 		}
 		if (v.col_out[1] != -1U) {
 			make_tube(&attribs,
 				locations[vi],
 				0.5f * (locations[v.col_out[1]] + locations[vi]),
-				col_r, glm::u8vec4(0x66, 0xff, 0x66, 0xff)
+				col_r, COL(0xfec200ff)
 			);
 		}
 
 	}
+	#undef COL
 
 	rowcol_graph_tristrip.set(attribs, GL_STATIC_DRAW);
 }
