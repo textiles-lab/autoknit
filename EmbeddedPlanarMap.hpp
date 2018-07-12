@@ -55,6 +55,14 @@ struct IntegerEmbeddedVertex {
 		return simplex == o.simplex && weights == o.weights;
 	}
 
+	template< typename T >
+	T interpolate(std::vector< T > const &values) const {
+		T ret = values[simplex.x] * (float(weights.x) / float(WEIGHT_SUM));
+		if (simplex.y != -1U) ret += values[simplex.y] * (float(weights.y) / float(WEIGHT_SUM));
+		if (simplex.z != -1U) ret += values[simplex.z] * (float(weights.z) / float(WEIGHT_SUM));
+		return ret;
+	}
+
 	glm::ivec3 weights_on(glm::uvec3 simplex2) const {
 		glm::ivec3 ret(0,0,0);
 		uint32_t o = 0;
@@ -75,6 +83,8 @@ struct IntegerEmbeddedVertex {
 	static glm::uvec3 common_simplex(const glm::uvec3 &a, const glm::uvec3 &b) {
 		return ak::EmbeddedVertex::common_simplex(a,b);
 	}
+
+
 };
 
 

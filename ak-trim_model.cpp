@@ -168,114 +168,7 @@ void ak::trim_model(
 	std::cout << "EPM has " << epm.simplex_edges.size() << " simplices with edges (" << total_simplex_edges << " edges from " << total_chain_edges << " chain edges)." << std::endl;
 
 
-	//build split mesh:
-	std::vector< ak::EmbeddedVertex > split_verts;
-	std::vector< glm::uvec3 > split_tris;
-	std::vector< uint32_t > epm_to_split;
-	epm.split_triangles(model.vertices, model.triangles, &split_verts, &split_tris, &epm_to_split);
-
-	//transfer edge values to split mesh:
-	std::unordered_map< glm::uvec2, int32_t > edge_values;
-	for (auto const &se : epm.simplex_edges) {
-		for (auto const &ee : se.second) {
-			uint32_t a = epm_to_split[ee.first];
-			uint32_t b = epm_to_split[ee.second];
-			int32_t value = ee.value.sum;
-			auto ret = edge_values.insert(std::make_pair(glm::uvec2(a,b), value));
-			assert(ret.second);
-
-			ret = edge_values.insert(std::make_pair(glm::uvec2(b,a), -value));
-			assert(ret.second);
-		}
-	}
-	
-	//tag triangles with values:
-	std::unordered_map< glm::uvec2, uint32_t > edge_to_tri;
-	edge_to_tri.reserve(split_tris.size() * 3);
-	for (auto const &tri : split_tris) {
-		uint32_t ti = &tri - &split_tris[0];
-		auto ret = edge_to_tri.insert(std::make_pair(glm::uvec2(tri.x, tri.y), ti)); assert(ret.second);
-		ret = edge_to_tri.insert(std::make_pair(glm::uvec2(tri.y, tri.z), ti)); assert(ret.second);
-		ret = edge_to_tri.insert(std::make_pair(glm::uvec2(tri.z, tri.x), ti)); assert(ret.second);
-	}
-
-	constexpr int32_t const Unvisited = std::numeric_limits< int32_t >::max();
-	std::vector< int32_t > values(split_tris.size(), Unvisited);
-
-	std::vector< bool > keep(split_tris.size(), false);
-
-	for (uint32_t seed = 0; seed < split_tris.size(); ++seed) {
-		if (values[seed] != Unvisited) continue;
-
-		std::vector< uint32_t > component;
-		component.reserve(split_tris.size());
-
-		values[seed] = (128 << 8) | (128);
-		component.emplace_back(seed);
-
-		for (uint32_t ci = 0; ci < component.size(); ++ci) {
-			uint32_t ti = component[ci];
-			uint32_t value = values[ti];
-			assert(value != Unvisited);
-			glm::uvec3 tri = split_tris[ti];
-			auto over = [&](uint32_t a, uint32_t b) {
-				auto f = edge_to_tri.find(glm::uvec2(b,a));
-				if (f == edge_to_tri.end()) return;
-				int32_t nv = value;
-				auto f2 = edge_values.find(glm::uvec2(b,a));
-				if (f2 != edge_values.end()) nv += f2->second;
-
-				if (values[f->second] == Unvisited) {
-					values[f->second] = nv;
-					component.emplace_back(f->second);
-				} else {
-					assert(values[f->second] == nv);
-				}
-			};
-			over(tri.x, tri.y);
-			over(tri.y, tri.z);
-			over(tri.z, tri.x);
-		}
-
-		int32_t max_right = 128;
-		int32_t max_left = 128;
-		for (auto ti : component) {
-			int32_t right = values[ti] >> 8;
-			int32_t left = values[ti] & 0xff;
-			max_right = std::max(max_right, right);
-			max_left = std::max(max_left, left);
-		}
-
-		int32_t keep_value = (max_right << 8) | max_left;
-		for (auto ti : component) {
-			if (values[ti] == keep_value) {
-				keep[ti] = true;
-			}
-		}
-	}
-
-	std::vector< uint32_t > split_vert_to_clipped_vertex(split_verts.size(), -1U);
-	auto use_vertex = [&](uint32_t v) {
-		if (split_vert_to_clipped_vertex[v] == -1U) {
-			assert(v < split_verts.size());
-			split_vert_to_clipped_vertex[v] = clipped_vertices.size();
-			clipped_vertices.emplace_back(split_verts[v]);
-		}
-		return split_vert_to_clipped_vertex[v];
-	};
-
-	for (auto const &tri : split_tris) {
-		if (!keep[&tri - &split_tris[0]]) continue;
-		clipped.triangles.emplace_back(
-			use_vertex(tri.x),
-			use_vertex(tri.y),
-			use_vertex(tri.z)
-		);
-	}
-	clipped.vertices.reserve(clipped_vertices.size());
-	for (auto const &v : clipped_vertices) {
-		clipped.vertices.emplace_back(v.interpolate(model.vertices));
-	}
+	//clean up any small loops that may exist in chains:
 
 	//read out left_of_vertices and right_of_vertices from edge information:
 	std::vector< std::vector< uint32_t > > left_of_epm, right_of_epm;
@@ -422,66 +315,258 @@ void ak::trim_model(
 		}
 	}
 
+	auto cleanup_chain = [&](std::vector< uint32_t > &epm_chain, int32_t value) {
+		//want chain to be loop-free --> look for loops!
+		float length_removed = 0.0f;
+		uint32_t verts_removed = 0;
+
+		//useful:
+		auto remove_from_epm = [&epm_chain, &epm, value](uint32_t first, uint32_t last) {
+			assert(first <= last);
+			assert(last < epm_chain.size());
+			//remove value of all segments [first,last] from planar map:
+			for (uint32_t i = first; i + 1 <= last; ++i) {
+				auto &a = epm.vertices[epm_chain[i]];
+				auto &b = epm.vertices[epm_chain[i+1]];
+				glm::uvec3 common = IntegerEmbeddedVertex::common_simplex(a.simplex, b.simplex);
+				auto f = epm.simplex_edges.find(common);
+				assert(f != epm.simplex_edges.end());
+				bool found = false;
+				for (auto &e : f->second) {
+					if (e.first == epm_chain[i] && e.second == epm_chain[i+1]) {
+						e.value.sum -= value;
+						found = true;
+						break;
+					} else if (e.second == epm_chain[i] && e.first == epm_chain[i+1]) {
+						e.value.sum += value;
+						found = true;
+						break;
+					}
+				}
+				assert(found);
+			}
+		};
+
+		float initial_length = std::numeric_limits< float >::quiet_NaN();
+
+		bool again = true;
+		while (again) {
+			again = false;
+
+			std::vector< float > lengths;
+			lengths.reserve(epm_chain.size());
+			lengths.emplace_back(0.0f);
+			for (uint32_t i = 1; i < epm_chain.size(); ++i) {
+				glm::vec3 a = epm.vertices[epm_chain[i-1]].interpolate(model.vertices);
+				glm::vec3 b = epm.vertices[epm_chain[i]].interpolate(model.vertices);
+				lengths.emplace_back(lengths.back() + glm::length(b-a));
+			}
+			if (!(initial_length == initial_length)) initial_length = lengths.back();
+
+			std::unordered_map< uint32_t, uint32_t > visited;
+			visited.reserve(epm.vertices.size());
+
+			uint32_t first_i = (epm_chain[0] == epm_chain.back() ? 1 : 0);
+			for (uint32_t i = first_i; i < epm_chain.size(); ++i) {
+				auto ret = visited.insert(std::make_pair(epm_chain[i], i));
+				if (ret.second) continue;
+
+				uint32_t first = ret.first->second;
+				uint32_t last = i;
+				assert(first < last);
+				assert(epm_chain[first] == epm_chain[last]);
+
+				float length = lengths[last] - lengths[first];
+				float length_outer = (lengths[first] - lengths[0]) + (lengths.back() - lengths[last]);
+
+				
+				if (epm_chain[0] == epm_chain.back() && length_outer < length) {
+					//remove the 'outer' loop -- (last,back] + [0,first)
+					verts_removed += first + (epm_chain.size() - (last + 1));
+					length_removed += length_outer;
+
+					remove_from_epm(0, first);
+					remove_from_epm(last, epm_chain.size()-1);
+					epm_chain.erase(epm_chain.begin() + last + 1, epm_chain.end());
+					epm_chain.erase(epm_chain.begin(), epm_chain.begin() + first);
+					assert(epm_chain[0] == epm_chain.back()); //preserve circularity, right?
+				} else {
+					//remove the inner loop -- (first, last)
+					verts_removed += (last + 1) - (first + 1);
+					length_removed += length;
+
+					remove_from_epm(first, last);
+					epm_chain.erase(epm_chain.begin() + first + 1, epm_chain.begin() + last + 1);
+				}
+				again = true;
+				break;
+			}
+		} //while (again)
+		
+		if (verts_removed) {
+			std::cout << "Removed " << verts_removed << " vertices (that's " << length_removed << " units; " << length_removed / initial_length * 100.0 << "% of the initial length of " << initial_length << " units)." << std::endl;
+		}
+
+	};
+
+	for (auto &epm_chain : left_of_epm) {
+		cleanup_chain(epm_chain, 1);
+	}
+
+	for (auto &epm_chain : right_of_epm) {
+		cleanup_chain(epm_chain, -(1 << 8));
+	}
+
+	//----- end loop cleanup -----
+
+	
+	//build split mesh:
+	std::vector< ak::EmbeddedVertex > split_verts;
+	std::vector< glm::uvec3 > split_tris;
+	std::vector< uint32_t > epm_to_split;
+	epm.split_triangles(model.vertices, model.triangles, &split_verts, &split_tris, &epm_to_split);
+
+
+	//transfer edge values to split mesh:
+	std::unordered_map< glm::uvec2, int32_t > edge_values;
+	for (auto const &se : epm.simplex_edges) {
+		for (auto const &ee : se.second) {
+			uint32_t a = epm_to_split[ee.first];
+			uint32_t b = epm_to_split[ee.second];
+			int32_t value = ee.value.sum;
+			auto ret = edge_values.insert(std::make_pair(glm::uvec2(a,b), value));
+			assert(ret.second);
+
+			ret = edge_values.insert(std::make_pair(glm::uvec2(b,a), -value));
+			assert(ret.second);
+		}
+	}
+	
+	//tag triangles with values:
+	std::unordered_map< glm::uvec2, uint32_t > edge_to_tri;
+	edge_to_tri.reserve(split_tris.size() * 3);
+	for (auto const &tri : split_tris) {
+		uint32_t ti = &tri - &split_tris[0];
+		auto ret = edge_to_tri.insert(std::make_pair(glm::uvec2(tri.x, tri.y), ti)); assert(ret.second);
+		ret = edge_to_tri.insert(std::make_pair(glm::uvec2(tri.y, tri.z), ti)); assert(ret.second);
+		ret = edge_to_tri.insert(std::make_pair(glm::uvec2(tri.z, tri.x), ti)); assert(ret.second);
+	}
+
+	constexpr int32_t const Unvisited = std::numeric_limits< int32_t >::max();
+	std::vector< int32_t > values(split_tris.size(), Unvisited);
+
+	std::vector< bool > keep(split_tris.size(), false);
+
+	for (uint32_t seed = 0; seed < split_tris.size(); ++seed) {
+		if (values[seed] != Unvisited) continue;
+
+		std::vector< uint32_t > component;
+		component.reserve(split_tris.size());
+
+		values[seed] = (128 << 8) | (128);
+		component.emplace_back(seed);
+
+		for (uint32_t ci = 0; ci < component.size(); ++ci) {
+			uint32_t ti = component[ci];
+			uint32_t value = values[ti];
+			assert(value != Unvisited);
+			glm::uvec3 tri = split_tris[ti];
+			auto over = [&](uint32_t a, uint32_t b) {
+				auto f = edge_to_tri.find(glm::uvec2(b,a));
+				if (f == edge_to_tri.end()) return;
+				int32_t nv = value;
+				auto f2 = edge_values.find(glm::uvec2(b,a));
+				if (f2 != edge_values.end()) nv += f2->second;
+
+				if (values[f->second] == Unvisited) {
+					values[f->second] = nv;
+					component.emplace_back(f->second);
+				} else {
+					assert(values[f->second] == nv);
+				}
+			};
+			over(tri.x, tri.y);
+			over(tri.y, tri.z);
+			over(tri.z, tri.x);
+		}
+
+		int32_t max_right = 128;
+		int32_t max_left = 128;
+		for (auto ti : component) {
+			int32_t right = values[ti] >> 8;
+			int32_t left = values[ti] & 0xff;
+			max_right = std::max(max_right, right);
+			max_left = std::max(max_left, left);
+		}
+
+		int32_t keep_value = (max_right << 8) | max_left;
+		for (auto ti : component) {
+			if (values[ti] == keep_value) {
+				keep[ti] = true;
+			}
+		}
+	}
+
+	std::vector< uint32_t > split_vert_to_clipped_vertex(split_verts.size(), -1U);
+	auto use_vertex = [&](uint32_t v) {
+		if (split_vert_to_clipped_vertex[v] == -1U) {
+			assert(v < split_verts.size());
+			split_vert_to_clipped_vertex[v] = clipped_vertices.size();
+			clipped_vertices.emplace_back(split_verts[v]);
+		}
+		return split_vert_to_clipped_vertex[v];
+	};
+
+	for (auto const &tri : split_tris) {
+		if (!keep[&tri - &split_tris[0]]) continue;
+		clipped.triangles.emplace_back(
+			use_vertex(tri.x),
+			use_vertex(tri.y),
+			use_vertex(tri.z)
+		);
+	}
+	clipped.vertices.reserve(clipped_vertices.size());
+	for (auto const &v : clipped_vertices) {
+		clipped.vertices.emplace_back(v.interpolate(model.vertices));
+	}
+
+	std::cout << "Trimmed model from " << model.triangles.size() << " triangles on " << model.vertices.size() << " vertices to " << clipped.triangles.size() << " triangles on " << clipped.vertices.size() << " vertices." << std::endl;
+
 	//transform vertex indices for left_of and right_of vertices -> clipped model:
-	uint32_t lost_verts = 0;
 	auto transform_chain = [&](std::vector< uint32_t > const &epm_chain) {
 		assert(!epm_chain.empty());
 		std::vector< uint32_t > split_chain;
 		split_chain.reserve(epm_chain.size());
-		bool had_gap = false;
 		for (auto v : epm_chain) {
 			assert(v < epm_to_split.size());
 			v = epm_to_split[v];
 			assert(v != -1U);
 			assert(v < split_vert_to_clipped_vertex.size());
 			v = split_vert_to_clipped_vertex[v];
-			if (v == -1U) {
-				//ignore, will compute loss later, I guess
-				++lost_verts;
-				had_gap = true;
-			} else {
-				assert(v != -1U);
-				if (split_chain.empty()) {
-					split_chain.emplace_back(v);
-					had_gap = false;
-				} else if (had_gap) {
-					assert(v == split_chain.back());
-					had_gap = false;
-				} else {
-					assert(v != split_chain.back());
-					split_chain.emplace_back(v);
-				}
-			}
+			assert(v != -1U);
+			split_chain.emplace_back(v);
 		}
 		assert(!split_chain.empty());
 		assert((epm_chain[0] == epm_chain.back()) == (split_chain[0] == split_chain.back()));
 		return split_chain;
 	};
 	if (left_of_vertices_) {
-		lost_verts = 0;
 		left_of_vertices_->clear();
 		left_of_vertices_->reserve(left_of_epm.size());
 		for (auto const &chain : left_of_epm) {
+			//std::cout << "left_of[" << (&chain - &left_of_epm[0]) << "]:"; //DEBUG
 			left_of_vertices_->emplace_back(transform_chain(chain));
-		}
-		if (lost_verts) {
-			std::cout << "WARNING: lost " << lost_verts << " vertices in left_of chains during trimming." << std::endl;
 		}
 	}
 	if (right_of_vertices_) {
-		lost_verts = 0;
 		right_of_vertices_->clear();
 		right_of_vertices_->reserve(right_of_epm.size());
 		for (auto const &chain : right_of_epm) {
+			//std::cout << "right_of[" << (&chain - &right_of_epm[0]) << "]:"; //DEBUG
 			right_of_vertices_->emplace_back(transform_chain(chain));
 		}
-		if (lost_verts) {
-			std::cout << "WARNING: lost " << lost_verts << " vertices in right_of chains during trimming." << std::endl;
-		}
-
 	}
 
-	std::cout << "Trimmed model from " << model.triangles.size() << " triangles on " << model.vertices.size() << " vertices to " << clipped.triangles.size() << " triangles on " << clipped.vertices.size() << " vertices." << std::endl;
 
 }
 
