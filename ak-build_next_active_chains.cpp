@@ -19,7 +19,7 @@ struct OnChainStitch {
 		else return stitch < o.stitch;
 	}
 	bool operator==(OnChainStitch const &o) const {
-		return on == o.on && chain == o.chain && stitch == o.stitch;
+		return on == o.on && chain == o.chain && stitch == o.stitch && type == o.type;
 	}
 	bool operator!=(OnChainStitch const &o) const {
 		return !(*this == o);
