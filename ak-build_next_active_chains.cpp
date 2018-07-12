@@ -6,6 +6,13 @@
 #include <set>
 #include <algorithm>
 
+
+inline std::ostream &operator<<(std::ostream &out, ak::EmbeddedVertex const &ev) {
+	out << "(" << ev.weights.x << ", " << ev.weights.y << ", " << ev.weights.z << ")@[" << int32_t(ev.simplex.x) << ", " << int32_t(ev.simplex.y) << ", " << int32_t(ev.simplex.z) << "]";
+	return out;
+}
+
+
 struct OnChainStitch {
 	enum On : uint8_t { OnNone, OnActive, OnNext } on;
 	uint32_t chain;
@@ -630,7 +637,8 @@ void ak::build_next_active_chains(
 		std::vector< uint32_t > remove_stitches; //indices of stitches to remove in a moment.
 		float length = 0.0f;
 
-		auto append_ev = [&chain,&slice,&length](ak::EmbeddedVertex const &ev) {
+		auto append_ev = [&chain,&slice,&length](ak::EmbeddedVertex const &ev, char const *why) {
+			//std::cout << ev << ": " << why << std::endl; //DEBUG
 			if (!chain.empty()) {
 				assert(ev != chain.back());
 				ak::EmbeddedVertex::common_simplex(chain.back().simplex, ev.simplex); //make sure this works
@@ -657,7 +665,7 @@ void ak::build_next_active_chains(
 			//check_ocs(b); //DEBUG
 			//std::cout << "From " << a << " to " << b << std::endl; //DEBUG
 
-			if (pi == 0) append_ev(a_ev);
+			if (pi == 0) append_ev(a_ev, "first a");
 			else assert(!chain.empty() && chain.back() == a_ev);
 			if (a.type == OnChainStitch::TypeBegin) {
 				assert(pi == 0);
@@ -688,7 +696,7 @@ void ak::build_next_active_chains(
 							assert(is_loop);
 							v = 0;
 						}
-						append_ev(ak::EmbeddedVertex::on_vertex(a_chain[v]));
+						append_ev(ak::EmbeddedVertex::on_vertex(a_chain[v]), "lefts");
 					} while (v != b_left);
 				}
 			} else {
@@ -699,11 +707,11 @@ void ak::build_next_active_chains(
 				assert(ab[0] == a_ev);
 				assert(ab.back() == b_ev);
 				for (uint32_t i = 1; i + 1 < ab.size(); ++i) {
-					append_ev(ab[i]);
+					append_ev(ab[i], "embedded path");
 				}
 			}
 
-			append_ev(b_ev);
+			append_ev(b_ev, "b");
 			if (b.type == OnChainStitch::TypeEnd) {
 				assert(pi + 2 == path.size());
 				assert(b_left == b_chain.size() - 2);

@@ -1,67 +1,14 @@
 TODO List + Notes
 =================
 
-Parameter re-works:
-"Slice Passing"
- instead of re-slicing the original mesh, re-work the functions so that extracting next chains also extracts the slice supporting that chain.
- Bonus: chain vertices become *real mesh vertices* in the slice, so probably some EmbeddedVertex wrangling goes away.
+Slice passing is starting to actually work pretty well.
 
-"Stitch-on-chain"
-- stitches are stored by parameter value along chains (this avoids all the annoying flag-checking code)
+ak-build_next_active_chains will assert() in append_ev when there is a loop with exactly one stitch.
+ --> Not fixing, because earlier code should *not* allow this situation to arise (really broken)
 
+ak-peel_slice will sometimes create a disconnected next chain (one that doesn't contain a time function maximum)
+ --> Should fix by checking that each next chain contains a bind-off location [time function maximum, I guess? could also just tag edges]
+  This will require some changes to level_chains, as well as the time fn being passed to peel_slice.
 
-//The first active chains are along boundaries that are at minimums:
-void find_first_active_chains(
-	Parameters const &parameters,
-	Model const &model, //in: model
-	std::vector< float > const &times,          //in: time field (times @ vertices)
-	std::vector< std::vector< EmbeddedVertex > > *active_chains, //out: all mesh boundaries that contain a minimum
-	std::vector< std::vector< Stitch > > *active_stitches //out: stitch positions on active_chains
-);
-
-
-void peel_slice(
-	Parameters const &parameters,
-	Model const &model,
-	std::vector< std::vector< EmbeddedVertex > > const &active_chains,
-	Model *slice,
-	std::vector< EmbeddedVertex > *slice_on_model,
-	std::vector< std::vector< uint32_t > > *slice_active_chains,
-	std::vector< std::vector< uint32_t > > *slice_next_chains
-);
-
-struct Stitch {
-	float t; //position along chain [0,1)
-	enum Flag : char {
-		Discard,
-		LinkOne,
-		LinkAny,
-	};
-	Flag flag; //what sort of links are allowed to this stitch (or if this stitch is just marked for removal)
-}
-
-void link_chains(
-	Parameters const &parameters,
-	Model const &slice,
-	std::vector< float > const &slice_times,
-	std::vector< std::vector< uint32_t > > const &active_chains,
-	std::vector< std::vector< Stitch > > const &active_stitches,
-	std::vector< std::vector< uint32_t > > const &next_chains,
-	//need this or slice_times (above) std::vector< std::vector< bool > > const &discard_segments,
-	std::vector< std::vector< Stitch > > *next_stitches,
-	std::vector< Link > *links
-);
-
-void build_next_active_chains(
-	Parameters const &parameters,
-	Model const &slice,
-	std::vector< EmbeddedVertex > const &slice_on_model,
-	std::vector< std::vector< uint32_t > > const &active_chains,
-	std::vector< std::vector< Stitch > > const &active_stitches,
-	std::vector< std::vector< uint32_t > > const &next_chains,
-	std::vector< std::vector< Stitch > > const &next_stitches,
-	std::vector< Link > const &links,
-	std::vector< std::vector< EmbeddedVertex > > *next_active_chains, //out: next active chains (on model)
-	std::vector< std::vector< Stitch > > *next_active_stitches
-);
-
+No code yet to actually accumulate stitches and links through the steps. Minimally, build_next_active_chains needs to provide a source (chain,stitch) for each next_active_stitches element.
+Fancier/easier would be to assign a unique ID to each (non-discarded) active/next Stitch and make sure these get tracked.
