@@ -93,9 +93,11 @@ struct Interface : public kit::Mode {
 		ShowLinks            = (1 << 6),
 		ShowNextActiveChains = (1 << 7),
 		ShowRowColGraph      = (1 << 8),
+		ShowTraced           = (1 << 9),
 
 		ShowModelBits = ShowModel | ShowTimesModel | ShowSlice,
 		ShowStepBits = ShowActiveChains | ShowSliceChains | ShowLinks | ShowNextActiveChains,
+		ShowGraphBits = ShowRowColGraph | ShowTraced,
 	};
 	uint32_t show = ShowModel | ShowConstraints | ShowRowColGraph;
 
@@ -255,6 +257,21 @@ struct Interface : public kit::Mode {
 	//driver functions that step through the above:
 	void clear_peeling();
 	bool step_peeling();
+
+	//-------------------------------
+	//tracing:
+
+	std::vector< ak::TracedStitch > traced;
+	void clear_traced();
+	bool traced_dirty = true;
+	void update_traced();
+
+
+	bool traced_tristrip_dirty = true;
+	//traced yarns + stitches: position, normal, color:
+	GLAttribBuffer< glm::vec3, glm::vec3, glm::u8vec4 > traced_tristrip;
+	GLVertexArray traced_tristrip_for_path_draw;
+	void update_traced_tristrip();
 
 
 	//link bottom constraints directly to top constraints (to test linking function)

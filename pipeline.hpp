@@ -332,23 +332,33 @@ void build_next_active_chains(
 
 
 struct TracedStitch {
-	EmbeddedVertex at;
-	uint32_t yarn_id = -1U;
+	uint32_t yarn_in = -1U;
+	//uint32_t yarn_out = -1U;
+	//ins and outs are in CW direction (regardless of stitch 'dir'):
 	uint32_t ins[2] = {-1U, -1U};
-	uint32_t outs[2] = {-1U, -1U};
-	enum Type : uint8_t {
-		None = 0,
+	//uint32_t outs[2] = {-1U, -1U};
+	enum Type : char {
+		None = '\0',
+		Knit = 'k',
+		Tuck = 't',
+		Miss = 'm',
 	} type = None;
+	enum Dir : char {
+		CCW = '+',
+		CW = '-',
+	} dir = CCW;
+
+	//useful for debugging and visualization:
+	uint32_t vertex = -1U; //vertex of rowcolgraph where created
+	glm::vec3 at = glm::vec3(std::numeric_limits< float >::quiet_NaN());
 };
 
 //cycles -> stitches
 
-void trace_stitches(
-	std::vector< EmbeddedVertex > const &vertices, //in: copied to stitches
-	std::vector< glm::uvec2 > const &course_links, //in: ccw-oriented yarn edges
-	std::vector< glm::uvec2 > const &wale_links, //in: early-to-late oriented loop edges
-	std::vector< TracedStitch > *traced
-	//out: list of stitches
+void trace_graph(
+	RowColGraph const &graph, //in: row-column graph
+	std::vector< TracedStitch > *traced, //out:traced list of stitches
+	Model *DEBUG_model = nullptr //in (optional): model; stitches' .at will be set using its vertices
 );
 
 void schedule_stitches(

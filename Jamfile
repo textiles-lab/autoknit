@@ -33,6 +33,7 @@ NAMES =
 	;
 
 AUTOKNIT_NAMES =
+	ak-trace_graph
 	ak-peel_slice-euclidean
 	ak-trim_model
 	ak-embedded_path

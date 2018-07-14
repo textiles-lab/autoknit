@@ -429,6 +429,13 @@ Interface::Interface() {
 		{path_draw->getAttribLocation("Color", GLProgram::MissingIsWarning), next_active_chains_tristrip[2]}
 	});
 
+	traced_tristrip_for_path_draw = GLVertexArray::make_binding(path_draw->program, {
+		{path_draw->getAttribLocation("Position", GLProgram::MissingIsError), traced_tristrip[0]},
+		{path_draw->getAttribLocation("Normal", GLProgram::MissingIsWarning), traced_tristrip[1]},
+		{path_draw->getAttribLocation("Color", GLProgram::MissingIsWarning), traced_tristrip[2]}
+	});
+
+
 
 	GL_ERRORS();
 
@@ -783,6 +790,35 @@ void Interface::draw() {
 		glUseProgram(0);
 	}
 
+	//draw current traced stitches (tracing):
+	if (show & ShowTraced) {
+		if (traced_tristrip_dirty) update_traced_tristrip();
+
+		glm::mat4 p2c = camera.mvp();
+		glm::mat4x3 p2l = camera.mv();
+		glm::mat3 n2l = glm::inverse(glm::transpose(glm::mat3(p2l)));
+
+		glUseProgram(path_draw->program);
+		glBindVertexArray(traced_tristrip_for_path_draw.array);
+
+		glUniformMatrix4fv(path_draw_p2c, 1, GL_FALSE, glm::value_ptr(p2c));
+		glUniformMatrix4x3fv(path_draw_p2l, 1, GL_FALSE, glm::value_ptr(p2l));
+		glUniformMatrix3fv(path_draw_n2l, 1, GL_FALSE, glm::value_ptr(n2l));
+
+		glUniform4f(path_draw_id, 0 / 255.0f, 0 / 255.0f, 0 / 255.0f, 0 / 255.0f);
+
+		//don't draw into ID array:
+		glColorMaski(1, GL_FALSE, GL_FALSE, GL_FALSE, GL_FALSE);
+
+		glDrawArrays(GL_TRIANGLE_STRIP, 0, traced_tristrip.count);
+
+		glColorMaski(1, GL_TRUE, GL_TRUE, GL_TRUE, GL_TRUE);
+
+		glBindVertexArray(0);
+		glUseProgram(0);
+	}
+
+
 	GL_ERRORS();
 
 	//---------------------------------------------------
@@ -908,6 +944,8 @@ void Interface::handle_event(SDL_Event const &evt) {
 			} else {
 				step_peeling();
 			}
+		} else if (evt.key.keysym.scancode == SDL_SCANCODE_T) {
+			update_traced();
 		} else if (evt.key.keysym.scancode == SDL_SCANCODE_C) {
 			if (hovered.cons < constraints.size()) {
 				if (drag == DragNone) {
@@ -1270,6 +1308,24 @@ bool Interface::step_peeling() {
 	}
 
 	return true;
+}
+
+void Interface::clear_traced() {
+	traced.clear();
+
+	traced_dirty = true;
+	traced_tristrip_dirty = true;
+}
+
+void Interface::update_traced() {
+	//I guess just update from current rowcol graph, whatever that may be
+	traced_dirty = false;
+
+	ak::trace_graph(rowcol_graph, &traced, &constrained_model);
+
+	traced_tristrip_dirty = true;
+
+	show |= ShowTraced; //<-- slightly hack-y; should really have UI for this sort of stuff
 }
 
 void Interface::update_model_triangles() {
@@ -1773,6 +1829,22 @@ void Interface::update_next_active_chains_tristrip() {
 		next_active_locations, next_active_stitches,
 		0.01f);
 	next_active_chains_tristrip.set(attribs, GL_STATIC_DRAW);
+}
+
+void Interface::update_traced_tristrip() {
+	traced_tristrip_dirty = false;
+
+	std::vector< GLAttribBuffer< glm::vec3, glm::vec3, glm::u8vec4 >::Vertex > attribs;
+	for (auto const &ts : traced) {
+		if (ts.yarn_in != -1U) {
+			make_tube(&attribs,
+				traced[ts.yarn_in].at, ts.at,
+				0.01f,
+				glm::u8vec4(0xee, 0xbb, 0x55, 0xff));
+		}
+	}
+
+	traced_tristrip.set(attribs, GL_STATIC_DRAW);
 }
 
 

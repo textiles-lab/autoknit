@@ -10,6 +10,9 @@ ak-peel_slice will sometimes create a disconnected next chain (one that doesn't 
  --> Should fix by checking that each next chain contains a bind-off location [time function maximum, I guess? could also just tag edges]
   This will require some changes to level_chains, as well as the time fn being passed to peel_slice.
 
+Need to implement: "if a next course intersects a boundary, the whole boundary is accepted"
+(or we could do something better, but this version would actually avoid a lot of special cases ... albeit special cases that are getting handled properly at the moment)
+(something better might be: add boundary between intersections and active courses)
 
 Balancing still required in ak-link.
 
@@ -18,3 +21,10 @@ DTW nice-to-have in ak-link.
 Still need to write tracing code.
 
 Still need to hook up / test scheduling code (I sort of dread this; I think the re-write started here was "wrong" in some sense that I otherwise don't recall).
+
+
+Linking:
+ - how to filter portions of a cycle that don't link to anything? Possibly by adding to adjacent segments?
+ - how to balance?
+   - First: balance *checking* code
+   - Next: Appendix A's local fixup
