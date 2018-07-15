@@ -267,6 +267,10 @@ struct Interface : public kit::Mode {
 	void update_traced();
 
 
+	std::string save_traced_file = ""; //if not "", will save traced stitches to this file after every change
+	void save_traced();
+
+
 	bool traced_tristrip_dirty = true;
 	//traced yarns + stitches: position, normal, color:
 	GLAttribBuffer< glm::vec3, glm::vec3, glm::u8vec4 > traced_tristrip;

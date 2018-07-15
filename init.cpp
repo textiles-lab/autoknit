@@ -19,6 +19,7 @@ std::shared_ptr< kit::Mode > kit_mode() {
 	std::string load_constraints_file = "";
 	std::string save_constraints_file = "";
 	std::string constraints_file = "";
+	std::string save_traced_file = "";
 	uint32_t peel_test = 0;
 	uint32_t peel_step = 0;
 	ak::Parameters parameters;
@@ -29,6 +30,7 @@ std::shared_ptr< kit::Mode > kit_mode() {
 		args.emplace_back("load-constraints", &load_constraints_file, "file to load time constraints from");
 		args.emplace_back("save-constraints", &save_constraints_file, "file to save time constraints to");
 		args.emplace_back("constraints", &constraints_file, "try to load constraints from the named file, and definitely save them to it (load_constraints_file or save_constraints_file will override)");
+		args.emplace_back("save-traced", &save_traced_file, "save traced stitches to this file");
 		args.emplace_back("stitch-width", &parameters.stitch_width_mm, "stitch width (mm)");
 		args.emplace_back("stitch-height", &parameters.stitch_height_mm, "stitch height (mm)");
 		args.emplace_back("peel-test", &peel_test, "run N rounds of peeling then quit");
@@ -95,6 +97,7 @@ std::shared_ptr< kit::Mode > kit_mode() {
 		}
 	}
 
+	interface->save_traced_file = save_traced_file;
 
 	return interface;
 }

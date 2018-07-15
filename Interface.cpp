@@ -1,5 +1,7 @@
 #include "Interface.hpp"
 
+#include "Stitch.hpp"
+
 #include <kit/GLProgram.hpp>
 #include <kit/GLTexture.hpp>
 #include <kit/Load.hpp>
@@ -1323,10 +1325,34 @@ void Interface::update_traced() {
 
 	ak::trace_graph(rowcol_graph, &traced, &constrained_model);
 
+	save_traced();
+
 	traced_tristrip_dirty = true;
 
 	show |= ShowTraced; //<-- slightly hack-y; should really have UI for this sort of stuff
 }
+
+
+void Interface::save_traced() {
+	if (save_traced_file == "") return;
+	std::cout << "Saving traced stitches to '" << save_traced_file << "'." << std::endl;
+	std::vector< Stitch > stitches;
+	stitches.reserve(traced.size());
+	for (auto const &ts : traced) {
+		stitches.emplace_back();
+		stitches.back().yarn = ts.yarn;
+		stitches.back().type = ts.type;
+		stitches.back().direction = ts.dir;
+		stitches.back().in[0] = ts.ins[0];
+		stitches.back().in[1] = ts.ins[1];
+		stitches.back().out[0] = ts.outs[0];
+		stitches.back().out[1] = ts.outs[1];
+		stitches.back().at = ts.at;
+	}
+
+	save_stitches(save_traced_file, stitches);
+}
+
 
 void Interface::update_model_triangles() {
 	model_triangles_dirty = false;
@@ -1835,13 +1861,12 @@ void Interface::update_traced_tristrip() {
 	traced_tristrip_dirty = false;
 
 	std::vector< GLAttribBuffer< glm::vec3, glm::vec3, glm::u8vec4 >::Vertex > attribs;
-	for (auto const &ts : traced) {
-		if (ts.yarn_in != -1U) {
-			make_tube(&attribs,
-				traced[ts.yarn_in].at, ts.at,
-				0.01f,
-				glm::u8vec4(0xee, 0xbb, 0x55, 0xff));
-		}
+	for (uint32_t ti = 1; ti < traced.size(); ++ti) {
+		if (traced[ti].yarn != traced[ti-1].yarn) continue;
+		make_tube(&attribs,
+			traced[ti-1].at, traced[ti].at,
+			0.01f,
+			glm::u8vec4(0xee, 0xbb, 0x55, 0xff));
 	}
 
 	traced_tristrip.set(attribs, GL_STATIC_DRAW);

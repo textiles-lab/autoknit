@@ -74,4 +74,4 @@ LINKLIBS on interface = $(LINKLIBS) ;
 LINKLIBS on interface += $(LIBGEODESIC_LIBS) ;
 
 MyObjects $(AUTOKNIT_NAMES:S=.cpp) ;
-MyMainFromObjects interface : $(AUTOKNIT_NAMES:S=$(SUFOBJ)) $(KIT_OBJECTS) $(LIBGEODESIC_OBJECTS) ;
+MyMainFromObjects interface : $(AUTOKNIT_NAMES:S=$(SUFOBJ)) $(KIT_OBJECTS) Stitch$(SUFOBJ) ;

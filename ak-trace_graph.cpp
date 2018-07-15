@@ -97,33 +97,77 @@ void ak::trace_graph(
 		}
 	}
 
+	//------ actual tracing --------
+
+	constexpr ak::TracedStitch::Dir Forward = ak::TracedStitch::CCW;
+	constexpr ak::TracedStitch::Dir Backward = ak::TracedStitch::CW;
+
+	uint32_t fresh_yarn_id = 0;
+
 	auto trace_yarn = [&]() -> bool {
 		uint32_t at = -1U;
-		constexpr ak::TracedStitch::Dir Forward = ak::TracedStitch::CCW;
-		constexpr ak::TracedStitch::Dir Backward = ak::TracedStitch::CW;
 		ak::TracedStitch::Dir dir = Forward;
 
 		uint32_t prev_stitch = -1U;
+		uint32_t yarn = fresh_yarn_id++;
 	
 		//move to 'next' and make a stitch there:
 		auto make_stitch = [&](uint32_t next, ak::TracedStitch::Type type) {
+
+			//DEBUG:
+			std::cout << "Make " << char(type) << " at " << next; std::cout.flush(); //DEBUG
+
 			at = next;
 
 			assert(row_pending[info[at].row] == 0);
 			assert(type != ak::TracedStitch::Knit || info[at].knits < 2);
 
+			//some type lawyering:
+			ak::TracedStitch::Type fancy_type;
+			if (type == ak::TracedStitch::Knit) {
+				if (info[at].last_stitch == -1U) {
+					if (vertices[at].col_in[0] == -1U && vertices[at].col_in[1] == -1U) {
+						fancy_type = ak::TracedStitch::Start;
+					} else if (vertices[at].col_in[0] != -1U && vertices[at].col_in[1] != -1U) {
+						fancy_type = ak::TracedStitch::Decrease;
+					} else {
+						fancy_type = type;
+					}
+				} else {
+					assert(info[at].knits == 1);
+					if (vertices[at].col_out[0] == -1U && vertices[at].col_out[1] == -1U) {
+						fancy_type = ak::TracedStitch::End;
+					} else if (vertices[at].col_out[0] != -1U && vertices[at].col_out[1] != -1U) {
+						fancy_type = ak::TracedStitch::Increase;
+					} else {
+						fancy_type = type;
+					}
+				}
+			} else { //tuck/miss
+				assert(type == ak::TracedStitch::Tuck || type == ak::TracedStitch::Miss);
+				assert(info[at].last_stitch != -1U);
+				ak::TracedStitch::Type last_type = traced[info[at].last_stitch].type;
+				assert(last_type != ak::TracedStitch::Increase);
+				fancy_type = type;
+			}
+			std::cout << " (became " << char(fancy_type) << ")" << std::endl; //DEBUG
+
 			//build stitch:
 			TracedStitch ts;
-			ts.yarn_in = prev_stitch;
+			ts.yarn = yarn;
 			if (info[at].last_stitch != -1U) {
 				ts.ins[0] = info[at].last_stitch;
 			} else {
 				if (vertices[at].col_in[0] != -1U) ts.ins[0] = info[vertices[at].col_in[0]].last_stitch;
 				if (vertices[at].col_in[1] != -1U) ts.ins[1] = info[vertices[at].col_in[1]].last_stitch;
+				if (dir == Backward && ts.ins[0] != -1U && ts.ins[1] != -1U) {
+					std::swap(ts.ins[0], ts.ins[1]);
+				}
 			}
-			ts.type = type;
+			ts.type = fancy_type;
 			ts.dir = dir;
 			ts.vertex = at;
+
 
 			//update info:
 			if (type == ak::TracedStitch::Knit) {
@@ -195,7 +239,7 @@ void ak::trace_graph(
 			//'covered' == vertex v already has stitches on successors
 			assert(v < vertices.size());
 			for (auto n : vertices[v].col_out) {
-				if (n != -1U && info[n].last_stitch) return true;
+				if (n != -1U && info[n].knits != 0) return true;
 			}
 			return false;
 		};
@@ -227,6 +271,21 @@ void ak::trace_graph(
 			if (next != -1U && is_covered(next)) {
 				next = -1U;
 				std::cout << "NOTE: not tucking because neighbor is covered." << std::endl;
+			}
+
+			if (next != -1U && info[next].knits == 2 && vertices[next].col_out[0] != -1U && vertices[next].col_out[1] != -1U) {
+				next = get_prev_child(next);
+				std::cout << "NOTE: tucking on child of next because of increase." << std::endl;
+			}
+
+			if (next != -1U && info[next].last_stitch != -1U && traced[info[next].last_stitch].type == ak::TracedStitch::End) {
+				std::cout << "NOTE: not tucking on next because it is an end." << std::endl;
+				next = -1U;
+			}
+
+
+			if (next != -1U) {
+				std::cout << "  TUCKING[2] at " << next << " which has " << info[next].knits << " knits." << std::endl;
 			}
 
 			//tuck 'next', turn, knit 'up':
@@ -276,6 +335,21 @@ void ak::trace_graph(
 				std::cout << "NOTE: not tucking in rule4 because down_next is covered." << std::endl;
 				down_next = -1U;
 			}
+
+			if (down_next != -1U && info[down_next].knits == 2 && vertices[down_next].col_out[0] != -1U && vertices[down_next].col_out[1] != -1U) {
+				down_next = get_prev_child(down_next);
+				std::cout << "NOTE: tucking on child of down_next because of increase." << std::endl;
+			}
+			if (down_next != -1U && info[down_next].last_stitch != -1U && traced[info[down_next].last_stitch].type == ak::TracedStitch::End) {
+				std::cout << "NOTE: not tucking on down_next because it is an end." << std::endl;
+				down_next = -1U;
+			}
+
+			if (down_next != -1U) {
+				std::cout << "  TUCKING[4] at " << down_next << " which has " << info[down_next].knits << " knits and outs " << int32_t(vertices[down_next].col_out[0]) << " and " << int32_t(vertices[down_next].col_out[1]) << std::endl;
+			}
+
+
 		
 			uint32_t here = at; //because tuck() / miss() will change 'at'
 			if (down_next != -1U) tuck(down_next);
@@ -331,7 +405,37 @@ void ak::trace_graph(
 	while (trace_yarn()) { /*spin */ }
 
 	//fix up the 'out' pointers from the 'in' pointers:
-	//Or just ignore the notion of 'outs' altogether(!!)
+	auto add_out = [&traced](uint32_t ti, uint32_t b) {
+		assert(ti < traced.size());
+		if (traced[ti].outs[0] == -1U) {
+			traced[ti].outs[0] = b;
+		} else if (traced[ti].outs[1] == -1U) {
+			traced[ti].outs[1] = b;
+		} else {
+			assert(traced[ti].outs[0] == -1U || traced[ti].outs[1] == -1U); //gotta have some room!
+		}
+	};
+	for (auto const &ts : traced) {
+		uint32_t ti = &ts - &traced[0];
+		if (ts.ins[0] != -1U) add_out(ts.ins[0], ti);
+		if (ts.ins[1] != -1U) add_out(ts.ins[1], ti);
+	}
+	
+	//sort outs using the handy 'vertex' field:
+	for (auto &ts : traced) {
+		if (ts.outs[0] != -1U && ts.outs[1] != -1U) {
+			if (vertices[ts.vertex].col_out[0] == traced[ts.outs[1]].vertex
+			 && vertices[ts.vertex].col_out[1] == traced[ts.outs[0]].vertex) {
+				std::swap(ts.outs[0], ts.outs[1]);
+			}
+			assert( vertices[ts.vertex].col_out[0] == traced[ts.outs[0]].vertex
+			     && vertices[ts.vertex].col_out[1] == traced[ts.outs[1]].vertex );
+
+			if (ts.dir == Backward) {
+				std::swap(ts.outs[0], ts.outs[1]);
+			}
+		}
+	}
 
 
 	//set stitch 'at' using model vertex positions:

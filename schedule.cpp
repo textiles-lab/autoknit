@@ -496,6 +496,7 @@ int main(int argc, char **argv) {
 							inter_to_out[f->second.index] = t->second.index;
 						}
 					} else {
+						std::cout << "What is '" << stitch.type << "'?" << std::endl; //DEBUG
 						assert(0 && "Unsupported stitch type.");
 					}
 				}
