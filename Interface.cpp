@@ -1860,13 +1860,51 @@ void Interface::update_next_active_chains_tristrip() {
 void Interface::update_traced_tristrip() {
 	traced_tristrip_dirty = false;
 
+	static std::vector< glm::u8vec4 > yarn_colors{
+		glm::u8vec4(0xee, 0xbb, 0x55, 0xff),
+		glm::u8vec4(0xbb, 0x55, 0xee, 0xff),
+		glm::u8vec4(0x55, 0xee, 0xbb, 0xff),
+		glm::u8vec4(0xbb, 0xee, 0x55, 0xff),
+		glm::u8vec4(0x55, 0xbb, 0xee, 0xff),
+		glm::u8vec4(0xee, 0x55, 0xbb, 0xff)
+	};
+
+	uint32_t yarn_color = 0;
 	std::vector< GLAttribBuffer< glm::vec3, glm::vec3, glm::u8vec4 >::Vertex > attribs;
 	for (uint32_t ti = 1; ti < traced.size(); ++ti) {
-		if (traced[ti].yarn != traced[ti-1].yarn) continue;
+		if (traced[ti].yarn != traced[ti-1].yarn) {
+			yarn_color = (yarn_color + 1) % yarn_colors.size();
+			continue;
+		}
 		make_tube(&attribs,
 			traced[ti-1].at, traced[ti].at,
 			0.01f,
-			glm::u8vec4(0xee, 0xbb, 0x55, 0xff));
+			yarn_colors[yarn_color]);
+	}
+	for (uint32_t ti = 0; ti < traced.size(); ++ti) {
+		glm::vec3 const &at = traced[ti].at;
+		if (traced[ti].ins[0] != -1U && traced[ti].ins[1] != -1U) {
+			glm::vec3 const &in0 = traced[traced[ti].ins[0]].at;
+			glm::vec3 const &in1 = traced[traced[ti].ins[1]].at;
+			make_tube(&attribs, 0.5f * (at + in0), at, 0.005f, glm::u8vec4(0x55, 0x55, 0x55, 0xff));
+			make_tube(&attribs, 0.5f * (at + in1), at, 0.005f, glm::u8vec4(0xcc, 0xcc, 0xcc, 0xff));
+		}
+		if (traced[ti].outs[0] != -1U && traced[ti].outs[1] != -1U) {
+			glm::vec3 const &out0 = traced[traced[ti].outs[0]].at;
+			glm::vec3 const &out1 = traced[traced[ti].outs[1]].at;
+			make_tube(&attribs,at, 0.5f * (at + out0), 0.005f, glm::u8vec4(0x44, 0x44, 0x44, 0xff));
+			make_tube(&attribs,at, 0.5f * (at + out1), 0.005f, glm::u8vec4(0xbb, 0xbb, 0xbb, 0xff));
+		}
+		if (traced[ti].ins[0] != -1U && traced[ti].ins[1] == -1U) {
+			glm::vec3 const &in0 = traced[traced[ti].ins[0]].at;
+			make_tube(&attribs, 0.5f * (at + in0), at, 0.005f, glm::u8vec4(0x88, 0x88, 0x88, 0xff));
+		}
+		if (traced[ti].outs[0] != -1U && traced[ti].outs[1] == -1U) {
+			glm::vec3 const &out0 = traced[traced[ti].outs[0]].at;
+			make_tube(&attribs, at, 0.5f * (at + out0), 0.005f, glm::u8vec4(0x77, 0x77, 0x77, 0xff));
+		}
+		assert(!(traced[ti].ins[0] == -1U && traced[ti].ins[1] != -1U));
+		assert(!(traced[ti].outs[0] == -1U && traced[ti].outs[1] != -1U));
 	}
 
 	traced_tristrip.set(attribs, GL_STATIC_DRAW);

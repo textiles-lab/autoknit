@@ -119,7 +119,7 @@ void ak::trace_graph(
 
 			at = next;
 
-			assert(row_pending[info[at].row] == 0);
+			assert(type != ak::TracedStitch::Knit || row_pending[info[at].row] == 0); //tuck on next row sometimes
 			assert(type != ak::TracedStitch::Knit || info[at].knits < 2);
 
 			//some type lawyering:
@@ -134,7 +134,7 @@ void ak::trace_graph(
 						fancy_type = type;
 					}
 				} else {
-					assert(info[at].knits == 1);
+					assert(info[at].knits <= 1); //could be a miss/tuck before as well
 					if (vertices[at].col_out[0] == -1U && vertices[at].col_out[1] == -1U) {
 						fancy_type = ak::TracedStitch::End;
 					} else if (vertices[at].col_out[0] != -1U && vertices[at].col_out[1] != -1U) {
@@ -145,9 +145,17 @@ void ak::trace_graph(
 				}
 			} else { //tuck/miss
 				assert(type == ak::TracedStitch::Tuck || type == ak::TracedStitch::Miss);
-				assert(info[at].last_stitch != -1U);
-				ak::TracedStitch::Type last_type = traced[info[at].last_stitch].type;
-				assert(last_type != ak::TracedStitch::Increase);
+				if (info[at].last_stitch == -1U) {
+					//make sure there was a previous stitch that was an increase:
+					assert(vertices[at].col_in[0] != -1U && vertices[at].col_in[1] == -1U);
+					assert(vertices[at].col_in[0] < vertices.size());
+					assert(vertices[vertices[at].col_in[0]].col_out[0] != -1U && vertices[vertices[at].col_in[0]].col_out[1] != -1U);
+					assert(vertices[at].col_in[0] < info.size());
+					assert(info[vertices[at].col_in[0]].last_stitch != -1U);
+				} else {
+					ak::TracedStitch::Type last_type = traced[info[at].last_stitch].type;
+					assert(last_type != ak::TracedStitch::Increase);
+				}
 				fancy_type = type;
 			}
 			std::cout << " (became " << char(fancy_type) << ")" << std::endl; //DEBUG
