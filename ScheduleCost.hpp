@@ -3,6 +3,7 @@
 #include "Shape.hpp"
 
 #include <vector>
+#include <iostream>
 
 struct ScheduleCost {
 	uint32_t shape = 0; //for awkwardly-oriented cycles
@@ -48,3 +49,8 @@ struct ScheduleCost {
 		return m;
 	}
 };
+
+inline std::ostream &operator<<(std::ostream &out, ScheduleCost const &cost) {
+	out << cost.shape << "-" << cost.roll << "-" << cost.shift;
+	return out;
+}

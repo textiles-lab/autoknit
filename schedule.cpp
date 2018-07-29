@@ -1207,10 +1207,36 @@ int main(int argc, char **argv) {
 		assert(node_options.size() == nodes.size());
 		for (uint32_t n = 0; n < nodes.size(); ++n) {
 			assert(node_steps[n] < steps.size());
-			std::cout << "Step " << node_steps[n] << " gets option " << node_options[n] << " of " << nodes[n].options.size() << std::endl;
+			std::cout << "Step " << node_steps[n] << " gets option " << node_options[n] << " of " << nodes[n].options.size() << " for cost " << nodes[n].options[node_options[n]].cost << std::endl;
 			assert(node_options[n] < steps[node_steps[n]].options.size());
 			assert(nodes[n].options.size() == steps[node_steps[n]].options.size());
 			step_options[node_steps[n]] = node_options[n];
+		}
+		for (auto const &e : edges) {
+			std::cout << "Edge " << (&e - &edges[0]) << " from " << e.from << " to " << e.to << " ends up with cost "; std::cout.flush();
+			uint32_t from_shape = -1U;
+			auto const &from_option = nodes[e.from].options[node_options[e.from]];
+			for (uint32_t out = 0; out < from_option.out_order.size(); ++out) {
+				if (from_option.out_order[out] == (&e - &edges[0])) {
+					assert(from_shape == -1U);
+					from_shape = from_option.out_shapes[out];
+				}
+			}
+			uint32_t to_shape = -1U;
+			auto const &to_option = nodes[e.to].options[node_options[e.to]];
+			for (uint32_t in = 0; in < to_option.in_order.size(); ++in) {
+				if (to_option.in_order[in] == (&e - &edges[0])) {
+					assert(to_shape == -1U);
+					to_shape = to_option.in_shapes[in];
+				}
+			}
+			assert(from_shape != -1U);
+			assert(to_shape != -1U);
+
+			assert(from_shape < e.from_shapes);
+			assert(to_shape < e.to_shapes);
+			std::cout << e.costs[from_shape * e.to_shapes + to_shape] << std::endl;
+
 		}
 
 		//assign storage positions:
@@ -1320,15 +1346,20 @@ int main(int argc, char **argv) {
 		//record shapes:
 		std::vector< PackedShape > storage_shapes(storages.size(), -1U);
 		for (uint32_t si = 0; si < steps.size(); ++si) {
+			std::cout << "Step " << si << " option " << step_options[si] << " says "; //DEBUG
 			assert(step_options[si] < steps[si].options.size());
 			auto const &option = steps[si].options[step_options[si]];
 			for (uint32_t in = 0; in < steps[si].in.size(); ++in) {
+				std::cout << " i" << steps[si].in[in] << "=" << option.in_shapes[in]; std::cout.flush(); //DEBUG
+				assert(storage_shapes[steps[si].in[in]] != -1U);
 				assert(storage_shapes[steps[si].in[in]] == option.in_shapes[in]);
 			}
 			for (uint32_t out = 0; out < steps[si].out.size(); ++out) {
+				std::cout << " o" << steps[si].out[out] << "=" << option.out_shapes[out]; //DEBUG
 				assert(storage_shapes[steps[si].out[out]] == -1U);
 				storage_shapes[steps[si].out[out]] = option.out_shapes[out];
 			}
+			std::cout << std::endl; //DEBUG
 			//PARANOIA: check order vs storage positions:
 			for (uint32_t i = 1; i < option.in_order.size(); ++i) {
 				assert(option.in_order[i-1] < steps[si].in.size());

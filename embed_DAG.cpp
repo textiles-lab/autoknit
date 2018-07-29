@@ -213,9 +213,15 @@ bool embed_DAG(
 				next.to_shape[e] = option.in_shapes[i];
 				if (next.from_shape[e] != -1U) {
 					//add cost from edge if edge got completed:
-					next_cost += edges[e].costs[next.from_shape[e] * edges[e].to_shapes + next.to_shape[e]];
+					auto const &edge_cost = edges[e].costs[next.from_shape[e] * edges[e].to_shapes + next.to_shape[e]];
+					if (edge_cost == DAGCost::max()) {
+						bad = true;
+						break;
+					}
+					next_cost += edge_cost;
 				}
 			}
+			if (bad) continue;
 
 			for (uint32_t o = 0; o < option.out_order.size(); ++o) {
 				uint32_t e = option.out_order[o];
@@ -223,9 +229,15 @@ bool embed_DAG(
 				next.from_shape[e] = option.out_shapes[o];
 				if (next.to_shape[e] != -1U) {
 					//add cost from edge if edge got completed:
-					next_cost += edges[e].costs[next.from_shape[e] * edges[e].to_shapes + next.to_shape[e]];
+					auto const &edge_cost = edges[e].costs[next.from_shape[e] * edges[e].to_shapes + next.to_shape[e]];
+					if (edge_cost == DAGCost::max()) {
+						bad = true;
+						break;
+					}
+					next_cost += edge_cost;
 				}
 			}
+			if (bad) continue;
 
 
 			queue_state(next, next_cost);
@@ -244,7 +256,7 @@ bool embed_DAG(
 		for (uint32_t a = 0; a < edges.size(); ++a) {
 			for (uint32_t b = 0; b < edges.size(); ++b) {
 				//break ordering ties in an arbitrary way:
-				if (!left_of[a * edges.size() + b] && !left_of[b * edges.size() + a]) {
+				if (a != b && (!left_of[a * edges.size() + b] && !left_of[b * edges.size() + a])) {
 					bool ret = add_left_of(left_of, a, b);
 					assert(ret);
 				}
@@ -260,10 +272,10 @@ bool embed_DAG(
 			edge_positions->reserve(edges.size());
 		}
 		for (uint32_t a = 0; a < edges.size(); ++a) {
-			int32_t pos = 0;
+			int32_t pos = edges.size();
 			for (uint32_t b = 0; b < edges.size(); ++b) {
 				if (left_of[a * edges.size() + b]) {
-					pos += 1;
+					pos -= 1;
 				}
 			}
 			if (edge_positions) {
@@ -287,6 +299,8 @@ bool embed_DAG(
 		queue_state(start, DAGCost::zero());
 	}
 
+	uint32_t step = 0;
+
 	while (!to_expand.empty()) {
 		std::pop_heap(to_expand.begin(), to_expand.end(), CompareCost);
 		DAGCost cost = to_expand.back().first;
@@ -298,11 +312,13 @@ bool embed_DAG(
 		if (cost == f->second) {
 			auto res = expanded.insert(state);
 			assert(res.second);
-			//DEBUG:
-			std::cout << expanded.size() << "/" << visited.size() << "/" << to_expand.size() << "   ";
-			std::cout << "[" << state.step << "]";
-			for (auto s : state.selected) std::cout << ' ' << (s == -1U ? std::string(".") : std::to_string(s));
-			std::cout << std::endl;
+			if ((++step) % 10000 == 0) {
+				//DEBUG:
+				std::cout << expanded.size() << "/" << visited.size() << "/" << to_expand.size() << "   ";
+				std::cout << "[" << state.step << "]";
+				for (auto s : state.selected) std::cout << ' ' << (s == -1U ? std::string(".") : std::to_string(s));
+				std::cout << std::endl;
+			}
 
 			if (state.step < select_order.size()) {
 				expand_state(state, cost);
