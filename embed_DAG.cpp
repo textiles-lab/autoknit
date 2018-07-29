@@ -239,7 +239,7 @@ bool embed_DAG(
 		if (node_options) {
 			*node_options = state.selected;
 		}
-		//TODO: node_positions, edge_positions
+		//come up with a total ordering:
 		std::vector< bool > left_of = state.left_of;
 		for (uint32_t a = 0; a < edges.size(); ++a) {
 			for (uint32_t b = 0; b < edges.size(); ++b) {
@@ -250,7 +250,31 @@ bool embed_DAG(
 				}
 			}
 		}
-		//Still TODO: node_positions, edge_positions
+		//store edge and node positions (easy to compute from total order):
+		if (node_positions) {
+			node_positions->assign(nodes.size(), std::numeric_limits< int32_t >::max());
+			node_positions->reserve(nodes.size());
+		}
+		if (edge_positions) {
+			edge_positions->clear();
+			edge_positions->reserve(edges.size());
+		}
+		for (uint32_t a = 0; a < edges.size(); ++a) {
+			int32_t pos = 0;
+			for (uint32_t b = 0; b < edges.size(); ++b) {
+				if (left_of[a * edges.size() + b]) {
+					pos += 1;
+				}
+			}
+			if (edge_positions) {
+				edge_positions->emplace_back(pos);
+			}
+			if (node_positions) {
+				if (edges[a].from != -1U) (*node_positions)[edges[a].from] = std::min((*node_positions)[edges[a].from], pos);
+				if (edges[a].to != -1U) (*node_positions)[edges[a].to] = std::min((*node_positions)[edges[a].to], pos);
+			}
+		}
+
 	};
 
 	{

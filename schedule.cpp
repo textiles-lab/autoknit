@@ -963,7 +963,6 @@ int main(int argc, char **argv) {
 	std::cout << "(done)" << std::endl;
 
 
-#if 0
 	//Figure out possible shapes for storages near *boring* steps:
 	std::cout << "Figuring out shapes for boring steps:" << std::endl; //DEBUG
 	for (auto &step : steps) {
@@ -1025,15 +1024,13 @@ int main(int argc, char **argv) {
 						step.inter_to_out
 					);
 
-					//TEST: how much time is being taken just copying options around?
-					//step.options.emplace_back(option);
+					step.options.emplace_back(option);
 				}
 			}
 
 		}
 		std::cout << "steps[" << (&step - &steps[0]) << "] had " << step.options.size() << " scheduling options." << std::endl;
 	}
-#endif
 
 	//---------------------
 	{ //Next up: do upward-planar embedding.
@@ -1046,66 +1043,20 @@ int main(int argc, char **argv) {
 
 		std::map< uint32_t, DAGEdgeIndex > active_edges; //maps from storages to edges currently in progress
 
+		std::vector< uint32_t > node_steps;
+
+		//dag edges corresponding to each step's ins/outs:
+		std::vector< std::vector< DAGEdgeIndex > > step_in_edges;
+		std::vector< std::vector< DAGEdgeIndex > > step_out_edges;
+		step_in_edges.reserve(steps.size());
+		step_out_edges.reserve(steps.size());
+
 		std::cout << "Building DAG "; std::cout.flush();
-		for (auto &step : steps) {
+		for (auto const &step : steps) {
 			std::cout << "."; std::cout.flush();
-			if (step.in.size() == 0 && step.out.size() == 1) {
-				//Start step; build a DAGNode with limited options:
-
-				auto ret = active_edges.insert(std::make_pair(step.out[0], edges.size()));
-				assert(ret.second);
-
-				edges.emplace_back();
-				DAGEdge &edge = edges.back();
-				edge.from = nodes.size();
-				edge.from_shapes = 1;
-				edge.to = step.out[0];
-				edge.to_shapes = Shape::count_shapes_for(storages[step.out[0]].size());
-				edge.costs.resize(edge.from_shapes * edge.to_shapes);
-				//TODO: start costs with shape penalties or something?
-
-				nodes.emplace_back();
-				DAGNode &node = nodes.back();
-				node.options.emplace_back();
-				DAGOption &option = node.options.back();
-				option.in_order = {};
-				option.in_shapes = {};
-				option.out_order = {DAGEdgeIndex(&edge - &edges[0])};
-				option.out_shapes = {0};
-
-			} else if (step.in.size() == 1 && step.out.size() == 0) {
-				//End step; finish up a DAGEdge:
-				auto f = active_edges.find(step.in[0]);
-				assert(f != active_edges.end());
-				assert(f->second < edges.size());
-				DAGEdge &edge = edges[f->second];
-				assert(edge.to == step.in[0]);
-				active_edges.erase(f);
-
-				std::vector< DAGCost > old_costs = std::move(edge.costs);
-				uint32_t old_to_shapes = edge.to_shapes;
-				assert(old_costs.size() == old_to_shapes * edge.from_shapes);
-
-				//pick cheapest to shape for each from shape:
-				edge.to = nodes.size();
-				edge.to_shapes = 1;
-				edge.costs.resize(edge.from_shapes, ScheduleCost::max());
-				for (uint32_t f = 0; f < edge.from_shapes; ++f) {
-					for (uint32_t t = 0; t < old_to_shapes; ++t) {
-						edge.costs[f] = std::min(edge.costs[f], old_costs[f * old_to_shapes + t]);
-					}
-				}
-
-				nodes.emplace_back();
-				DAGNode &node = nodes.back();
-				node.options.emplace_back();
-				DAGOption &option = node.options.back();
-				option.in_order = {DAGEdgeIndex(&edge - &edges[0])};
-				option.in_shapes = {0};
-				option.out_order = {};
-				option.out_shapes = {};
-
-			} else if (step.in.size() == 1 && step.out.size() == 1) {
+			step_in_edges.emplace_back();
+			step_out_edges.emplace_back();
+			if (step.in.size() == 1 && step.out.size() == 1) {
 				//1-1 step; accumulate DAGEdge cost matrix:
 				auto f = active_edges.find(step.in[0]);
 				assert(f != active_edges.end());
@@ -1121,25 +1072,37 @@ int main(int argc, char **argv) {
 				edge.to = step.out[0];
 				edge.to_shapes = Shape::count_shapes_for(storages[step.out[0]].size());
 				edge.costs.resize(edge.from_shapes * edge.to_shapes, ScheduleCost::max());
-				for (uint32_t f = 0; f < edge.from_shapes; ++f) {
-					for (uint32_t t = 0; t < edge.to_shapes; ++t) {
-						DAGCost &cost = edge.costs[f * edge.to_shapes + t];
-						for (uint32_t i = 0; i < old_to_shapes; ++i) {
-							cost = std::min(
-								cost,
-								(i == t ? old_costs[f * old_to_shapes + i] : DAGCost::max()) //HACK! disregard transition costs like crazy.
-								/* TODO: + step.cost[i * old_to_shapes + t] */
-							);
+
+				//accumulate step costs into edge costs:
+				for (auto const &option : step.options) {
+					assert(option.in_order.size() == 1);
+					assert(option.in_shapes.size() == 1);
+					assert(option.out_order.size() == 1);
+					assert(option.out_shapes.size() == 1);
+
+					uint32_t in_shape = Shape::unpack(option.in_shapes[0]).index_for(storages[step.in[0]].size());
+					uint32_t out_shape = Shape::unpack(option.out_shapes[0]).index_for(storages[step.out[0]].size());
+
+					for (uint32_t f = 0; f < edge.from_shapes; ++f) {
+						DAGCost &cost = edge.costs[f * edge.to_shapes + out_shape];
+						DAGCost test = old_costs[f * old_to_shapes + in_shape];
+						if (!(test == DAGCost::max())) {
+							test += option.cost;
+							cost = std::min(cost, test);
 						}
 					}
 				}
 
+				//step is <within> this edge:
+				step_in_edges.back().emplace_back(&edge - &edges[0]);
+				step_out_edges.back().emplace_back(&edge - &edges[0]);
+
 				auto ret = active_edges.insert(std::make_pair(step.out[0], &edge - &edges[0]));
 				assert(ret.second);
-
-			} else { assert(!(step.in.size() <= 1 && step.out.size() <= 1));
+			} else { assert(step.in.size() != 1 || step.out.size() != 1);
 				//Exciting step; build a DAGNode, consume some DAGEdges, start some DAGEdges.
 
+				node_steps.emplace_back(&step - &steps[0]);
 				nodes.emplace_back();
 				DAGNode &node = nodes.back();
 
@@ -1177,6 +1140,9 @@ int main(int argc, char **argv) {
 						edge.costs[i * edge.to_shapes + i] = ScheduleCost::zero();
 					}
 				}
+
+				step_in_edges.back() = in_edges;
+				step_out_edges.back() = out_edges;
 
 				//PARANOIA: no duplicate in_edges or out_edges, right?
 				assert(std::set< uint32_t >(in_edges.begin(), in_edges.end()).size() == in_edges.size());
@@ -1220,6 +1186,8 @@ int main(int argc, char **argv) {
 		} //for(steps)
 		std::cout << " done." << std::endl;
 
+		assert(node_steps.size() == nodes.size());
+
 		std::cout << "Have " << edges.size() << " edges and " << nodes.size() << " nodes." << std::endl;
 
 		std::vector< uint32_t > node_options;
@@ -1229,6 +1197,222 @@ int main(int argc, char **argv) {
 			std::cerr << "ERROR: failed to find an upward-planar embedding." << std::endl;
 			return 1;
 		}
+
+		assert(node_options.size() == nodes.size());
+		assert(node_positions.size() == nodes.size());
+		assert(edge_positions.size() == edges.size());
+
+		//Go through steps and assign selected option:
+		std::vector< uint32_t > step_options(steps.size(), -1U);
+		assert(node_options.size() == nodes.size());
+		for (uint32_t n = 0; n < nodes.size(); ++n) {
+			assert(node_steps[n] < steps.size());
+			std::cout << "Step " << node_steps[n] << " gets option " << node_options[n] << " of " << nodes[n].options.size() << std::endl;
+			assert(node_options[n] < steps[node_steps[n]].options.size());
+			assert(nodes[n].options.size() == steps[node_steps[n]].options.size());
+			step_options[node_steps[n]] = node_options[n];
+		}
+
+		//assign storage positions:
+		std::vector< int32_t > storage_positions(storages.size(), std::numeric_limits< int32_t >::max());
+		for (auto const &step : steps) {
+			uint32_t si = &step - &steps[0];
+			if (step_in_edges[si].size() == 1 && step_out_edges[si].size() == 1) {
+				assert(step_options[si] == -1U); //wasn't part of the dag nodes.
+				assert(step_in_edges[si][0] == step_out_edges[si][0]);
+			}
+			assert(step_in_edges[si].size() == step.in.size());
+			for (uint32_t in = 0; in < step.in.size(); ++in) {
+				assert(step_in_edges[si][in] < edge_positions.size());
+				assert(storage_positions[step.in[in]] == edge_positions[step_in_edges[si][in]]);
+			}
+			assert(step_out_edges[si].size() == step.out.size());
+			for (uint32_t out = 0; out < step.out.size(); ++out) {
+				assert(step_out_edges[si][out] < edge_positions.size());
+				assert(storage_positions[step.out[out]] == std::numeric_limits< int32_t >::max());
+				storage_positions[step.out[out]] = edge_positions[step_out_edges[si][out]];
+			}
+		}
+
+		//build up cost matrices to figure out all unassigned options:
+		struct ShapeCost {
+			ScheduleCost cost = ScheduleCost::max();
+			uint32_t option = -1U; //option that cost comes via
+		};
+		std::vector< std::vector< ShapeCost > > storage_costs;
+		storage_costs.reserve(storages.size());
+		for (auto const &storage : storages) {
+			storage_costs.emplace_back(Shape::count_shapes_for(storage.size()));
+		}
+		std::vector< uint32_t > storage_steps(storages.size(), -1U);
+		for (auto const &step : steps) {
+			for (auto o : step.out) {
+				assert(o < storage_steps.size());
+				assert(storage_steps[o] == -1U);
+				storage_steps[o] = &step - &steps[0];
+			}
+		}
+		for (auto const &step : steps) {
+			uint32_t si = &step - &steps[0];
+			if (step_options[si] != -1U) {
+				//already-assigned option:
+				auto const &option = step.options[step_options[si]];
+				//chase back storage_costs chains from ins:
+				for (uint32_t in = 0; in < step.in.size(); ++in) {
+					uint32_t storage = step.in[in];
+					uint32_t idx = Shape::unpack(option.in_shapes[in]).index_for(storages[step.in[in]].size());
+					while (true) {
+						uint32_t si = storage_steps[storage];
+						assert(si < steps.size());
+						if (step_options[si] != -1U) break; //finished
+						assert(steps[si].in.size() == 1 && steps[si].out.size() == 1);
+						assert(steps[si].out[0] == storage);
+
+						assert(!(storage_costs[storage][idx].cost == ScheduleCost::max()));
+						uint32_t opt = storage_costs[storage][idx].option;
+						assert(opt < steps[si].options.size());
+
+						uint32_t in_idx = Shape::unpack(steps[si].options[opt].in_shapes[0]).index_for(storages[steps[si].in[0]].size());
+						uint32_t out_idx = Shape::unpack(steps[si].options[opt].out_shapes[0]).index_for(storages[steps[si].out[0]].size());
+						assert(out_idx == idx);
+
+						step_options[si] = opt;
+
+						idx = in_idx;
+						storage = steps[si].in[0];
+					}
+				}
+				//start storage_costs chains from outs:
+				for (uint32_t out = 0; out < step.out.size(); ++out) {
+					uint32_t idx = Shape::unpack(option.out_shapes[out]).index_for(storages[step.out[out]].size());
+					assert(idx < storage_costs[step.out[out]].size());
+					storage_costs[step.out[out]][idx].cost = ScheduleCost::zero();
+					storage_costs[step.out[out]][idx].option = step_options[si];
+				}
+			} else {
+				//was part of an edge, need to propagate:
+				assert(step.in.size() == 1 && step.out.size() == 1);
+
+				for (auto const &option : step.options) {
+					assert(option.in_order.size() == 1);
+					assert(option.in_shapes.size() == 1);
+					assert(option.out_order.size() == 1);
+					assert(option.out_shapes.size() == 1);
+
+					uint32_t in_shape = Shape::unpack(option.in_shapes[0]).index_for(storages[step.in[0]].size());
+					uint32_t out_shape = Shape::unpack(option.out_shapes[0]).index_for(storages[step.out[0]].size());
+
+					assert(in_shape < storage_costs[step.in[0]].size());
+					ScheduleCost test = storage_costs[step.in[0]][in_shape].cost;
+					if (!(test == ScheduleCost::max())) {
+						test += option.cost;
+						assert(out_shape < storage_costs[step.out[0]].size());
+						if (test < storage_costs[step.out[0]][out_shape].cost) {
+							storage_costs[step.out[0]][out_shape].cost = test;
+							storage_costs[step.out[0]][out_shape].option = &option - &step.options[0];
+						}
+					}
+				}
+			}
+		}
+
+	
+		//record shapes:
+		std::vector< PackedShape > storage_shapes(storages.size(), -1U);
+		for (uint32_t si = 0; si < steps.size(); ++si) {
+			assert(step_options[si] < steps[si].options.size());
+			auto const &option = steps[si].options[step_options[si]];
+			for (uint32_t in = 0; in < steps[si].in.size(); ++in) {
+				assert(storage_shapes[steps[si].in[in]] == option.in_shapes[in]);
+			}
+			for (uint32_t out = 0; out < steps[si].out.size(); ++out) {
+				assert(storage_shapes[steps[si].out[out]] == -1U);
+				storage_shapes[steps[si].out[out]] = option.out_shapes[out];
+			}
+			//PARANOIA: check order vs storage positions:
+			for (uint32_t i = 1; i < option.in_order.size(); ++i) {
+				assert(option.in_order[i-1] < steps[si].in.size());
+				assert(option.in_order[i] < steps[si].in.size());
+				assert(
+					storage_positions[steps[si].in[option.in_order[i-1]]]
+					< storage_positions[steps[si].in[option.in_order[i]]]
+				);
+			}
+			for (uint32_t i = 1; i < steps[si].options[step_options[si]].out_order.size(); ++i) {
+				assert(option.out_order[i-1] < steps[si].out.size());
+				assert(option.out_order[i] < steps[si].out.size());
+				assert(
+					storage_positions[steps[si].out[option.out_order[i-1]]]
+					< storage_positions[steps[si].out[option.out_order[i]]]
+				);
+			}
+		}
+
+		//TODO: PARANOIA: check that step option orders match recorded storage positions.
+
+		auto summarize = [](Shape const &shape, uint32_t size, uint32_t mark) -> std::string {
+			//shape as braille dots
+			// e.g.  ⠲⠶⠷⠶
+			std::vector< char > data(size, '.');
+			if (mark < size) data[mark] = '*';
+			std::vector< char > front, back;
+			shape.append_to_beds(data, ' ', &front, &back);
+
+			if (front.size() % 2 == 1) front.emplace_back(' ');
+			if (back.size() % 2 == 1) back.emplace_back(' ');
+
+			std::vector< uint8_t > dots(std::max(front.size(), back.size())/2, 0);
+			for (uint32_t i = 0; i + 1 < front.size(); i += 2) {
+				if (front[i]   == '.') dots[i/2] |= 0x4;
+				if (front[i+1] == '.') dots[i/2] |= 0x20;
+				if (front[i]   == '*') dots[i/2] |= 0x4 | 0x40;
+				if (front[i+1] == '*') dots[i/2] |= 0x20 | 0x80;
+			}
+			for (uint32_t i = 0; i + 1 < back.size(); i += 2) {
+				if (back[i]   == '.') dots[i/2] |= 0x2;
+				if (back[i+1] == '.') dots[i/2] |= 0x10;
+				if (back[i]   == '*') dots[i/2] |= 0x2 | 0x1;
+				if (back[i+1] == '*') dots[i/2] |= 0x10 | 0x8;
+			}
+
+			std::string ret;
+			for (auto d : dots) {
+				uint16_t c = 0x2800 | d;
+				ret += char(0xe0 | ((c >> 12) & 0x1f));
+				ret += char(0x80 | ((c >> 6) & 0x3f));
+				ret += char(0x80 | ((c) & 0x3f));
+			}
+			return ret;
+		};
+
+		//DEBUG: dump selections:
+		for (auto const &step : steps) {
+			uint32_t si = &step - &steps[0];
+			std::cout << "Step " << si << " gets option " << step_options[si] << " of " << steps[si].options.size() << "\n";
+			auto const &option = steps[si].options[step_options[si]];
+			std::cout << "  takes";
+			for (auto i : option.in_order) {
+				uint32_t in = step.in[i];
+				uint32_t mark = 0;
+				for (uint32_t s = 1; s < storages[in].size(); ++s) {
+					if (storages[in][mark] < storages[in][s]) mark = s;
+				}
+				std::cout << " s" << in << " in shape " << storage_shapes[in] << " " << summarize(Shape::unpack(storage_shapes[in]), storages[in].size(), mark) << " in lane " << storage_positions[in] << ",";
+			}
+			std::cout << "\n";
+			std::cout << "  makes";
+			for (auto o : option.out_order) {
+				uint32_t out = step.out[o];
+				uint32_t mark = 0;
+				for (uint32_t s = 1; s < storages[out].size(); ++s) {
+					if (storages[out][mark] < storages[out][s]) mark = s;
+				}
+				std::cout << " s" << out << " in shape " << storage_shapes[out] << " " << summarize(Shape::unpack(storage_shapes[out]), storages[out].size(), mark) << " in lane " << storage_positions[out] << ",";
+			}
+			std::cout << "\n";
+			std::cout.flush();
+		}
+
 	}
 
 	return 0;
