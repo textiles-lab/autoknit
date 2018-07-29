@@ -1033,6 +1033,8 @@ int main(int argc, char **argv) {
 	}
 
 	//---------------------
+	std::vector< int32_t > storage_positions(storages.size(), std::numeric_limits< int32_t >::max());
+	std::vector< PackedShape > storage_shapes(storages.size(), -1U);
 	{ //Next up: do upward-planar embedding.
 
 		//For every 'interesting' step, build a DAGNode
@@ -1240,7 +1242,6 @@ int main(int argc, char **argv) {
 		}
 
 		//assign storage positions:
-		std::vector< int32_t > storage_positions(storages.size(), std::numeric_limits< int32_t >::max());
 		for (auto const &step : steps) {
 			uint32_t si = &step - &steps[0];
 			if (step_in_edges[si].size() == 1 && step_out_edges[si].size() == 1) {
@@ -1344,7 +1345,6 @@ int main(int argc, char **argv) {
 
 	
 		//record shapes:
-		std::vector< PackedShape > storage_shapes(storages.size(), -1U);
 		for (uint32_t si = 0; si < steps.size(); ++si) {
 			std::cout << "Step " << si << " option " << step_options[si] << " says "; //DEBUG
 			assert(step_options[si] < steps[si].options.size());
@@ -1442,6 +1442,136 @@ int main(int argc, char **argv) {
 			}
 			std::cout << "\n";
 			std::cout.flush();
+		}
+	}
+
+	{ //Determine left-edge position for each active storage just after each step:
+
+		//this will be handy; max width (over front/back bed) of each storage:
+		std::vector< uint32_t > storage_widths;
+		storage_widths.reserve(storages.size());
+		for (auto const &storage : storages) {
+			Shape shape = Shape::unpack(storage_shapes[&storage-&storages[0]]);
+			std::vector< char > stitches(storage.size(), '.');
+			std::vector< char > front, back;
+			shape.append_to_beds(stitches, ' ', &front, &back);
+			storage_widths.emplace_back(std::max(front.size(), back.size()));
+		}
+
+		//Now, for each stitch, record:
+		std::vector< std::vector< uint32_t > > active; //indices of active (sorted left-to-right)
+		std::vector< std::vector< int32_t > > gaps; //spaces between active
+		active.reserve(steps.size());
+		gaps.reserve(steps.size());
+		{ //determine what is active and start with a non-intersecting layout:
+			std::set< uint32_t > current;
+			for (auto const &step : steps) {
+				for (auto in : step.in) {
+					auto f = current.find(in);
+					assert(f != current.end());
+					current.erase(f);
+				}
+				for (auto out : step.out) {
+					auto ret = current.insert(out);
+					assert(ret.second);
+				}
+				std::vector< uint32_t > act(current.begin(), current.end());
+				std::sort(act.begin(), act.end(), [&](uint32_t a, uint32_t b){
+					return storage_positions[a] < storage_positions[b];
+				});
+				gaps.emplace_back(std::max(int32_t(act.size())-1, 0), 0);
+				active.emplace_back(std::move(act));
+			}
+			assert(current.empty());
+		}
+
+		//TODO: build penalties between active storages at each step by looking at stitch ancestors
+
+		//TODO: some sort of actual optimization or something!
+		for (uint32_t si = 0; si < active.size(); ++si) {
+			gaps[si].assign(gaps[si].size(), 1); //just a 'lil space between everything
+		}
+
+		std::vector< std::vector< int32_t > > lefts;
+		lefts.reserve(steps.size());
+		for (uint32_t si = 0; si < steps.size(); ++si) {
+			std::vector< int32_t > left;
+			if (!active[si].empty()) {
+				left.emplace_back(0);
+				for (uint32_t i = 0; i < gaps[si].size(); ++i) {
+					left.emplace_back(left.back() + storage_widths[active[si][i]] + gaps[si][i]);
+				}
+			}
+			//TODO: shift storage left positions based on penalties
+			lefts.emplace_back(std::move(left));
+		}
+
+		{ //DEBUG: show where the steps sit on actual needles
+			int32_t min_needle = std::numeric_limits< int32_t >::max();
+			int32_t max_needle = std::numeric_limits< int32_t >::min();
+			for (uint32_t si = 0; si < steps.size(); ++si) {
+				if (active[si].empty()) continue;
+				min_needle = std::min(min_needle, lefts[si][0]);
+				max_needle = std::max(max_needle, lefts[si].back() + int32_t(storage_widths[active[si].back()])-1);
+			}
+			for (uint32_t si = 0; si < steps.size(); ++si) {
+				std::string num = std::to_string(si);
+				while (num.size() < 4) num = ' ' + num;
+				std::cout << "after " << num << ": ";
+
+				std::vector< bool > on_back(max_needle - min_needle + 1, false);
+				std::vector< bool > on_front(max_needle - min_needle + 1, false);
+
+				for (uint32_t a = 0; a < active[si].size(); ++a) {
+					Shape shape = Shape::unpack(storage_shapes[active[si][a]]);
+					std::vector< bool > data(storages[active[si][a]].size(), true);
+					std::vector< bool > back, front;
+					shape.append_to_beds(data, false, &front, &back);
+					for (uint32_t i = 0; i < back.size(); ++i) {
+						if (back[i]) {
+							assert(on_back[i + (lefts[si][a] - min_needle)] == false);
+							on_back[i + (lefts[si][a] - min_needle)] = true;
+						}
+					}
+					for (uint32_t i = 0; i < front.size(); ++i) {
+						if (front[i]) {
+							assert(on_front[i + (lefts[si][a] - min_needle)] == false);
+							on_front[i + (lefts[si][a] - min_needle)] = true;
+						}
+					}
+				}
+
+				if (on_front.size() % 2 == 1) on_front.emplace_back(false);
+				if (on_back.size() % 2 == 1) on_back.emplace_back(false);
+
+				std::vector< uint8_t > dots(std::max(on_front.size(), on_back.size())/2, 0);
+				for (uint32_t i = 0; i + 1 < on_front.size(); i += 2) {
+					if (on_front[i]  ) dots[i/2] |= 0x4;
+					if (on_front[i+1]) dots[i/2] |= 0x20;
+					//if (front[i]   == '*') dots[i/2] |= 0x4 | 0x40;
+					//if (front[i+1] == '*') dots[i/2] |= 0x20 | 0x80;
+				}
+				for (uint32_t i = 0; i + 1 < on_back.size(); i += 2) {
+					if (on_back[i]  ) dots[i/2] |= 0x2;
+					if (on_back[i+1]) dots[i/2] |= 0x10;
+					//if (back[i]   == '*') dots[i/2] |= 0x2 | 0x1;
+					//if (back[i+1] == '*') dots[i/2] |= 0x10 | 0x8;
+				}
+
+				for (auto d : dots) {
+					uint16_t c = 0x2800 | d;
+					std::cout << char(0xe0 | ((c >> 12) & 0x1f));
+					std::cout << char(0x80 | ((c >> 6) & 0x3f));
+					std::cout << char(0x80 | ((c) & 0x3f));
+				}
+
+				std::cout << " |";
+				for (auto l : lefts[si]) {
+					std::cout << " " << l;
+				}
+
+				std::cout << std::endl;
+			}
 		}
 
 	}

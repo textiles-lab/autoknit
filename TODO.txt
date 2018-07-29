@@ -18,11 +18,10 @@ Balancing still required in ak-link.
 
 DTW nice-to-have in ak-link.
 
-Tracing code is done but doesn't do stitch outs ordering (which would be handy for scheduling).
-
-Still need to hook up / test scheduling code (I sort of dread this; I think the re-write started here was "wrong" in some sense that I otherwise don't recall).
-
- - First dreaded problem: the special-typed 'Start' / 'End' stitches basically require knitting not to end at a short row (i.e., I need to add code that hacks ending cycles onto everything)
+In the scheduling code:
+ - the special-typed 'Start' / 'End' stitches basically require knitting not to end at a short row (i.e., I need to add code that hacks ending cycles onto everything)
+ - some sort of offset-determination for cycles is needed
+ - should consider using real xfer cost
 
 
 Linking:
