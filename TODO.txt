@@ -29,3 +29,17 @@ Linking:
  - how to balance?
    - First: balance *checking* code
    - Next: Appendix A's local fixup
+
+-----
+DAG Embedding v2 ("multipass")
+  time ./dist/schedule st:tests/st/test-B.st js:temp.js
+Before: 8.766s
+
+  Idea: come up with left-to-right orderings *first*, then push through the weights for each ordering.
+  Problem: split nodes actually have correlated/path-dependant left/right sides. So pushing through potentially generates a lot more states than you'd expect.
+
+  Idea2: push weights without caring about order-dependence/node coupling; use this as a heuristic for A*.
+  Note: table still as large as the number of active paths. I'm sure there's a way to find a node ordering that minimizes the maximum active options; maybe it requires trying all orderings?
+
+Interruption: Why are the *so many* options reported for splits? Ah, because we're baking xfers into the nodes.
+ Rolling xfers into edges for split/join nodes (which edge-collapse requires *anyway*) seems to really improve runtimes. (test-B gets to 1.509s)

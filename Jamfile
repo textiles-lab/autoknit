@@ -29,6 +29,7 @@ NAMES =
 	ScheduleCost
 	schedule
 	embed_DAG
+	#embed_DAG-multipass
 	$(PLAN_TRANSFERS_NAMES)
 	;
 

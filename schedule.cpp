@@ -870,6 +870,27 @@ int main(int argc, char **argv) {
 			std::cout << "  " << front_string << std::endl;
 			*/
 
+			{ //new method: no baked-in transfers (will bake into edges instead):
+				//so just penalize for the intermediate shapes (might be double-charging?):
+				ScheduleCost cost;
+				for (auto const &inter_shape : inter_shapes) {
+					cost += ScheduleCost::shape_cost(Shape::unpack(inter_shape));
+				}
+
+				ScheduleOption option;
+				option.cost = cost;
+
+				option.in_order = in_order;
+				option.in_shapes = in_shapes;
+
+				option.inter_shape = inter_shapes[0];
+
+				option.out_order = out_order;
+				option.out_shapes = inter_shapes;
+
+				step.options.emplace_back(option);
+			}
+#if 0 //old method
 
 			std::vector< Shape > out0_shapes = Shape::make_shapes_for(outs[0].size());
 			for (auto const &out0_shape : out0_shapes) {
@@ -897,6 +918,7 @@ int main(int argc, char **argv) {
 
 				step.options.emplace_back(option);
 			}
+#endif
 
 			return nullptr;
 
@@ -1135,11 +1157,30 @@ int main(int argc, char **argv) {
 					edge.to = step.out[i];
 					edge.to_shapes = Shape::count_shapes_for(storages[step.out[i]].size());
 
-					//NOTE: this ends up costing a bit of extra time, because multiple-source-shape edges always need a square cost matrix, but we don't actually have any costs to put into it, so we just make up a matrix that does not permit rotation:
-					edge.costs.resize(edge.from_shapes * edge.to_shapes, ScheduleCost::max());
+					edge.costs.assign(edge.from_shapes * edge.to_shapes, ScheduleCost::max());
 					assert(edge.from_shapes == edge.to_shapes);
-					for (uint32_t i = 0; i < edge.from_shapes; ++i) {
-						edge.costs[i * edge.to_shapes + i] = ScheduleCost::zero();
+					if (step.out.size() > 1 || step.in.size() > 1) {
+						std::vector< Shape > shapes = Shape::make_shapes_for(storages[step.out[i]].size());
+						assert(shapes.size() == edge.from_shapes);
+						assert(shapes.size() == edge.to_shapes);
+						std::vector< uint32_t > map(storages[step.out[i]].size());
+						for (auto &m : map) {
+							m = &m - &map[0];
+						}
+						//interesting steps get a ("free") xfer pass on their output. Maybe all steps should? Hmm.
+						for (uint32_t f = 0; f < edge.from_shapes; ++f) {
+							for (uint32_t t = 0; t < edge.to_shapes; ++t) {
+								edge.costs[f * edge.to_shapes + t] = ScheduleCost::transfer_cost(
+									storages[step.out[i]].size(), shapes[f],
+									storages[step.out[i]].size(), shapes[t],
+									map);
+							}
+						}
+					} else {
+						//NOTE: this ends up costing a bit of extra time, because multiple-source-shape edges always need a square cost matrix, but we don't actually have any costs to put into it, so we just make up a matrix that does not permit rotation:
+						for (uint32_t s = 0; s < edge.from_shapes; ++s) {
+							edge.costs[s * edge.to_shapes + s] = ScheduleCost::zero();
+						}
 					}
 				}
 
@@ -1345,6 +1386,7 @@ int main(int argc, char **argv) {
 
 	
 		//record shapes:
+		uint32_t pre_xfers = 0;
 		for (uint32_t si = 0; si < steps.size(); ++si) {
 			std::cout << "Step " << si << " option " << step_options[si] << " says "; //DEBUG
 			assert(step_options[si] < steps[si].options.size());
@@ -1352,7 +1394,10 @@ int main(int argc, char **argv) {
 			for (uint32_t in = 0; in < steps[si].in.size(); ++in) {
 				std::cout << " i" << steps[si].in[in] << "=" << option.in_shapes[in]; std::cout.flush(); //DEBUG
 				assert(storage_shapes[steps[si].in[in]] != -1U);
-				assert(storage_shapes[steps[si].in[in]] == option.in_shapes[in]);
+				if (storage_shapes[steps[si].in[in]] != option.in_shapes[in]) {
+					++pre_xfers;
+					std::cout << "*"; std::cout.flush(); //DEBUG
+				}
 			}
 			for (uint32_t out = 0; out < steps[si].out.size(); ++out) {
 				std::cout << " o" << steps[si].out[out] << "=" << option.out_shapes[out]; //DEBUG
@@ -1377,6 +1422,9 @@ int main(int argc, char **argv) {
 					< storage_positions[steps[si].out[option.out_order[i]]]
 				);
 			}
+		}
+		if (pre_xfers > 0) {
+			std::cout << "NOTE: will need to reshape " << pre_xfers << " inputs before steps." << std::endl;
 		}
 
 		//TODO: PARANOIA: check that step option orders match recorded storage positions.
