@@ -11,6 +11,9 @@
 #include <unordered_set>
 #include <unordered_map>
 
+//helper to re-label closest points so they have a possible flattening on the bed, given the supplied costs for relabelling:
+void flatten(std::vector< uint32_t > &closest, std::vector< float > const &costs, bool is_loop);
+
 void ak::link_chains(
 	Parameters const &parameters,
 	Model const &slice, //in: slice on which the chains reside
@@ -335,323 +338,17 @@ void ak::link_chains(
 
 	std::map< std::pair< uint32_t, uint32_t >, Match > matches;
 
-	auto flatten = [](std::vector< uint32_t > &closest, std::vector< float > const &lengths, bool is_loop) {
-		assert(lengths.size() == closest.size() + 1);
-		if (closest.empty()) return;
-
-		//make sure that 'closest' looks like:
-		//  a a a b b b c c c
-		//   a a b b b b c c
-		// that is, can be flattened to the knitting machine bed while preserving constituent cycles
-		// One view of this: if you start at some stitch A, then the left side should be a mirror of the right side
-		//  (with the possible exception that some symbols may be skipped on the left or right)
-
-	
-		//hmm, what's the state space of the optimal solution?
-		// given a starting vertex, for each left/right index pair, and each list of already-seen symbols,
-		// need to select action of delete left, delete right, advance left, advance right, advance both (only if symbols match).
-		// cost should probably be length of deleted.
-		//
-		// is there a way to do this without pre-selecting a start? hmm.
-
-		//(a) condense closest into short list of symbols:
-		std::vector< std::pair< uint32_t, float > > symbols;
-		symbols.reserve(closest.size()); //certainly no more symbols than closest
-		for (uint32_t i = 0; i < closest.size(); ++i) {
-			uint32_t symb = closest[i];
-			if (symbols.empty() || symbols.back().first != symb) {
-				symbols.emplace_back(std::make_pair(symb, 0.0f));
-			}
-			assert(i+1 < lengths.size());
-			assert(symbols.back().first == symb);
-			symbols.back().second += lengths[i+1] - lengths[i];
-		}
-
-
-		//(b) early-out in certain already-good conditions:
-		if (symbols.size() == 1) return; //single closest: done!
-		/* TODO: other easy cases?
-		if (counts.size() == 2) {
-			// a a a a b b b b
-			bool good = true;
-			for (auto cn : counts) {
-				if (cn.second != 1) good = false;
-			}
-			if (good) return;
-		}
-		*/
-
-		//symbols -> bits
-		std::vector< std::pair< uint16_t, float > > bit_symbols;
-		uint32_t bits;
-		{
-			bit_symbols.reserve(symbols.size());
-			std::map< uint32_t, uint16_t > symbol_bit;
-			for (auto &sw : symbols) {
-				auto ret = symbol_bit.insert(std::make_pair(sw.first, uint16_t(1 << symbol_bit.size())));
-				assert(ret.first->second && "Only have enough bits for 16-symbol flattening");
-				bit_symbols.emplace_back(ret.first->second, sw.second);
-			}
-			assert(bit_symbols.size() == symbols.size());
-			bits = symbol_bit.size();
-		}
-
-		struct State {
-			uint16_t used = 0; //have seen all symbols with bits in used
-			uint8_t min = 0; //symbols that are strictly between min and max have been processed
-			uint8_t max = 0;
-			uint16_t current = 0; //most recently kept symbol
-			uint16_t padding = 0; //padding to make state 64 bits long
-
-			typedef uint64_t Packed;
-			Packed pack() const {
-				return *reinterpret_cast< Packed const * >(this);
-			}
-			static State unpack(Packed packed) {
-				return *reinterpret_cast< State const * >(&packed);
-			}
-
-			std::string to_string(uint32_t bits = 16) const {
-				std::string ret = "(" + std::to_string(min) + "," + std::to_string(max) + ")";
-				for (uint32_t i = bits-1; i < bits; --i) {
-					if (used & (1 << i)) {
-						if ((1 << i) == current) {
-							ret += "*";
-						} else {
-							ret += "x";
-						}
-					} else {
-						ret += ".";
-					}
-				}
-				return ret;
-			}
-		};
-		static_assert(sizeof(State) == 8, "packed state");
-
-
-		struct {
-			State::Packed state;
-			float cost = std::numeric_limits< float >::infinity();
-			State::Packed from;
-		} finished;
-		std::unordered_map< State::Packed, std::pair< float, State::Packed > > visited;
-		std::vector< std::pair< float, State::Packed > > todo;
-		static std::greater< std::pair< float, State::Packed > > const TODOCompare;
-
-		auto queue_state = [&visited, &finished, &todo, bits](State const state, float const cost, State const from) {
-			assert(state.min != from.min || state.max != from.max); //must have done *something*
-
-			std::cout << state.to_string(bits) << " from " << from.to_string(bits) << " cost " << cost << std::endl; //DEBUG
-
-			if ((state.min != from.min && state.min == from.max)
-			 || (state.max != from.max && state.max == from.min)) {
-				//pointers crossed or met -> state is finished!
-				assert(state.min == state.max || (state.min == from.max && state.max == from.min));
-				if (cost < finished.cost) {
-					finished.state = state.pack();
-					finished.cost = cost;
-					finished.from = from.pack();
-				}
-				return;
-			}
-
-			//queue/indicate regular
-			auto ret = visited.insert(std::make_pair(state.pack(), std::make_pair(cost, from.pack())));
-			if (ret.second || ret.first->second.first > cost) {
-				ret.first->second = std::make_pair(cost, from.pack());
-				todo.emplace_back(std::make_pair(cost, state.pack()));
-				std::push_heap(todo.begin(), todo.end(), TODOCompare);
-			}
-
-		};
-	
-		auto expand_state = [&bit_symbols, &queue_state](State const state, float const cost) {
-			auto const used = state.used;
-			auto const min = state.min;
-			auto const max = state.max;
-			auto const current = state.current;
-			assert(state.padding == 0);
-
-			//*_next_symbol is the symbol that is advanced over when moving min/max,
-			// leading to some asymmetry in indexing:
-			// a(bc)d -> (abc)d <-- min_next_symbol is 'a' (at index of min_next)
-			// a(bc)d -> a(bcd) <-- max_next_symbol is 'd' (at index of max)
-
-			auto min_next = (min == 0 ? bit_symbols.size() - 1 : min - 1);
-			auto min_next_symbol = bit_symbols[min_next];
-			auto max_next = (max + 1U < bit_symbols.size() ? max + 1 : 0);
-			auto max_next_symbol = bit_symbols[max];
-
-			//actions:
-			//no reason not to keep if symbol is current:
-			if (min_next_symbol.first == current || max_next_symbol.first == current) {
-				assert(used & current);
-				State next;
-				next.used = used;
-				next.min = (min_next_symbol.first == current ? min_next : min);
-				next.max = (max_next_symbol.first == current ? max_next : max);
-				next.current = current;
-
-				float next_cost = cost;
-
-				queue_state(next, next_cost, state);
-
-				return; //no other actions worth taking; this one was free!
-			}
-
-			//keep min (symbol must be unused):
-			if (!(used & min_next_symbol.first)) {
-				State next;
-				next.used = used | min_next_symbol.first;
-				next.min = min_next;
-				next.max = max;
-				next.current = min_next_symbol.first;
-
-				float next_cost = cost;
-
-				queue_state(next, next_cost, state);
-			}
-
-			//keep max (symbol must be unused):
-			if (!(used & max_next_symbol.first)) {
-				State next;
-				next.used = used | max_next_symbol.first;
-				next.min = min;
-				next.max = max_next;
-				next.current = max_next_symbol.first;
-
-				float next_cost = cost;
-
-				queue_state(next, next_cost, state);
-			}
-
-			//discard min:
-			{
-				State next;
-				next.used = used;
-				next.min = min_next;
-				next.max = max;
-				next.current = current;
-
-				float next_cost = cost + min_next_symbol.second;
-
-				queue_state(next, next_cost, state);
-			}
-
-			//discard max:
-			{
-				State next;
-				next.used = used;
-				next.min = min;
-				next.max = max_next;
-				next.current = current;
-
-				float next_cost = cost + max_next_symbol.second;
-
-				queue_state(next, next_cost, state);
-			}
-		};
-
-		//queue starting states:
-		for (uint32_t s = 0; s < bit_symbols.size(); ++s) {
-			State init;
-			init.used = 0;
-			init.min = s;
-			init.max = s;
-			init.current = 0;
-			expand_state(init, 0.0f);
-			if (!is_loop) break;
-		}
-
-		while (!todo.empty()) {
-			std::pop_heap(todo.begin(), todo.end(), TODOCompare);
-			auto state = State::unpack(todo.back().second);
-			float cost = todo.back().first;
-			todo.pop_back();
-			//if the cheapest thing is more expensive than the finish, we're done:
-			if (cost >= finished.cost) break;
-
-			{ //cost should either be stale or what is stored in 'visited':
-				auto f = visited.find(state.pack());
-				assert(f != visited.end());
-				if (cost > f->second.first) continue;
-				assert(cost == f->second.first);
-			}
-			expand_state(state, cost);
-		}
-		assert(finished.cost != std::numeric_limits< float >::infinity()); //found ~some~ path
-
-		//read back states:
-		std::vector< State::Packed > path;
-		path.emplace_back(finished.state);
-		path.emplace_back(finished.from);
-		while (true) {
-			auto f = visited.find(path.back());
-			if (f == visited.end()) break;
-			path.emplace_back(f->second.second);
-		}
-		std::reverse(path.begin(), path.end());
-		std::cout << "----" << std::endl; //DEBUG
-
-		std::vector< int8_t > keep(bit_symbols.size(), -1);
-		for (uint32_t i = 1; i < path.size(); ++i) {
-			State state = State::unpack(path[i-1]);
-			State next = State::unpack(path[i]);
-
-			std::cout << state.to_string(bits) << " -> " << next.to_string(bits) << ": "; std::cout.flush(); //DEBUG
-			if (state.min != next.min && state.max != next.max) {
-				//a(bc)d -> (abcd), keep 'a' (next.min), 'd' (state.max)
-				assert(bit_symbols[state.min].first == bit_symbols[state.max].first);
-				assert(next.current = bit_symbols[state.min].first);
-				std::cout << "keep " << int32_t(next.min) << ", " << int32_t(state.max) << std::endl; //DEBUG
-				assert(keep[next.min] == -1);
-				assert(keep[state.max] == -1);
-				keep[next.min] = keep[state.max] = 1;
-			} else if (state.min != next.min) {
-				//a(bc)d -> (abc)d, keep/discard next.min
-				if (bit_symbols[next.min].first == next.current) {
-					std::cout << "keep " << int32_t(next.min) << std::endl; //DEBUG
-					assert(keep[next.min] == -1);
-					keep[next.min] = 1;
-				} else {
-					std::cout << "discard " << int32_t(next.min) << std::endl; //DEBUG
-					assert(keep[next.min] == -1);
-					keep[next.min] = 0;
-				}
-			} else { assert(state.max != next.max);
-				//a(bc)d -> a(bcd), keep/discard state.max
-				if (bit_symbols[state.max].first == next.current) {
-					std::cout << "keep " << int32_t(state.max) << std::endl; //DEBUG
-					assert(keep[state.max] == -1);
-					keep[state.max] = 1;
-				} else {
-					std::cout << "discard " << int32_t(state.max) << std::endl; //DEBUG
-					assert(keep[state.max] == -1);
-					keep[state.max] = 0;
-				}
-			}
-		}
-
-		//DEBUG: was at least one thing kept?
-		bool kept_at_least_one = false;
-		for (auto k : keep) {
-			assert(k != -1);
-			if (k == 1) kept_at_least_one = true;
-		}
-		assert(kept_at_least_one);
-
-		//TODO: use keep to figure out which elements of closest to re-label.
-
-	};
 
 	for (auto &closest : active_closest) {
 		uint32_t ai = &closest - &active_closest[0];
-
-		flatten(closest, active_lengths[ai], active_chains[ai].empty() || active_chains[ai][0] == active_chains[ai].back());
-
 		auto const &lengths = active_lengths[ai];
 		assert(lengths.size() == closest.size() + 1);
+
+		std::vector< float > weights; weights.reserve(closest.size());
+		for (uint32_t i = 1; i < lengths.size(); ++i) {
+			weights.emplace_back(lengths[i] - lengths[i-1]);
+		}
+		flatten(closest, weights, active_chains[ai].empty() || active_chains[ai][0] == active_chains[ai].back());
 
 		for (uint32_t begin = 0; begin < closest.size(); /* later */) {
 			uint32_t end = begin + 1;
@@ -665,11 +362,16 @@ void ak::link_chains(
 	for (auto &closest : next_closest) {
 		uint32_t ni = &closest - &next_closest[0];
 
-		flatten(closest, next_lengths[ni], next_chains[ni].empty() || next_chains[ni][0] == next_chains[ni].back());
-
 		assert(ni < next_lengths.size());
 		auto const &lengths = next_lengths[ni];
 		assert(lengths.size() == closest.size() + 1);
+
+		std::vector< float > weights; weights.reserve(closest.size());
+		for (uint32_t i = 1; i < lengths.size(); ++i) {
+			weights.emplace_back(lengths[i] - lengths[i-1]);
+		}
+		flatten(closest, weights, next_chains[ni].empty() || next_chains[ni][0] == next_chains[ni].back());
+
 
 		for (uint32_t begin = 0; begin < closest.size(); /* later */) {
 			uint32_t end = begin + 1;
@@ -1132,6 +834,379 @@ void ak::link_chains(
 	}
 	std::cout << "Marked " << marked << " of " << total << " newly created stitches as 'discard'." << std::endl;
 
+
+}
+
+
+//-------------------------------------------------------------------
+
+void flatten(std::vector< uint32_t > &closest, std::vector< float > const &weights, bool is_loop) {
+	assert(closest.size() == weights.size());
+	if (closest.empty()) return;
+
+	//make sure that 'closest' looks like:
+	//  a a a b b b c c c
+	//   a a b b b b c c
+	// that is, can be flattened to the knitting machine bed while preserving constituent cycles
+	// One view of this: if you start at some stitch A, then the left side should be a mirror of the right side
+	//  (with the possible exception that some symbols may be skipped on the left or right)
+
+	//(a) condense closest into short list of symbols:
+	std::vector< std::pair< uint32_t, float > > symbols;
+	symbols.reserve(closest.size()); //certainly no more symbols than closest
+	for (uint32_t i = 0; i < closest.size(); ++i) {
+		uint32_t symb = closest[i];
+		if (symbols.empty() || symbols.back().first != symb) {
+			symbols.emplace_back(std::make_pair(symb, 0.0f));
+		}
+		assert(symbols.back().first == symb);
+		symbols.back().second += weights[i];
+	}
+	assert(!symbols.empty());
+
+	//(b) early-out in certain easy-to-check conditions:
+	if (symbols.size() == 1) return; //single symbol
+	//DEBUG: don't do these checks; exercise the code a bit more instead:
+	//if (symbols.size() == 2) return; //two symbols without alternation
+	//if (is_loop && symbols.size() == 3 && symbols[0] == symbols.back()) return; //two symbols without alternation (loop version)
+
+	//symbols -> bits
+	std::vector< std::pair< uint16_t, float > > bit_symbols;
+	uint32_t bits;
+	{
+		bit_symbols.reserve(symbols.size());
+		std::map< uint32_t, uint16_t > symbol_bit;
+		for (auto &sw : symbols) {
+			auto ret = symbol_bit.insert(std::make_pair(sw.first, uint16_t(1 << symbol_bit.size())));
+			assert(ret.first->second && "Only have enough bits for 16-symbol flattening");
+			bit_symbols.emplace_back(ret.first->second, sw.second);
+		}
+		assert(bit_symbols.size() == symbols.size());
+		bits = symbol_bit.size();
+	}
+
+	struct State {
+		uint16_t used = 0; //have seen all symbols with bits in used
+		uint8_t min = 0; //symbols that are strictly between min and max have been processed
+		uint8_t max = 0;
+		uint16_t current = 0; //most recently kept symbol
+		uint16_t padding = 0; //padding to make state 64 bits long
+
+		typedef uint64_t Packed;
+		Packed pack() const {
+			return *reinterpret_cast< Packed const * >(this);
+		}
+		static State unpack(Packed packed) {
+			return *reinterpret_cast< State const * >(&packed);
+		}
+
+		std::string to_string(uint32_t bits = 16) const {
+			std::string ret = "(" + std::to_string(min) + "," + std::to_string(max) + ")";
+			for (uint32_t i = bits-1; i < bits; --i) {
+				if (used & (1 << i)) {
+					if ((1 << i) == current) {
+						ret += "*";
+					} else {
+						ret += "x";
+					}
+				} else {
+					ret += ".";
+				}
+			}
+			return ret;
+		}
+	};
+	static_assert(sizeof(State) == 8, "packed state");
+
+
+	struct {
+		State::Packed state;
+		float cost = std::numeric_limits< float >::infinity();
+		State::Packed from;
+	} finished;
+	std::unordered_map< State::Packed, std::pair< float, State::Packed > > visited;
+	std::vector< std::pair< float, State::Packed > > todo;
+	static std::greater< std::pair< float, State::Packed > > const TODOCompare;
+
+	auto queue_state = [&visited, &finished, &todo, bits](State const state, float const cost, State const from) {
+		assert(state.min != from.min || state.max != from.max); //must have done *something*
+
+		std::cout << state.to_string(bits) << " from " << from.to_string(bits) << " cost " << cost << std::endl; //DEBUG
+
+		if ((state.min != from.min && state.min == from.max)
+		 || (state.max != from.max && state.max == from.min)) {
+			//pointers crossed or met -> state is finished!
+			assert(state.min == state.max || (state.min == from.max && state.max == from.min));
+			if (cost < finished.cost) {
+				finished.state = state.pack();
+				finished.cost = cost;
+				finished.from = from.pack();
+			}
+			return;
+		}
+
+		//queue/indicate regular
+		auto ret = visited.insert(std::make_pair(state.pack(), std::make_pair(cost, from.pack())));
+		if (ret.second || ret.first->second.first > cost) {
+			ret.first->second = std::make_pair(cost, from.pack());
+			todo.emplace_back(std::make_pair(cost, state.pack()));
+			std::push_heap(todo.begin(), todo.end(), TODOCompare);
+		}
+
+	};
+
+	auto expand_state = [&bit_symbols, &queue_state](State const state, float const cost) {
+		auto const used = state.used;
+		auto const min = state.min;
+		auto const max = state.max;
+		auto const current = state.current;
+		assert(state.padding == 0);
+
+		//*_next_symbol is the symbol that is advanced over when moving min/max,
+		// leading to some asymmetry in indexing:
+		// a(bc)d -> (abc)d <-- min_next_symbol is 'a' (at index of min_next)
+		// a(bc)d -> a(bcd) <-- max_next_symbol is 'd' (at index of max)
+
+		auto min_next = (min == 0 ? bit_symbols.size() - 1 : min - 1);
+		auto min_next_symbol = bit_symbols[min_next];
+		auto max_next = (max + 1U < bit_symbols.size() ? max + 1 : 0);
+		auto max_next_symbol = bit_symbols[max];
+
+		//actions:
+		//no reason not to keep if symbol is current:
+		if (min_next_symbol.first == current || max_next_symbol.first == current) {
+			assert(used & current);
+			State next;
+			next.used = used;
+			next.min = (min_next_symbol.first == current ? min_next : min);
+			next.max = (max_next_symbol.first == current ? max_next : max);
+			next.current = current;
+
+			float next_cost = cost;
+
+			queue_state(next, next_cost, state);
+
+			return; //no other actions worth taking; this one was free!
+		}
+
+		//keep min (symbol must be unused):
+		if (!(used & min_next_symbol.first)) {
+			State next;
+			next.used = used | min_next_symbol.first;
+			next.min = min_next;
+			next.max = max;
+			next.current = min_next_symbol.first;
+
+			float next_cost = cost;
+
+			queue_state(next, next_cost, state);
+		}
+
+		//keep max (symbol must be unused):
+		if (!(used & max_next_symbol.first)) {
+			State next;
+			next.used = used | max_next_symbol.first;
+			next.min = min;
+			next.max = max_next;
+			next.current = max_next_symbol.first;
+
+			float next_cost = cost;
+
+			queue_state(next, next_cost, state);
+		}
+
+		//discard min:
+		{
+			State next;
+			next.used = used;
+			next.min = min_next;
+			next.max = max;
+			next.current = current;
+
+			float next_cost = cost + min_next_symbol.second;
+
+			queue_state(next, next_cost, state);
+		}
+
+		//discard max:
+		{
+			State next;
+			next.used = used;
+			next.min = min;
+			next.max = max_next;
+			next.current = current;
+
+			float next_cost = cost + max_next_symbol.second;
+
+			queue_state(next, next_cost, state);
+		}
+	};
+
+	//queue starting states:
+	for (uint32_t s = 0; s < bit_symbols.size(); ++s) {
+		State init;
+		init.used = 0;
+		init.min = s;
+		init.max = s;
+		init.current = 0;
+		expand_state(init, 0.0f);
+		if (!is_loop) break;
+	}
+
+	while (!todo.empty()) {
+		std::pop_heap(todo.begin(), todo.end(), TODOCompare);
+		auto state = State::unpack(todo.back().second);
+		float cost = todo.back().first;
+		todo.pop_back();
+		//if the cheapest thing is more expensive than the finish, we're done:
+		if (cost >= finished.cost) break;
+
+		{ //cost should either be stale or what is stored in 'visited':
+			auto f = visited.find(state.pack());
+			assert(f != visited.end());
+			if (cost > f->second.first) continue;
+			assert(cost == f->second.first);
+		}
+		expand_state(state, cost);
+	}
+	assert(finished.cost != std::numeric_limits< float >::infinity()); //found ~some~ path
+
+	//read back states:
+	std::vector< State::Packed > path;
+	path.emplace_back(finished.state);
+	path.emplace_back(finished.from);
+	while (true) {
+		auto f = visited.find(path.back());
+		if (f == visited.end()) break;
+		path.emplace_back(f->second.second);
+	}
+	std::reverse(path.begin(), path.end());
+	std::cout << "----" << std::endl; //DEBUG
+
+	std::vector< int8_t > keep(bit_symbols.size(), -1);
+	for (uint32_t i = 1; i < path.size(); ++i) {
+		State state = State::unpack(path[i-1]);
+		State next = State::unpack(path[i]);
+
+		std::cout << state.to_string(bits) << " -> " << next.to_string(bits) << ": "; std::cout.flush(); //DEBUG
+		if (state.min != next.min && state.max != next.max) {
+			//a(bc)d -> (abcd), keep 'a' (next.min), 'd' (state.max)
+			assert(bit_symbols[next.min].first == bit_symbols[state.max].first);
+			assert(next.current = bit_symbols[state.min].first);
+			std::cout << "keep " << int32_t(next.min) << " (\"" << symbols[next.min].first << "\")" << ", " << int32_t(state.max) << " (\"" << symbols[state.max].first << "\")" << std::endl; //DEBUG
+			assert(keep[next.min] == -1);
+			assert(keep[state.max] == -1);
+			keep[next.min] = keep[state.max] = 1;
+		} else if (state.min != next.min) {
+			//a(bc)d -> (abc)d, keep/discard next.min
+			if (bit_symbols[next.min].first == next.current) {
+				std::cout << "keep " << int32_t(next.min) << " (\"" << symbols[next.min].first << "\")" << std::endl; //DEBUG
+				assert(keep[next.min] == -1);
+				keep[next.min] = 1;
+			} else {
+				std::cout << "discard " << int32_t(next.min) << " (\"" << symbols[next.min].first << "\")" << std::endl; //DEBUG
+				assert(keep[next.min] == -1);
+				keep[next.min] = 0;
+			}
+		} else { assert(state.max != next.max);
+			//a(bc)d -> a(bcd), keep/discard state.max
+			if (bit_symbols[state.max].first == next.current) {
+				std::cout << "keep " << int32_t(state.max) << " (\"" << symbols[state.max].first << "\")" << std::endl; //DEBUG
+				assert(keep[state.max] == -1);
+				keep[state.max] = 1;
+			} else {
+				std::cout << "discard " << int32_t(state.max) << " (\"" << symbols[state.max].first << "\")" << std::endl; //DEBUG
+				assert(keep[state.max] == -1);
+				keep[state.max] = 0;
+			}
+		}
+	}
+
+	//DEBUG: was at least one thing kept?
+	bool kept_at_least_one = false;
+	for (auto k : keep) {
+		assert(k != -1);
+		if (k == 1) kept_at_least_one = true;
+	}
+	assert(kept_at_least_one);
+
+	//use keep to figure out which elements of closest to re-label.
+	std::vector< bool > relabel; relabel.reserve(closest.size());
+	{
+		std::cout << "relabel:"; //DEBUG
+		auto si = symbols.begin();
+		for (auto c : closest) {
+			assert(si != symbols.end());
+			if (si->first != c) ++si;
+			assert(si != symbols.end());
+			assert(si->first == c);
+			relabel.emplace_back(keep[si - symbols.begin()] == 0);
+			if (relabel.back()) {
+				std::cout << ' ' << 'x' << int32_t(c) << 'x'; //DEBUG
+			} else {
+				std::cout << ' ' << ' ' << int32_t(c) << ' '; //DEBUG
+			}
+		}
+		std::cout << std::endl; //DEBUG
+		assert(relabel.size() == closest.size());
+		assert(si != symbols.end());
+		++si;
+		assert(si == symbols.end());
+
+		bool have_keep = false;
+		for (uint32_t seed = 0; seed < closest.size(); ++seed) {
+			if (relabel[seed] == false) have_keep = true;
+		}
+		assert(have_keep);
+	}
+
+	{ //do relabelling:
+		auto relabel_range = [&closest,&weights,&relabel](uint32_t first, uint32_t last) {
+			uint32_t before = (first == 0 ? closest.back() : closest[first-1]);
+			uint32_t after  = (last + 1 == closest.size() ? closest[0] : closest[last+1]);
+			std::cout << "Relabelling [" << first << ", " << last << "] using " << before << "/" << after << std::endl; //DEBUG
+
+			assert(!relabel[(first == 0 ? closest.size() : first) - 1]);
+			assert(!relabel[(last + 1 == closest.size() ? 0 : last) + 1]);
+			assert(relabel[first]);
+			assert(relabel[last]);
+
+			float total = 0.0f;
+			{ //first pass: figure out total weight sum:
+				uint32_t i = first;
+				while (true) {
+					assert(relabel[i]);
+					total += weights[i];
+					if (i == last) break;
+					++i;
+				}
+			}
+			float sum = 0.0f;
+			{ //second pass: assign before/after based on weight sum:
+				uint32_t i = first;
+				while (true) {
+					if (sum + 0.5f * weights[i] < 0.5f * total) {
+						closest[i] = before;
+					} else {
+						closest[i] = after;
+					}
+					relabel[i] = false;
+					sum += weights[i];
+					if (i == last) break;
+					++i;
+				}
+			}
+		};
+		for (uint32_t seed = 0; seed < closest.size(); ++seed) {
+			if (!relabel[seed]) continue;
+			uint32_t first = seed;
+			uint32_t last = seed;
+			while (relabel[last + 1 < closest.size() ? last + 1 : 0]) {
+				last = (last + 1 < closest.size() ? last + 1 : 0);
+			}
+			relabel_range(first, last);
+		}
+	}
 
 }
 
