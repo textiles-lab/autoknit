@@ -931,7 +931,7 @@ void flatten(std::vector< uint32_t > &closest, std::vector< float > const &weigh
 	auto queue_state = [&visited, &finished, &todo, bits](State const state, float const cost, State const from) {
 		assert(state.min != from.min || state.max != from.max); //must have done *something*
 
-		std::cout << state.to_string(bits) << " from " << from.to_string(bits) << " cost " << cost << std::endl; //DEBUG
+		//std::cout << state.to_string(bits) << " from " << from.to_string(bits) << " cost " << cost << std::endl; //DEBUG
 
 		if ((state.min != from.min && state.min == from.max)
 		 || (state.max != from.max && state.max == from.min)) {
@@ -1081,41 +1081,41 @@ void flatten(std::vector< uint32_t > &closest, std::vector< float > const &weigh
 		path.emplace_back(f->second.second);
 	}
 	std::reverse(path.begin(), path.end());
-	std::cout << "----" << std::endl; //DEBUG
+	//std::cout << "----" << std::endl; //DEBUG
 
 	std::vector< int8_t > keep(bit_symbols.size(), -1);
 	for (uint32_t i = 1; i < path.size(); ++i) {
 		State state = State::unpack(path[i-1]);
 		State next = State::unpack(path[i]);
 
-		std::cout << state.to_string(bits) << " -> " << next.to_string(bits) << ": "; std::cout.flush(); //DEBUG
+		//std::cout << state.to_string(bits) << " -> " << next.to_string(bits) << ": "; std::cout.flush(); //DEBUG
 		if (state.min != next.min && state.max != next.max) {
 			//a(bc)d -> (abcd), keep 'a' (next.min), 'd' (state.max)
 			assert(bit_symbols[next.min].first == bit_symbols[state.max].first);
 			assert(next.current = bit_symbols[state.min].first);
-			std::cout << "keep " << int32_t(next.min) << " (\"" << symbols[next.min].first << "\")" << ", " << int32_t(state.max) << " (\"" << symbols[state.max].first << "\")" << std::endl; //DEBUG
+			//std::cout << "keep " << int32_t(next.min) << " (\"" << symbols[next.min].first << "\")" << ", " << int32_t(state.max) << " (\"" << symbols[state.max].first << "\")" << std::endl; //DEBUG
 			assert(keep[next.min] == -1);
 			assert(keep[state.max] == -1);
 			keep[next.min] = keep[state.max] = 1;
 		} else if (state.min != next.min) {
 			//a(bc)d -> (abc)d, keep/discard next.min
 			if (bit_symbols[next.min].first == next.current) {
-				std::cout << "keep " << int32_t(next.min) << " (\"" << symbols[next.min].first << "\")" << std::endl; //DEBUG
+				//std::cout << "keep " << int32_t(next.min) << " (\"" << symbols[next.min].first << "\")" << std::endl; //DEBUG
 				assert(keep[next.min] == -1);
 				keep[next.min] = 1;
 			} else {
-				std::cout << "discard " << int32_t(next.min) << " (\"" << symbols[next.min].first << "\")" << std::endl; //DEBUG
+				//std::cout << "discard " << int32_t(next.min) << " (\"" << symbols[next.min].first << "\")" << std::endl; //DEBUG
 				assert(keep[next.min] == -1);
 				keep[next.min] = 0;
 			}
 		} else { assert(state.max != next.max);
 			//a(bc)d -> a(bcd), keep/discard state.max
 			if (bit_symbols[state.max].first == next.current) {
-				std::cout << "keep " << int32_t(state.max) << " (\"" << symbols[state.max].first << "\")" << std::endl; //DEBUG
+				//std::cout << "keep " << int32_t(state.max) << " (\"" << symbols[state.max].first << "\")" << std::endl; //DEBUG
 				assert(keep[state.max] == -1);
 				keep[state.max] = 1;
 			} else {
-				std::cout << "discard " << int32_t(state.max) << " (\"" << symbols[state.max].first << "\")" << std::endl; //DEBUG
+				//std::cout << "discard " << int32_t(state.max) << " (\"" << symbols[state.max].first << "\")" << std::endl; //DEBUG
 				assert(keep[state.max] == -1);
 				keep[state.max] = 0;
 			}
@@ -1133,7 +1133,7 @@ void flatten(std::vector< uint32_t > &closest, std::vector< float > const &weigh
 	//use keep to figure out which elements of closest to re-label.
 	std::vector< bool > relabel; relabel.reserve(closest.size());
 	{
-		std::cout << "relabel:"; //DEBUG
+		//std::cout << "relabel:"; //DEBUG
 		auto si = symbols.begin();
 		for (auto c : closest) {
 			assert(si != symbols.end());
@@ -1141,13 +1141,13 @@ void flatten(std::vector< uint32_t > &closest, std::vector< float > const &weigh
 			assert(si != symbols.end());
 			assert(si->first == c);
 			relabel.emplace_back(keep[si - symbols.begin()] == 0);
-			if (relabel.back()) {
-				std::cout << ' ' << 'x' << int32_t(c) << 'x'; //DEBUG
-			} else {
-				std::cout << ' ' << ' ' << int32_t(c) << ' '; //DEBUG
-			}
+			//if (relabel.back()) {
+			//	std::cout << ' ' << 'x' << int32_t(c) << 'x'; //DEBUG
+			//} else {
+			//	std::cout << ' ' << ' ' << int32_t(c) << ' '; //DEBUG
+			//}
 		}
-		std::cout << std::endl; //DEBUG
+		//std::cout << std::endl; //DEBUG
 		assert(relabel.size() == closest.size());
 		assert(si != symbols.end());
 		++si;
@@ -1164,7 +1164,7 @@ void flatten(std::vector< uint32_t > &closest, std::vector< float > const &weigh
 		auto relabel_range = [&closest,&weights,&relabel](uint32_t first, uint32_t last) {
 			uint32_t before = (first == 0 ? closest.back() : closest[first-1]);
 			uint32_t after  = (last + 1 == closest.size() ? closest[0] : closest[last+1]);
-			std::cout << "Relabelling [" << first << ", " << last << "] using " << before << "/" << after << std::endl; //DEBUG
+			//std::cout << "Relabelling [" << first << ", " << last << "] using " << before << "/" << after << std::endl; //DEBUG
 
 			assert(!relabel[(first == 0 ? closest.size() : first) - 1]);
 			assert(!relabel[(last + 1 == closest.size() ? 0 : last) + 1]);

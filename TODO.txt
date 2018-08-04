@@ -30,6 +30,8 @@ Linking:
    - First: balance *checking* code
    - Next: Appendix A's local fixup
 
+NOTE: the 'flatten' code will currently accept situations with unpaired segments. This won't work with the split/merge balancing of Appendix A.
+
 -----
 DAG Embedding v2 ("multipass")
   time ./dist/schedule st:tests/st/test-B.st js:temp.js
