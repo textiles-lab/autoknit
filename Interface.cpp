@@ -24,7 +24,7 @@ glm::vec3 time_color(float time) {
 		glm::vec3(0.8f, 0.8f, 0.8f),
 		glm::vec3(0.8f, 0.2f, 0.2f)
 	};
-	time *= Size;
+	time *= (Size-1);
 	int32_t i = std::max(0, std::min(int32_t(Size)-2, int32_t(std::floor(time))));
 	float f = std::max(0.0f, std::min(1.0f, time - i));
 	return glm::mix(grad[i], grad[i+1], f);
@@ -1936,7 +1936,7 @@ void Interface::update_traced_tristrip() {
 
 
 void Interface::DEBUG_test_linking(bool flip) {
-	save_constraints_file = "";
+	//save_constraints_file = ""; <-- should probably actually save constraints
 	clear_constraints();
 
 	glm::vec3 min = glm::vec3( std::numeric_limits< float >::infinity());
