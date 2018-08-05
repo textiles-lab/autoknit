@@ -9,11 +9,12 @@
 #include <kit/check_fb.hpp>
 
 #include <glm/gtx/norm.hpp>
+#include <glm/gtx/hash.hpp>
 
 #include <SDL.h>
 
 #include <algorithm>
-
+#include <unordered_set>
 
 //given normalized 0..1 time:
 glm::vec3 time_color(float time) {
@@ -939,7 +940,7 @@ void Interface::handle_event(SDL_Event const &evt) {
 			show = show ^ ShowRowColGraph;
 		} else if (evt.key.keysym.scancode == SDL_SCANCODE_L) {
 			//show = ShowConstrainedModel;
-			//DEBUG_test_linking();
+			DEBUG_test_linking();
 		} else if (evt.key.keysym.scancode == SDL_SCANCODE_P) {
 			if (evt.key.keysym.mod & KMOD_SHIFT) {
 				clear_peeling();
@@ -1193,9 +1194,8 @@ void Interface::clear_times() {
 }
 
 void Interface::update_times() {
-	times_dirty = false;
-
 	if (constraints_dirty) update_constraints();
+	times_dirty = false;
 
 	try {
 		ak::interpolate_values(constrained_model, constrained_values, &times);
@@ -1913,59 +1913,90 @@ void Interface::update_traced_tristrip() {
 
 
 
-void Interface::DEBUG_test_linking() {
-	
-#if 0
-	constrained_model.clear();
-	constrained_values.clear();
-	DEBUG_constraint_paths.clear();
-	DEBUG_constraint_loops.clear();
+void Interface::DEBUG_test_linking(bool flip) {
+	save_constraints_file = "";
+	clear_constraints();
 
-	interpolated_values.clear();
+	glm::vec3 min = glm::vec3( std::numeric_limits< float >::infinity());
+	glm::vec3 max = glm::vec3(-std::numeric_limits< float >::infinity());
 
-	ak::embed_constraints(parameters, model, constraints, &constrained_model, &constrained_values, &DEBUG_constraint_paths, &DEBUG_constraint_loops);
-
-	update_DEBUG_constraint_paths_tristrip();
-	update_DEBUG_constraint_loops_tristrip();
-
-	try {
-		ak::interpolate_values(constrained_model, constrained_values, &interpolated_values);
-	} catch (std::exception &e) {
-		std::cout << "ERROR during interpoation: " << e.what() << std::endl;
-		interpolated_values.clear();
+	for (auto const &v : model.vertices) {
+		min = glm::min(min, v);
+		max = glm::max(max, v);
 	}
 
-	update_constrained_model_triangles();
-
-	if (constrained_values.empty()) {
-		std::cerr << "WARNING: no constrained values to start peeling." << std::endl;
-	} else {
-		ak::find_first_active_chains(parameters, constrained_model, interpolated_values, &active_chains, &active_flags);
-		std::vector< float > temp_values = interpolated_values;
-		for (auto &v : temp_values) {
-			v = -v;
-		}
-		ak::find_first_active_chains(parameters, constrained_model, temp_values, &next_chains, &next_flags);
-		for (uint32_t ci = 0; ci < next_chains.size(); ++ci) {
-			std::reverse(next_chains[ci].begin(), next_chains[ci].end());
-			std::reverse(next_flags[ci].begin(), next_flags[ci].end());
-		}
+	//build next-along-triangle map for directed edges:
+	std::unordered_map< glm::uvec2, uint32_t > next;
+	for (auto const &tri : model.triangles) {
+		auto do_edge = [&](uint32_t a, uint32_t b, uint32_t c) {
+			auto ret = next.insert(std::make_pair(glm::uvec2(a,b), c));
+			assert(ret.second);
+		};
+		do_edge(tri.x, tri.y, tri.z);
+		do_edge(tri.y, tri.z, tri.x);
+		do_edge(tri.z, tri.x, tri.y);
 	}
 
-	update_active_chains_tristrip();
-	update_next_chains_tristrip();
+	std::vector< ak::Constraint > new_constraints;
+	std::unordered_set< glm::uvec2 > visited;
+	for (auto const &en : next) {
+		//not a boundary:
+		if (next.count(glm::uvec2(en.first.y, en.first.x))) continue;
+		//already done:
+		if (visited.count(en.first)) continue;
 
-	links.clear();
-	std::vector< std::vector< ak::EmbeddedVertex > > linked_next_chains;
-	std::vector< std::vector< ak::Flag > > linked_next_flags;
+		std::vector< uint32_t > path;
+		path.emplace_back(en.first.y);
+		path.emplace_back(en.first.x);
+		visited.insert(en.first);
+		while (true) {
+			glm::uvec2 e(path[path.size()-2], path[path.size()-1]);
+			while (true) {
+				auto f = next.find(glm::uvec2(e.y, e.x));
+				if (f == next.end()) break;
+				e = glm::uvec2(f->second, e.y);
+				assert(e != glm::uvec2(path[path.size()-2], path[path.size()-1]));
+			}
+			assert(e != glm::uvec2(path[path.size()-2], path[path.size()-1]));
+			assert(!next.count(glm::uvec2(e.y, e.x)));
 
-	ak::link_chains(parameters, constrained_model, interpolated_values, active_chains, active_flags, next_chains, &linked_next_chains, &linked_next_flags, &links);
+			path.emplace_back(e.x);
+			if (e.y == path[0] && e.x == path[1]) break;
 
-	next_chains = linked_next_chains;
-	next_flags =  linked_next_flags;
+			auto ret = visited.insert(e);
+			assert(ret.second);
+		}
+		assert(path[0] == path[path.size()-2] && path[1] == path[path.size()-1]);
+		path.pop_back();
 
-	update_links_tristrip();
-#endif
+		uint32_t start_votes = 0;
+		uint32_t end_votes = 0;
+		for (auto v : path) {
+			if (model.vertices[v].z > 0.75f * (max.z + min.z)) {
+				++end_votes;
+			}
+			if (model.vertices[v].z < 0.25f * (max.z + min.z)) {
+				++start_votes;
+			}
+		}
+
+		if (start_votes == end_votes) {
+			std::cout << "Skipping constraint -- same number of start and end votes." << std::endl;
+		}
+
+		new_constraints.emplace_back();
+		new_constraints.back().chain = path;
+		if (flip) {
+			new_constraints.back().value = (start_votes > end_votes ?  1.0f :-1.0f);
+		} else {
+			new_constraints.back().value = (start_votes > end_votes ? -1.0f : 1.0f);
+		}
+		new_constraints.back().radius = 0.0f;
+	}
+
+	std::cout << "Made " << new_constraints.size() << " constraints." << std::endl;
+
+	set_constraints(new_constraints);
 
 }
 

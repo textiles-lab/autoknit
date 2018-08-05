@@ -279,7 +279,7 @@ struct Interface : public kit::Mode {
 
 
 	//link bottom constraints directly to top constraints (to test linking function)
-	void DEBUG_test_linking();
+	void DEBUG_test_linking(bool flip = false);
 
 
 	//place camera to view whole model:

@@ -633,11 +633,11 @@ void ak::link_chains(
 			//expecting things to look like this now (doubles, in order, then another single, then the doubles, reversed):
 			// a b c d c b
 			assert(segments.size() % 2 == 0);
+			assert(segments.size() >= 4);
 			assert(next_counts[segments[segments.size()/2]->next] == 1);
 			for (uint32_t i = 1; i < segments.size()/2; ++i) {
 				assert(segments[i]->next == segments[segments.size()-i]->next);
 			}
-			assert(segments.size() >= 6);
 
 			//now push extra stitches from the center outward:
 			uint32_t m = (segments.size()/2)/2; //so a b c b -> m = 1 ; a b c d e d c b -> m = 2;
@@ -1000,6 +1000,9 @@ void ak::link_chains(
 			&all_next_stitch_linkones[ni] );
 	}
 
+	//PARANOIA:
+	std::vector< std::unordered_set< uint32_t > > all_next_claimed(next_chains.size());
+	std::vector< std::unordered_set< uint32_t > > all_active_claimed(active_chains.size());
 
 	for (auto const &anm : matches) {
 		Match const &match = anm.second;
@@ -1017,14 +1020,18 @@ void ak::link_chains(
 		std::vector< uint32_t > next_stitch_indices;
 		std::vector< glm::vec3 > next_stitch_locations;
 		std::vector< bool > next_stitch_linkones;
+		std::unordered_set< uint32_t > &next_claimed = all_next_claimed[anm.first.second];
 		for (auto const &be : match.next) {
 			auto const &ns = next_stitches[anm.first.second];
 			for (auto const &s : ns) {
-				if (be.begin <= s.t && s.t < be.end) {
+				if ((be.begin < be.end && be.begin <= s.t && s.t < be.end)
+				 || (be.begin >= be.end && (s.t < be.end || be.begin <= s.t))) {
 					uint32_t si = &s - &ns[0];
 					next_stitch_indices.emplace_back(si);
 					next_stitch_locations.emplace_back(all_next_stitch_locations[anm.first.second][si]);
 					next_stitch_linkones.emplace_back(all_next_stitch_linkones[anm.first.second][si]);
+					auto ret = next_claimed.insert(si); //PARANOIA
+					assert(ret.second);
 				}
 			}
 		}
@@ -1032,11 +1039,14 @@ void ak::link_chains(
 		std::vector< uint32_t > active_stitch_indices;
 		std::vector< glm::vec3 > active_stitch_locations;
 		std::vector< bool > active_stitch_linkones;
+		std::unordered_set< uint32_t > &active_claimed = all_active_claimed[anm.first.first];
 		for (auto const &be : match.active) {
 			for (auto si : be.stitches) {
 				active_stitch_indices.emplace_back(si);
 				active_stitch_locations.emplace_back(all_active_stitch_locations[anm.first.first][si]);
 				active_stitch_linkones.emplace_back(all_active_stitch_linkones[anm.first.first][si]);
+				auto ret = active_claimed.insert(si); //PARANOIA
+				assert(ret.second);
 			}
 		}
 
@@ -1099,6 +1109,7 @@ void ak::link_chains(
 					for (auto l : next_stitch_linkones) {
 						if (!l) ++total;
 					}
+					assert(total > 0);
 					uint32_t decreases = active_stitch_locations.size() - next_stitch_locations.size();
 					std::vector< bool > dec(total, false);
 					for (uint32_t i = 0; i < decreases; ++i) {
