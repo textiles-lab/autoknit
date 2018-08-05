@@ -360,7 +360,7 @@ void ak::link_chains(
 			}
 		}
 
-		std::cout << "Discarded " << discarded << " non-mutual segment matches." << std::endl;
+		if (discarded) std::cout << "Discarded " << discarded << " non-mutual segment matches." << std::endl;
 
 		return discarded > 0;
 	};
@@ -422,10 +422,16 @@ void ak::link_chains(
 		uint32_t next; //convenience field for split balancing
 	};
 
+	struct BeginEndStitches2 : public BeginEnd {
+		BeginEndStitches2(float begin_, float end_, uint32_t active_) : BeginEnd(begin_, end_), active(active_) { }
+		uint32_t stitches = 0; //std::vector< uint32_t > stitches;
+		uint32_t active; //convenience field for merge balancing
+	};
+
 	//sort active and next into matching parametric ranges:
 	struct Match {
 		std::vector< BeginEndStitches > active; //at most two (after post-processing)
-		std::vector< BeginEnd > next; //at most two (after post-processing)
+		std::vector< BeginEndStitches2 > next; //at most two (after post-processing)
 	};
 
 	std::map< std::pair< uint32_t, uint32_t >, Match > matches;
@@ -460,7 +466,7 @@ void ak::link_chains(
 			uint32_t end = begin + 1;
 			while (end < closest.size() && closest[end] == closest[begin]) ++end;
 			assert(end < lengths.size());
-			matches[std::make_pair(closest[begin], ni)].next.emplace_back(lengths[begin] / lengths.back(), lengths[end] / lengths.back());
+			matches[std::make_pair(closest[begin], ni)].next.emplace_back(lengths[begin] / lengths.back(), lengths[end] / lengths.back(), closest[begin]);
 			begin = end;
 		}
 	}
@@ -476,7 +482,7 @@ void ak::link_chains(
 			for (auto &bse : anm.second.active) {
 				assert(bse.next == anm.first.second); //'next' should be set correctly!
 				active_segments[anm.first.first].emplace_back(&bse);
-				std::cout << "match[" << int32_t(anm.first.first) << "," << int32_t(anm.first.second) << "] gives segment [" << bse.begin << ',' << bse.end << ')' << std::endl; //DEBUG
+				//std::cout << "match[" << int32_t(anm.first.first) << "," << int32_t(anm.first.second) << "] gives segment [" << bse.begin << ',' << bse.end << ')' << std::endl; //DEBUG
 			}
 		}
 
@@ -490,11 +496,11 @@ void ak::link_chains(
 			});
 
 			//DEBUG:
-			std::cout << "active[" << ai << "] segments:";
-			for (auto seg : segments) {
-				std::cout << ' ' << '[' << seg->begin << ',' << seg->end << ')';
-			}
-			std::cout << std::endl;
+			//std::cout << "active[" << ai << "] segments:";
+			//for (auto seg : segments) {
+			//	std::cout << ' ' << '[' << seg->begin << ',' << seg->end << ')';
+			//}
+			//std::cout << std::endl;
 
 			//segments should partition [0.0, 1.0):
 			assert(!segments.empty());
@@ -538,7 +544,7 @@ void ak::link_chains(
 		}
 		assert(anm.second.active.size() <= 2); //<-- should be guaranteed by flatten
 	}
-	std::cout << "Merged " << active_merges << " active segments." << std::endl;
+	if (active_merges) std::cout << "Merged " << active_merges << " active segments." << std::endl;
 
 	uint32_t next_merges = 0;
 	for (auto &anm : matches) {
@@ -557,10 +563,10 @@ void ak::link_chains(
 		}
 		assert(anm.second.next.size() <= 2); //<-- should be guaranteed by flatten
 	}
-	std::cout << "Merged " << next_merges << " next segments." << std::endl;
+	if (next_merges) std::cout << "Merged " << next_merges << " next segments." << std::endl;
 
 
-	{ //balance stitch assignments for merges:
+	{ //balance stitch assignments for splits:
 		//sort ranges from matches back to actives: (doing again because of merging)
 		std::vector< std::vector< BeginEndStitches * > > active_segments(active_chains.size());
 		for (auto &anm : matches) {
@@ -710,7 +716,7 @@ void ak::link_chains(
 		if (anm.first.second != -1U) next_matches[anm.first.second] += 1;
 		if (anm.first.first == -1U || anm.first.second == -1U) ++empty_matches;
 	}
-	std::cout << "NOTE: have " << empty_matches << " segments that match with nothing." << std::endl;
+	if (empty_matches) std::cout << "NOTE: have " << empty_matches << " segments that match with nothing." << std::endl;
 
 	{ //If there are any merges or splits, all participating next cycles are marked 'accept':
 		std::set< uint32_t > to_mark;
@@ -734,16 +740,14 @@ void ak::link_chains(
 	}
 
 
-
 	//allocate next stitches:
 	next_stitches.assign(next_chains.size(), std::vector< ak::Stitch >());
 
 	//allocate stitch counts based on segment lengths + source stitches:
 	//(and limit based on active stitch counts)
-	//TODO: account for balance also, somehow!
 	//then make next stitches
-	for (auto const &anm : matches) {
-		Match const &match = anm.second;
+	for (auto &anm : matches) {
+		Match &match = anm.second;
 
 		if (match.active.empty()) {
 			std::cout << "Ignoring match with empty active chain." << std::endl;
@@ -810,9 +814,9 @@ void ak::link_chains(
 		assert(anm.first.second < next_lengths.size());
 		std::vector< float > const &lengths = next_lengths[anm.first.second];
 		float total_length = 0.0f;
-		std::cout << "Matching to"; //DEBUG
+		//std::cout << "Matching to"; //DEBUG
 		for (auto const &be : match.next) {
-			std::cout << " [" << be.begin << ", " << be.end << ")"; std::cout.flush(); //DEBUG
+		//	std::cout << " [" << be.begin << ", " << be.end << ")"; std::cout.flush(); //DEBUG
 			if (be.begin <= be.end) {
 				total_length += be.end - be.begin;
 			} else {
@@ -820,7 +824,7 @@ void ak::link_chains(
 				total_length += (be.end + 1.0f) - be.begin;
 			}
 		}
-		std::cout << std::endl; //DEBUG
+		//std::cout << std::endl; //DEBUG
 		total_length *= lengths.back();
 
 		float stitch_width = parameters.stitch_width_mm / parameters.model_units_mm;
@@ -853,14 +857,17 @@ void ak::link_chains(
 		if (stitches > 0) {
 			//spread stitches among "allocation ranges" (same discard status)
 			struct Alloc {
-				Alloc(float begin_, float end_, bool first_one_, bool last_one_) : begin(begin_), end(end_), first_one(first_one_), last_one(last_one_) { assert(begin < end); }
+				Alloc(float begin_, float end_, bool first_one_, bool last_one_, uint32_t bi_) : begin(begin_), end(end_), first_one(first_one_), last_one(last_one_), bi(bi_) { assert(begin < end); }
 				float begin, end;
 				bool first_one, last_one;
+				uint32_t bi; //<-- BeginEnd range this came from
 				uint32_t stitches = 0;
 				float length = std::numeric_limits< float >::quiet_NaN();
 			};
 			std::vector< Alloc > alloc;
+			//NOTE: care is taken so that when stitches are added to the match.next.stitches[] arrays during creation, they will be in CCW order:
 			for (auto const &be : match.next) {
+				uint32_t bi = &be - &match.next[0];
 				auto split_back = [&]() {
 					//split allocation range on discards:
 					for (auto tdi = discard_after.begin(); tdi != discard_after.end(); ++tdi) {
@@ -869,9 +876,10 @@ void ak::link_chains(
 						} else if (tdi->first == alloc.back().begin) {
 							alloc.back().first_one = true;
 						} else if (tdi->first < alloc.back().end) {
+							float end = alloc.back().end;
 							alloc.back().last_one = true;
 							alloc.back().end = tdi->first;
-							alloc.emplace_back(tdi->first, be.end, true, false);
+							alloc.emplace_back(tdi->first, end, true, false, alloc.back().bi);
 						} else if (tdi->first == alloc.back().end) {
 							alloc.back().last_one = true;
 						} else { assert(tdi->first > alloc.back().end);
@@ -879,12 +887,12 @@ void ak::link_chains(
 					}
 				};
 				if (be.begin <= be.end) {
-					alloc.emplace_back(be.begin, be.end, false, false);
+					alloc.emplace_back(be.begin, be.end, false, false, bi);
 					split_back();
 				} else {
-					alloc.emplace_back(be.begin, 1.0f, false, false);
+					alloc.emplace_back(be.begin, 1.0f, false, false, bi);
 					split_back();
-					alloc.emplace_back(0.0f, be.end, false, false);
+					alloc.emplace_back(0.0f, be.end, false, false, bi);
 					split_back();
 				}
 			}
@@ -922,7 +930,13 @@ void ak::link_chains(
 					if (s == 0 && a.first_one) flag = ak::Stitch::FlagLinkOne;
 					if (s + 1 == a.stitches && a.last_one) flag = ak::Stitch::FlagLinkOne;
 					new_stitches.emplace_back( t, flag );
-
+					//make sure it's in the range it's being assigned to:
+					if (match.next[a.bi].begin < match.next[a.bi].end) {
+						assert(match.next[a.bi].begin <= t && t < match.next[a.bi].end);
+					} else {
+						assert(t < match.next[a.bi].end || match.next[a.bi].begin <= t);
+					}
+					match.next[a.bi].stitches += 1; //.emplace_back(next_stitches[anm.first.second].size() + new_stitches.size() - 1); //track stitch index
 				}
 			}
 		}
@@ -930,6 +944,178 @@ void ak::link_chains(
 
 		next_stitches[anm.first.second].insert(next_stitches[anm.first.second].end(), new_stitches.begin(), new_stitches.end());
 	} //end stitch allocation
+
+	{ //balance new stitch allocations for merges:
+		//sort ranges from matches back to nexts:
+		std::vector< std::vector< BeginEndStitches2 * > > next_segments(next_chains.size());
+		for (auto &anm : matches) {
+			if (anm.first.second == -1U) {
+				assert(anm.second.next.empty());
+				continue;
+			}
+			for (auto &bse : anm.second.next) {
+				assert(bse.active == anm.first.first);
+				next_segments[anm.first.second].emplace_back(&bse);
+			}
+		}
+
+		for (uint32_t ni = 0; ni < next_chains.size(); ++ni) {
+			auto &segments = next_segments[ni];
+			assert(!segments.empty());
+
+			std::sort(segments.begin(), segments.end(), [](BeginEndStitches2 const *a, BeginEndStitches2 const *b) {
+				return a->begin < b->begin;
+			});
+
+			//Note: because of merging, last segment may wrap around weirdly;
+			// -- this is okay!
+			bool is_loop = (next_chains[ni].empty() || next_chains[ni][0] == next_chains[ni].back());
+			assert(
+				(segments[0]->begin == 0.0f && segments.back()->end == 1.0f)
+				|| (is_loop && (segments[0]->begin == segments.back()->end))
+			);
+			//segments should still partition [0,1):
+			for (uint32_t i = 1; i < segments.size(); ++i) {
+				assert(segments[i-1]->end == segments[i]->begin);
+			}
+
+			//find counts (on the way to finding a singleton segment):
+			std::unordered_map< uint32_t, uint32_t > active_counts;
+			for (auto seg : segments) {
+				active_counts.insert(std::make_pair(seg->active, 0)).first->second += 1;
+			}
+
+			uint32_t singles = 0;
+			uint32_t doubles = 0;
+			uint32_t multis = 0;
+			for (auto const &nc : active_counts) {
+				if (nc.second == 1) ++singles;
+				else if (nc.second == 2) ++doubles;
+				else ++multis;
+			}
+			assert(multis == 0);
+
+			if (singles == 1 && doubles == 0 && multis == 0) {
+				//just one segment, nothing to re-assign.
+				continue;
+			} else if (singles == 2 && doubles == 0 && multis == 0) {
+				//just two segments, *also* always balanced
+				continue;
+			} else if (!(singles == 2 && multis == 0)) {
+				throw std::runtime_error("Unhandled merge situation with " + std::to_string(singles) + " singles, " + std::to_string(doubles) + " doubles, and " + std::to_string(multis) + " multis.");
+			}
+			assert(singles == 2 && multis == 0);
+
+			//rotate until a single is in the first position:
+			for (uint32_t s = 0; s < segments.size(); ++s) {
+				if (active_counts[segments[s]->active] == 1) {
+					std::rotate(segments.begin(), segments.begin() + s, segments.end());
+					break;
+				}
+			}
+			assert(active_counts[segments[0]->active] == 1);
+
+			//expecting things to look like this now (doubles, in order, then another single, then the doubles, reversed):
+			// a b c d c b
+			assert(segments.size() % 2 == 0);
+			assert(segments.size() >= 4);
+			assert(active_counts[segments[segments.size()/2]->active] == 1);
+			for (uint32_t i = 1; i < segments.size()/2; ++i) {
+				assert(segments[i]->active == segments[segments.size()-i]->active);
+			}
+
+			//DEBUG: show counts (and adjustments?)
+			std::string old_back;
+			std::string old_front;
+			auto pad = [](std::string s) -> std::string {
+				while (s.size() < 3) s = ' ' + s;
+				return s;
+			};
+			old_back += pad(std::to_string(segments[0]->stitches));
+			old_front += pad("");
+			for (uint32_t i = 1; i < segments.size()/2; ++i) {
+				uint32_t io = segments.size()-i;
+				assert(segments[i]->active == segments[io]->active);
+				old_back += pad(std::to_string(segments[i]->stitches));
+				old_front += pad(std::to_string(segments[io]->stitches));
+			}
+			old_back += pad("");
+			old_front += pad(std::to_string(segments[segments.size()/2]->stitches));
+			//end DEBUG
+
+			//now walk from left-to-right along internal segments, redoing stitch counts as needed:
+			uint32_t sum = 0;
+			uint32_t sumo = 0;
+			for (uint32_t i = 1; i < segments.size()/2; ++i) {
+				uint32_t io = segments.size()-i;
+				assert(segments[i]->active == segments[io]->active);
+				uint32_t total = segments[i]->stitches + segments[io]->stitches;
+				segments[i]->stitches = total / 2;
+				segments[io]->stitches = (total + 1) / 2;
+				if (sumo > sum) {
+					std::swap(segments[i]->stitches, segments[io]->stitches);
+				}
+				sum += segments[i]->stitches;
+				sumo += segments[io]->stitches;
+				assert(std::abs(int32_t(sumo)-int32_t(sum)) <= 1);
+			}
+			//REMEMBER: as per Appendix A, this algorithm isn't perfect (can fail in very large merge/split chains).
+
+			//Now delete the existing stitches for this chain and re-allocate!
+			uint32_t old_count = next_stitches[ni].size();
+
+			next_stitches[ni].clear();
+			for (auto seg : segments) {
+				for (uint32_t s = 0; s < seg->stitches; ++s) {
+					float end = (seg->begin <= seg->end ? seg->end : seg->end + 1.0f);
+					assert(seg->begin <= end);
+					float t = (s + 0.5f) / float(seg->stitches) * (end - seg->begin) + seg->begin;
+					if (t >= 1.0f) t -= 1.0f;
+					assert(t < 1.0f);
+
+					next_stitches[ni].emplace_back( t, ak::Stitch::FlagLinkAny );
+					//make sure it's in the range it's being assigned to:
+					if (seg->begin < seg->end) {
+						assert(seg->begin <= t && t < seg->end);
+					} else {
+						assert(t < seg->end || seg->begin <= t);
+					}
+				}
+			}
+			assert(old_count == next_stitches[ni].size());
+
+			//DEBUG: show counts (and adjustments?)
+			std::string new_back;
+			std::string new_front;
+			new_back += pad(std::to_string(segments[0]->stitches));
+			new_front += pad("");
+			for (uint32_t i = 1; i < segments.size()/2; ++i) {
+				uint32_t io = segments.size()-i;
+				assert(segments[i]->active == segments[io]->active);
+				new_back += pad(std::to_string(segments[i]->stitches));
+				new_front += pad(std::to_string(segments[io]->stitches));
+			}
+			new_back += pad("");
+			new_front += pad(std::to_string(segments[segments.size()/2]->stitches));
+			//end DEBUG
+
+			//if (old_back != new_back || old_front != new_front) {
+				std::cout << "Balanced a split:\n";
+				std::cout << "old: " << old_back << "\n";
+				std::cout << "     " << old_front << "\n";
+				std::cout << "new: " << new_back << "\n";
+				std::cout << "     " << new_front << "\n";
+				std::cout.flush();
+			//} else {
+			if (old_back == new_back && old_front == new_front) {
+				std::cout << "NOTE: split was already balanced." << std::endl;
+			}
+
+
+		}
+	}
+
+
 
 	for (auto &stitches : next_stitches) {
 		std::stable_sort(stitches.begin(), stitches.end(), [](ak::Stitch const &a, ak::Stitch const &b){
@@ -1007,34 +1193,57 @@ void ak::link_chains(
 	for (auto const &anm : matches) {
 		Match const &match = anm.second;
 
-		if (match.active.empty()) {
-			std::cout << "Ignoring match with empty active chain." << std::endl;
-			continue;
-		} else if (match.next.empty()) {
-			std::cout << "Ignoring match with empty next chain." << std::endl;
-			continue;
-		}
-		assert(!match.active.empty());
-		assert(!match.next.empty());
-
 		std::vector< uint32_t > next_stitch_indices;
 		std::vector< glm::vec3 > next_stitch_locations;
 		std::vector< bool > next_stitch_linkones;
 		std::unordered_set< uint32_t > &next_claimed = all_next_claimed[anm.first.second];
-		for (auto const &be : match.next) {
+		auto do_range = [&](float begin, float end) {
+			//std::cout << "do_range [" << begin << ", " << end << "): "; //DEBUG
+			assert(begin <= end);
 			auto const &ns = next_stitches[anm.first.second];
+			uint32_t count = 0;
 			for (auto const &s : ns) {
-				if ((be.begin < be.end && be.begin <= s.t && s.t < be.end)
-				 || (be.begin >= be.end && (s.t < be.end || be.begin <= s.t))) {
+				if (begin <= s.t && s.t < end) {
 					uint32_t si = &s - &ns[0];
+					//std::cout << " " << si; std::cout.flush(); //DEBUG
 					next_stitch_indices.emplace_back(si);
 					next_stitch_locations.emplace_back(all_next_stitch_locations[anm.first.second][si]);
 					next_stitch_linkones.emplace_back(all_next_stitch_linkones[anm.first.second][si]);
 					auto ret = next_claimed.insert(si); //PARANOIA
 					assert(ret.second);
+					++count;
 				}
 			}
+			//std::cout << std::endl; //DEBUG
+			return count;
+		};
+		for (auto const &be : match.next) {
+			uint32_t count;
+			if (be.begin <= be.end) {
+				count = do_range(be.begin, be.end);
+			} else {
+				assert(&be == &match.next.back()); //only last one should be split/merge
+				count = do_range(be.begin, 1.0f);
+				count += do_range(0.0f, be.end);
+			}
+			assert(count == be.stitches); //should have found the right number of stitches
 		}
+
+		{ //PARANOIA: because of the care we took in the look-up above, should have (at most one) decrease in t-coord in the next_stitches:
+			uint32_t decreases = 0;
+			for (uint32_t i = 0; i < next_stitch_indices.size(); ++i) {
+				float t0 = next_stitches[anm.first.second][next_stitch_indices[i == 0 ? next_stitch_indices.size()-1 : i-1]].t;
+				float t1 = next_stitches[anm.first.second][next_stitch_indices[i]].t;
+				if (t0 < t1) {
+					//expected
+				} else {
+					assert(t0 < t1 + 1.0f); //wrapped
+					decreases += 1;
+				}
+			}
+			assert(decreases <= 1);
+		}
+
 
 		std::vector< uint32_t > active_stitch_indices;
 		std::vector< glm::vec3 > active_stitch_locations;
@@ -1049,6 +1258,33 @@ void ak::link_chains(
 				assert(ret.second);
 			}
 		}
+
+		{ //PARANOIA: because of the care we take in book-keeping, should have (at most one) decrease in t-coord in the active_stitches:
+			uint32_t decreases = 0;
+			for (uint32_t i = 0; i < active_stitch_indices.size(); ++i) {
+				float t0 = active_stitches[anm.first.first][active_stitch_indices[i == 0 ? active_stitch_indices.size()-1 : i-1]].t;
+				float t1 = active_stitches[anm.first.first][active_stitch_indices[i]].t;
+				if (t0 < t1) {
+					//expected
+				} else {
+					assert(t0 < t1 + 1.0f); //wrapped
+					decreases += 1;
+				}
+			}
+			assert(decreases <= 1);
+		}
+
+
+		if (match.active.empty()) {
+			std::cout << "Ignoring match with empty active chain." << std::endl;
+			continue;
+		} else if (match.next.empty()) {
+			std::cout << "Ignoring match with empty next chain." << std::endl;
+			continue;
+		}
+		assert(!match.active.empty());
+		assert(!match.next.empty());
+
 
 		//figure out how to link to next stitches:
 		{ //DEBUG:
@@ -1173,6 +1409,14 @@ void ak::link_chains(
 				links.emplace_back(link);
 			}
 		}
+	}
+
+	//PARANOIA: every stitch should have been claimed
+	for (uint32_t ai = 0; ai < active_chains.size(); ++ai) {
+		assert(all_active_claimed[ai].size() == active_stitches[ai].size());
+	}
+	for (uint32_t ni = 0; ni < next_chains.size(); ++ni) {
+		assert(all_next_claimed[ni].size() == next_stitches[ni].size());
 	}
 
 	//mark next stitches in discard range as 'discard':

@@ -14,8 +14,6 @@ Need to implement: "if a next course intersects a boundary, the whole boundary i
 (or we could do something better, but this version would actually avoid a lot of special cases ... albeit special cases that are getting handled properly at the moment)
 (something better might be: add boundary between intersections and active courses)
 
-Balancing still required in ak-link.
-
 DTW nice-to-have in ak-link.
 
 In the scheduling code:
@@ -23,15 +21,9 @@ In the scheduling code:
  - some sort of offset-determination for cycles is needed
  - should consider using real xfer cost
 
-
-Linking:
- - how to filter portions of a cycle that don't link to anything? Possibly by adding to adjacent segments?
- - how to balance?
-   - First: balance *checking* code
-   - Next: Appendix A's local fixup
+Other than the flatten code being more permissive than it should be, balancing of both splits and merges should actually be working when linking. (Haven't had a lot of test data to run through it, yet.)
 
 NOTE: the 'flatten' code will currently accept situations with unpaired segments. This won't work with the split/merge balancing of Appendix A.
-The paired-segments code is probably a relatively straightforward modification.
 
 -----
 DAG Embedding v2 ("multipass")
