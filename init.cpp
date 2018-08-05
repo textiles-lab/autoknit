@@ -97,6 +97,10 @@ std::shared_ptr< kit::Mode > kit_mode() {
 				break;
 			}
 		}
+		if (save_traced_file != "") {
+			interface->save_traced_file = save_traced_file;
+			interface->update_traced();
+		}
 		if (peel_test != 0) return nullptr;
 	}
 
