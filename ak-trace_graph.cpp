@@ -201,12 +201,55 @@ void ak::trace_graph(
 		auto miss = [&](uint32_t next) { make_stitch(next, ak::TracedStitch::Miss); };
 
 		//Rule 1: start by knitting a ready but not knit-twice node:
-		for (uint32_t vi = 0; vi < info.size(); ++vi) {
-			if (row_pending[info[vi].row] == 0 && info[vi].knits < 2) {
-				//TODO: potentially swap direction based on row-wise neighbors?
-				knit(vi);
-				break;
+		{
+			uint32_t found = -1U;
+			for (uint32_t vi = 0; vi < info.size(); ++vi) {
+				if (row_pending[info[vi].row] == 0 && info[vi].knits < 2) {
+					found = vi;
+					break;
+				}
 			}
+			if (found == -1U) return false;
+			//now shove 'found' to one end of a chain of ready stitches:
+			auto adv = [&](uint32_t *vi) {
+				uint32_t prev = vertices[*vi].row_in;
+				//NOTE: probably some special cases to consider here around the ends of short rows; will ignore them for now.
+
+				//if previous stitch exists but is already knit on, consider moving to a child of that stitch:
+				while (prev != -1U && info[prev].knits >= 2) {
+					assert(row_pending[info[prev].row] == 0); //it's the same row, so... yeah.
+					uint32_t found = -1U;
+					for (uint32_t o : {1 , 0}) {
+						uint32_t child = vertices[prev].col_out[o];
+						if (child == -1U) continue;
+						if (row_pending[info[child].row] != 0) continue;
+						found = child;
+						break;
+					}
+					prev = found;
+				}
+				//no previous stitch (or previous stitch child) was found that could support knits:
+				if (prev == -1U) return false;
+				//previous stitch found that could be knit:
+				assert(row_pending[info[prev].row] == 0);
+				assert(info[prev].knits < 2);
+				*vi = prev;
+				return true;
+			};
+
+			uint32_t found2 = found;
+			while (true) {
+				if (!adv(&found) || found == found2) break;
+				if (!adv(&found) || found == found2) break;
+				bool ret = adv(&found2);
+				assert(ret);
+				if (found == found2) break;
+			}
+
+			//Swap direction based on row-wise neighbors:
+			if (vertices[found].row_out == -1U || info[vertices[found].row_out].knits == 2) dir = Backward;
+			else dir = Forward;
+			knit(found);
 		}
 		if (at == -1U) return false;
 
