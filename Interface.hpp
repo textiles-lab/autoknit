@@ -217,6 +217,7 @@ struct Interface : public kit::Mode {
 	std::vector< ak::EmbeddedVertex > slice_on_model;
 	std::vector< std::vector< uint32_t > > slice_active_chains;
 	std::vector< std::vector< uint32_t > > slice_next_chains;
+	std::vector< bool > slice_next_used_boundary;
 	std::vector< float > slice_times;
 
 	//sliced model: position, normal, color

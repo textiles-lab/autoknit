@@ -59,6 +59,7 @@ void ak::build_next_active_chains(
 	std::vector< std::vector< ak::Stitch > > const &active_stitches, //in: current active stitches
 	std::vector< std::vector< uint32_t > > const &next_chains, //in: next chains (on slice)
 	std::vector< std::vector< ak::Stitch > > const &next_stitches, //in: next stitches
+	std::vector< bool > const &next_used_boundary, //in: did next chain use boundary?
 	std::vector< ak::Link > const &links_in, //in: links between active and next
 	std::vector< std::vector< ak::EmbeddedVertex > > *next_active_chains_, //out: next active chains (on model)
 	std::vector< std::vector< ak::Stitch > > *next_active_stitches_, //out: next active stitches
@@ -85,6 +86,7 @@ void ak::build_next_active_chains(
 	}
 
 	assert(next_stitches.size() == next_chains.size());
+	assert(next_used_boundary.size() == next_chains.size());
 
 
 	for (auto const &l : links_in) {
@@ -690,6 +692,22 @@ void ak::build_next_active_chains(
 
 	auto output = [&](std::vector< OnChainStitch > const &path) {
 		assert(path.size() >= 2);
+
+		{ //don't pass onward any chains that touch a boundary:
+			uint32_t on_discard = 0;
+			uint32_t on_non_discard = 0;
+			for (auto const &ocs : path) {
+				if (ocs.on == OnChainStitch::OnNext && next_used_boundary[ocs.chain]) {
+					++on_discard;
+				} else {
+					++on_non_discard;
+				}
+			}
+			if (on_discard) {
+				assert(on_non_discard == 0); //should either be entirely discard or entirely not!
+				return;
+			}
+		}
 
 		//build embedded vertices for all stitches:
 		std::vector< ak::EmbeddedVertex > path_evs;

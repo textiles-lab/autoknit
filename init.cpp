@@ -94,6 +94,7 @@ std::shared_ptr< kit::Mode > kit_mode() {
 		while (interface->peel_step <= target) {
 			if (!interface->step_peeling()) {
 				std::cout << "--- NOTE: peeling finished ---" << std::endl;
+				break;
 			}
 		}
 		if (peel_test != 0) return nullptr;

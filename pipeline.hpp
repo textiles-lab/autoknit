@@ -269,7 +269,8 @@ void peel_slice(
 	Model *slice, //out: slice of model from active chains to next chains
 	std::vector< EmbeddedVertex > *slice_on_model, //out: map from slice vertices to model vertices
 	std::vector< std::vector< uint32_t > > *slice_active_chains, //out: active chains on slice
-	std::vector< std::vector< uint32_t > > *slice_next_chains //out: next chains on slice
+	std::vector< std::vector< uint32_t > > *slice_next_chains, //out: next chains on slice
+	std::vector< bool > *used_boundary = nullptr //out:does slice_next_chains[i] include part of a boundary?
 );
 
 struct Link {
@@ -296,6 +297,7 @@ void link_chains(
 	std::vector< std::vector< uint32_t > > const &active_chains, //in: current active chains (slice vertex #'s)
 	std::vector< std::vector< Stitch > > const &active_stitches, //in: current active stitches, sorted by time
 	std::vector< std::vector< uint32_t > > const &next_chains, //in: current next chains (slice vertex #'s)
+	std::vector< bool > const &next_used_boundary, //in: did next chain use boundary? (forces no discard)
 	//need this or slice_times (above) std::vector< std::vector< bool > > const &discard_segments,
 	std::vector< std::vector< Stitch > > *next_stitches, //out: next active stitches
 	std::vector< Link > *links //out: active_chains[from_chain][from_vertex] -> linked_next_chains[to_chain][to_vertex] links
@@ -324,6 +326,7 @@ void build_next_active_chains(
 	std::vector< std::vector< Stitch > > const &active_stitches, //in: current active stitches
 	std::vector< std::vector< uint32_t > > const &next_chains, //in: next chains (on slice)
 	std::vector< std::vector< Stitch > > const &next_stitches, //in: next stitches
+	std::vector< bool > const &next_used_boundary, //in: next chains used boundary?
 	std::vector< Link > const &links, //in: links between active and next
 	std::vector< std::vector< EmbeddedVertex > > *next_active_chains, //out: next active chains (on model)
 	std::vector< std::vector< Stitch > > *next_active_stitches, //out: next active stitches

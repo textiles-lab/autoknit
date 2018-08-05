@@ -10,9 +10,10 @@ ak-peel_slice will sometimes create a disconnected next chain (one that doesn't 
  --> Should fix by checking that each next chain contains a bind-off location [time function maximum, I guess? could also just tag edges]
   This will require some changes to level_chains, as well as the time fn being passed to peel_slice.
 
-Need to implement: "if a next course intersects a boundary, the whole boundary is accepted"
-(or we could do something better, but this version would actually avoid a lot of special cases ... albeit special cases that are getting handled properly at the moment)
-(something better might be: add boundary between intersections and active courses)
+Have now implemented: "if a next course intersects a boundary, the whole boundary is accepted" (more-or-less -- it actually takes the right part of the boundary to complete the chain; I suppose a different version of this would be to replace all boundary-intersecting chains with the boundary itself. That might have actually been easier.)
+
+Note that without the special casing that explicitly discards, something goes wrong in slicing (probably because chains on boundaries result in vertices not getting used).
+
 
 DTW nice-to-have in ak-link.
 

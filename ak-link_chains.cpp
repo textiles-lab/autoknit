@@ -24,6 +24,7 @@ void ak::link_chains(
 	std::vector< std::vector< uint32_t > > const &active_chains, //in: current active chains (slice vertex #'s)
 	std::vector< std::vector< Stitch > > const &active_stitches, //in: current active stitches
 	std::vector< std::vector< uint32_t > > const &next_chains, //in: current next chains (slice vertex #'s)
+	std::vector< bool > const &next_used_boundary, //in: did next chain use boundary? (forces no discard)
 	//need this or slice_times (above) std::vector< std::vector< bool > > const &discard_segments,
 	std::vector< std::vector< Stitch > > *next_stitches_, //out: next active stitches
 	std::vector< Link > *links_ //out: active_chains[from_chain][from_vertex] -> linked_next_chains[to_chain][to_vertex] links
@@ -56,6 +57,8 @@ void ak::link_chains(
 			assert(v < slice.vertices.size());
 		}
 	}
+	
+	assert(next_used_boundary.size() == next_chains.size());
 
 	assert(next_stitches_);
 	auto &next_stitches = *next_stitches_;
@@ -188,7 +191,20 @@ void ak::link_chains(
 				}
 			}
 		}
+	}
 
+	{ //for any next chains that touch a boundary, mark as 'accept':
+		uint32_t marked = 0;
+		for (uint32_t ni = 0; ni < next_chains.size(); ++ni) {
+			if (next_used_boundary[ni] == false) continue;
+			if (next_discard_after[ni].size() != 1 || next_discard_after[ni][0] != std::make_pair(0.0f, false)) {
+				next_discard_after[ni].assign(1, std::make_pair(0.0f, false));
+				++marked;
+			}
+		}
+		if (marked) {
+			std::cout << "NOTE: marked " << marked << " next chains as all-accept because they touch boundaries." << std::endl;
+		}
 	}
 
 
@@ -215,6 +231,7 @@ void ak::link_chains(
 			std::cout << "Have a mix of discard and accept." << std::endl;
 		}
 	}
+
 
 
 	//------------------------------------------------------------------------------------

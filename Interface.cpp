@@ -1224,6 +1224,7 @@ void Interface::clear_peeling() {
 	slice_on_model.clear();
 	slice_active_chains.clear();
 	slice_next_chains.clear();
+	slice_next_used_boundary.clear();
 	slice_times.clear();
 	slice_triangles_dirty = true;
 	slice_chains_tristrip_dirty = true;
@@ -1275,7 +1276,7 @@ bool Interface::step_peeling() {
 
 	} else if (peel_action == PeelSlice) {
 		std::cout << " -- slice [step " << peel_step << "]--" << std::endl;
-		ak::peel_slice(parameters, constrained_model, active_chains, &slice, &slice_on_model, &slice_active_chains, &slice_next_chains);
+		ak::peel_slice(parameters, constrained_model, active_chains, &slice, &slice_on_model, &slice_active_chains, &slice_next_chains, &slice_next_used_boundary);
 		slice_times.clear();
 		slice_times.reserve(slice_on_model.size());
 		for (auto &ev : slice_on_model) {
@@ -1290,7 +1291,7 @@ bool Interface::step_peeling() {
 		peel_step += 1;
 	} else if (peel_action == PeelLink) {
 		std::cout << " -- link [step " << peel_step << "]--" << std::endl;
-		ak::link_chains(parameters, slice, slice_times, slice_active_chains, active_stitches, slice_next_chains, &next_stitches, &links);
+		ak::link_chains(parameters, slice, slice_times, slice_active_chains, active_stitches, slice_next_chains, slice_next_used_boundary, &next_stitches, &links);
 
 		links_tristrip_dirty = true;
 		show = ShowSlice | ShowSliceChains | ShowLinks;
@@ -1299,7 +1300,7 @@ bool Interface::step_peeling() {
 		peel_step += 1;
 	} else if (peel_action == PeelBuild) {
 		std::cout << " -- build [step " << peel_step << "]--" << std::endl;
-		ak::build_next_active_chains(parameters, slice, slice_on_model, slice_active_chains, active_stitches, slice_next_chains, next_stitches, links, &next_active_chains, &next_active_stitches, &rowcol_graph);
+		ak::build_next_active_chains(parameters, slice, slice_on_model, slice_active_chains, active_stitches, slice_next_chains, next_stitches, slice_next_used_boundary, links, &next_active_chains, &next_active_stitches, &rowcol_graph);
 
 		rowcol_graph_tristrip_dirty = true;
 		next_active_chains_tristrip_dirty = true;
@@ -1806,10 +1807,31 @@ void Interface::update_slice_chains_tristrip() {
 	make_stitches_tristrip(&attribs,
 		active_locations, active_stitches,
 		0.01f);
-	make_chains_tristrip(&attribs,
-		copy_locations(slice, slice_next_chains), std::vector< std::vector< ak::Stitch > >(),
-		glm::u8vec4(0xff, 0x22, 0x22, 0xff),
-		0.01f);
+
+
+	{ //handle chains separately for extra coloring:
+		glm::u8vec4 regular = glm::u8vec4(0xff, 0x22, 0x22, 0xff);
+		glm::u8vec4 boundary = glm::u8vec4(0xff, 0x55, 0x55, 0xff);
+		float r = 0.01f;
+
+		std::vector< std::vector< glm::vec3 > > chains = copy_locations(slice, slice_next_chains);
+	
+		for (auto const &chain : chains) {
+			glm::u8vec4 color8 = (slice_next_used_boundary[&chain - &chains[0]] ? boundary : regular);
+
+			//the chain itself:
+			for (uint32_t pi = 0; pi + 1 < chain.size(); ++pi) {
+				glm::vec3 a = chain[pi];
+				glm::vec3 b = chain[pi+1];
+				//TODO: some sort of direction indication?
+	
+				make_sphere(&attribs, a, r, color8);
+				make_tube(&attribs, a, b, r, color8);
+			}
+			if (chain[0] != chain.back()) make_sphere(&attribs, chain.back(), r, color8);
+		}
+	}
+
 	slice_chains_tristrip.set(attribs, GL_STATIC_DRAW);
 }
 
