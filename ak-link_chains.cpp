@@ -653,6 +653,28 @@ void ak::link_chains(
 			}
 			assert(next_counts[segments[0]->next] == 1);
 
+
+			//DEBUG: show counts (and adjustments)
+			std::string old_back;
+			std::string old_front;
+			auto pad = [](std::string s) -> std::string {
+				while (s.size() < 3) s = ' ' + s;
+				return s;
+			};
+			old_back += pad(std::to_string(segments[0]->stitches.size()));
+			old_front += pad("");
+			for (uint32_t i = 1; i < segments.size()/2; ++i) {
+				uint32_t io = segments.size()-i;
+				assert(segments[i]->next == segments[io]->next);
+				old_back += pad(std::to_string(segments[i]->stitches.size()));
+				old_front += pad(std::to_string(segments[io]->stitches.size()));
+			}
+			old_back += pad("");
+			old_front += pad(std::to_string(segments[segments.size()/2]->stitches.size()));
+			//end DEBUG
+
+
+
 			//expecting things to look like this now (doubles, in order, then another single, then the doubles, reversed):
 			// a b c d c b
 			assert(segments.size() % 2 == 0);
@@ -667,6 +689,13 @@ void ak::link_chains(
 			assert(0 < m && m < segments.size()/2);
 			{ //push from the middle segment outward (alternating sides):
 				uint32_t mo = segments.size()-m;
+				assert(segments.size()/2 < mo && mo < segments.size());
+				uint32_t mo_p = mo-1; assert(mo_p < segments.size());
+				uint32_t mo_n = (mo+1 < segments.size() ? mo+1 : 0); assert(mo_n < segments.size());
+				//layout:
+				//   m-1  m  m+1
+				//   mo_n mo mo_p
+
 				assert(segments[mo]->next == segments[m]->next);
 				while (segments[m]->stitches.size() > segments[mo]->stitches.size()) {
 					segments[m+1]->stitches.insert(segments[m+1]->stitches.begin(), segments[m]->stitches.back());
@@ -677,10 +706,10 @@ void ak::link_chains(
 					}
 				}
 				while (segments[mo]->stitches.size() > segments[m]->stitches.size()) {
-					segments[mo-1]->stitches.push_back(segments[mo]->stitches[0]);
+					segments[mo_p]->stitches.push_back(segments[mo]->stitches[0]);
 					segments[mo]->stitches.erase(segments[mo]->stitches.begin());
 					if (segments[mo]->stitches.size() > segments[m]->stitches.size()) {
-						segments[mo+1]->stitches.insert(segments[mo+1]->stitches.begin(), segments[mo]->stitches.back());
+						segments[mo_n]->stitches.insert(segments[mo_n]->stitches.begin(), segments[mo]->stitches.back());
 						segments[mo]->stitches.pop_back();
 					}
 				}
@@ -688,26 +717,28 @@ void ak::link_chains(
 			//push from left-side segments leftward:
 			for (uint32_t l = m-1; l > 0; --l) {
 				uint32_t lo = segments.size()-l;
+				uint32_t lo_n = (lo+1 < segments.size() ? lo+1 : 0); assert(lo_n < segments.size());
 				assert(segments[lo]->next == segments[l]->next);
 				while (segments[l]->stitches.size() > segments[lo]->stitches.size()) {
 					segments[l-1]->stitches.push_back(segments[l]->stitches[0]);
 					segments[l]->stitches.erase(segments[l]->stitches.begin());
 				}
 				while (segments[lo]->stitches.size() > segments[l]->stitches.size()) {
-					segments[lo+1]->stitches.insert(segments[lo+1]->stitches.begin(), segments[lo]->stitches.back());
+					segments[lo_n]->stitches.insert(segments[lo_n]->stitches.begin(), segments[lo]->stitches.back());
 					segments[lo]->stitches.pop_back();
 				}
 			}
 			//push from right-side segments leftward:
 			for (uint32_t r = m+1; r < segments.size()/2; ++r) {
 				uint32_t ro = segments.size()-r;
+				uint32_t ro_p = ro-1; assert(ro_p < segments.size());
 				assert(segments[ro]->next == segments[r]->next);
 				while (segments[r]->stitches.size() > segments[ro]->stitches.size()) {
 					segments[r+1]->stitches.insert(segments[r+1]->stitches.begin(), segments[r]->stitches.back());
 					segments[r]->stitches.pop_back();
 				}
 				while (segments[ro]->stitches.size() > segments[r]->stitches.size()) {
-					segments[ro-1]->stitches.push_back(segments[ro]->stitches[0]);
+					segments[ro_p]->stitches.push_back(segments[ro]->stitches[0]);
 					segments[ro]->stitches.erase(segments[ro]->stitches.begin());
 				}
 			}
@@ -718,7 +749,32 @@ void ak::link_chains(
 				assert(segments[i]->stitches.size() == segments[io]->stitches.size());
 			}
 
-			//TODO: will probably need to dump a somewhat legible visualization of this
+			//DEBUG: show counts (and adjustments?)
+			std::string new_back;
+			std::string new_front;
+			new_back += pad(std::to_string(segments[0]->stitches.size()));
+			new_front += pad("");
+			for (uint32_t i = 1; i < segments.size()/2; ++i) {
+				uint32_t io = segments.size()-i;
+				assert(segments[i]->next == segments[io]->next);
+				new_back += pad(std::to_string(segments[i]->stitches.size()));
+				new_front += pad(std::to_string(segments[io]->stitches.size()));
+			}
+			new_back += pad("");
+			new_front += pad(std::to_string(segments[segments.size()/2]->stitches.size()));
+			//end DEBUG
+
+			if (old_back != new_back || old_front != new_front) {
+				std::cout << "Balanced a merge:\n";
+				std::cout << "old: " << old_back << "\n";
+				std::cout << "     " << old_front << "\n";
+				std::cout << "new: " << new_back << "\n";
+				std::cout << "     " << new_front << "\n";
+				std::cout.flush();
+			//} else {
+			//if (old_back == new_back && old_front == new_front) {
+				//std::cout << "NOTE: merge was already balanced." << std::endl;
+			}
 
 		}
 	}
@@ -1116,7 +1172,7 @@ void ak::link_chains(
 			new_front += pad(std::to_string(segments[segments.size()/2]->stitches));
 			//end DEBUG
 
-			//if (old_back != new_back || old_front != new_front) {
+			if (old_back != new_back || old_front != new_front) {
 				std::cout << "Balanced a split:\n";
 				std::cout << "old: " << old_back << "\n";
 				std::cout << "     " << old_front << "\n";
@@ -1124,8 +1180,8 @@ void ak::link_chains(
 				std::cout << "     " << new_front << "\n";
 				std::cout.flush();
 			//} else {
-			if (old_back == new_back && old_front == new_front) {
-				std::cout << "NOTE: split was already balanced." << std::endl;
+			//if (old_back == new_back && old_front == new_front) {
+			//	std::cout << "NOTE: split was already balanced." << std::endl;
 			}
 
 
