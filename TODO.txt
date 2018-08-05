@@ -31,6 +31,7 @@ Linking:
    - Next: Appendix A's local fixup
 
 NOTE: the 'flatten' code will currently accept situations with unpaired segments. This won't work with the split/merge balancing of Appendix A.
+The paired-segments code is probably a relatively straightforward modification.
 
 -----
 DAG Embedding v2 ("multipass")

@@ -11,6 +11,9 @@
 #include <unordered_set>
 #include <unordered_map>
 
+//fill in any -1U segments in closest with nearby indices (or return false if closest is entirely -1U):
+bool fill_unassigned(std::vector< uint32_t > &closest, std::vector< float > const &weights, bool is_loop);
+
 //helper to re-label closest points so they have a possible flattening on the bed, given the supplied costs for relabelling:
 void flatten(std::vector< uint32_t > &closest, std::vector< float > const &costs, bool is_loop);
 
@@ -324,37 +327,124 @@ void ak::link_chains(
 #endif
 	}
 
+	//HELPER: discard any matches which aren't mutual
+	auto discard_nonmutual = [&](){
+		std::vector< std::set< uint32_t > > active_refs; active_refs.reserve(active_closest.size());
+		for (auto const &ac : active_closest) {
+			active_refs.emplace_back(ac.begin(), ac.end());
+		}
+		std::vector< std::set< uint32_t > > next_refs; next_refs.reserve(next_closest.size());
+		for (auto const &nc : next_closest) {
+			next_refs.emplace_back(nc.begin(), nc.end());
+		}
+
+		uint32_t discarded = 0;
+
+		for (auto &ac : active_closest) {
+			uint32_t ai = &ac - &active_closest[0];
+			for (auto &c : ac) {
+				if (c != -1U && !next_refs[c].count(ai)) {
+					c = -1U;
+					++discarded;
+				}
+			}
+		}
+
+		for (auto &nc : next_closest) {
+			uint32_t ni = &nc - &next_closest[0];
+			for (auto &c : nc) {
+				if (c != -1U && !active_refs[c].count(ni)) {
+					c = -1U;
+					++discarded;
+				}
+			}
+		}
+
+		std::cout << "Discarded " << discarded << " non-mutual segment matches." << std::endl;
+
+		return discarded > 0;
+	};
+
+	//start by removing any non-mutual links:
+	discard_nonmutual();
+
+	//fill discarded areas with adjacent information, and process further to make sure the result can be flattened:
+	while(true) {
+		for (auto &closest : active_closest) {
+			uint32_t ai = &closest - &active_closest[0];
+			auto const &lengths = active_lengths[ai];
+			assert(lengths.size() == closest.size() + 1);
+
+			bool is_loop = active_chains[ai].empty() || active_chains[ai][0] == active_chains[ai].back();
+
+			std::vector< float > weights; weights.reserve(closest.size());
+			for (uint32_t i = 1; i < lengths.size(); ++i) {
+				weights.emplace_back(lengths[i] - lengths[i-1]);
+			}
+			fill_unassigned(closest, weights, is_loop);
+			flatten(closest, weights, is_loop);
+		}
+
+		for (auto &closest : next_closest) {
+			uint32_t ni = &closest - &next_closest[0];
+			auto const &lengths = next_lengths[ni];
+			assert(lengths.size() == closest.size() + 1);
+
+			bool is_loop = next_chains[ni].empty() || next_chains[ni][0] == next_chains[ni].back();
+
+			std::vector< float > weights; weights.reserve(closest.size());
+			for (uint32_t i = 1; i < lengths.size(); ++i) {
+				weights.emplace_back(lengths[i] - lengths[i-1]);
+			}
+			fill_unassigned(closest, weights, is_loop);
+			flatten(closest, weights, is_loop);
+		}
+
+		if (discard_nonmutual()) {
+			std::cout << "NOTE: doing another pass through fill/flatten because additional non-mutual links were discarded." << std::endl;
+		} else {
+			break;
+		}
+	}
+	
+	//-----------------------------------------------------------------
+	//now the *_closest lists are all in good, flatten-able shape.
+
 	struct BeginEnd {
 		BeginEnd(float begin_, float end_) : begin(begin_), end(end_) { }
 		float begin;
 		float end;
 	};
 
+	struct BeginEndStitches : public BeginEnd {
+		BeginEndStitches(float begin_, float end_, uint32_t next_) : BeginEnd(begin_, end_), next(next_) { }
+		std::vector< uint32_t > stitches;
+		uint32_t next; //convenience field for split balancing
+	};
+
 	//sort active and next into matching parametric ranges:
 	struct Match {
-		std::vector< BeginEnd > active; //vertex ranges
-		std::vector< BeginEnd > next; //segment ranges
+		std::vector< BeginEndStitches > active; //at most two (after post-processing)
+		std::vector< BeginEnd > next; //at most two (after post-processing)
 	};
 
 	std::map< std::pair< uint32_t, uint32_t >, Match > matches;
 
-
+	//build parametric segments into matches:
 	for (auto &closest : active_closest) {
 		uint32_t ai = &closest - &active_closest[0];
 		auto const &lengths = active_lengths[ai];
 		assert(lengths.size() == closest.size() + 1);
 
-		std::vector< float > weights; weights.reserve(closest.size());
-		for (uint32_t i = 1; i < lengths.size(); ++i) {
-			weights.emplace_back(lengths[i] - lengths[i-1]);
-		}
-		flatten(closest, weights, active_chains[ai].empty() || active_chains[ai][0] == active_chains[ai].back());
-
 		for (uint32_t begin = 0; begin < closest.size(); /* later */) {
 			uint32_t end = begin + 1;
 			while (end < closest.size() && closest[end] == closest[begin]) ++end;
 			assert(end < lengths.size());
-			matches[std::make_pair(ai, closest[begin])].active.emplace_back(lengths[begin] / lengths.back(), lengths[end] / lengths.back());
+			//std::cout << "[" << begin << ", " << end << ") becomes "; //DEBUG
+			matches[std::make_pair(ai, closest[begin])].active.emplace_back(lengths[begin] / lengths.back(), lengths[end] / lengths.back(), closest[begin]);
+			auto m = matches[std::make_pair(ai, closest[begin])].active;
+			//std::cout << "[" << m.back().begin << ", " << m.back().end << ')'; //DEBUG
+			//std::cout << " = [" << lengths[begin] << ", " << lengths[end] << ") / " << lengths.back() << std::endl; //DEBUG
 			begin = end;
 		}
 	}
@@ -366,13 +456,6 @@ void ak::link_chains(
 		auto const &lengths = next_lengths[ni];
 		assert(lengths.size() == closest.size() + 1);
 
-		std::vector< float > weights; weights.reserve(closest.size());
-		for (uint32_t i = 1; i < lengths.size(); ++i) {
-			weights.emplace_back(lengths[i] - lengths[i-1]);
-		}
-		flatten(closest, weights, next_chains[ni].empty() || next_chains[ni][0] == next_chains[ni].back());
-
-
 		for (uint32_t begin = 0; begin < closest.size(); /* later */) {
 			uint32_t end = begin + 1;
 			while (end < closest.size() && closest[end] == closest[begin]) ++end;
@@ -382,6 +465,243 @@ void ak::link_chains(
 		}
 	}
 
+	{ //do stitch assignments:
+		//sort ranges from matches back to actives:
+		std::vector< std::vector< BeginEndStitches * > > active_segments(active_chains.size());
+		for (auto &anm : matches) {
+			if (anm.first.first == -1U) {
+				assert(anm.second.active.empty());
+				continue;
+			}
+			for (auto &bse : anm.second.active) {
+				assert(bse.next == anm.first.second); //'next' should be set correctly!
+				active_segments[anm.first.first].emplace_back(&bse);
+				std::cout << "match[" << int32_t(anm.first.first) << "," << int32_t(anm.first.second) << "] gives segment [" << bse.begin << ',' << bse.end << ')' << std::endl; //DEBUG
+			}
+		}
+
+		//assign stitches to segments:
+		for (uint32_t ai = 0; ai < active_chains.size(); ++ai) {
+			auto &segments = active_segments[ai];
+			assert(!segments.empty());
+
+			std::sort(segments.begin(), segments.end(), [](BeginEndStitches const *a, BeginEndStitches const *b) {
+				return a->begin < b->begin;
+			});
+
+			//DEBUG:
+			std::cout << "active[" << ai << "] segments:";
+			for (auto seg : segments) {
+				std::cout << ' ' << '[' << seg->begin << ',' << seg->end << ')';
+			}
+			std::cout << std::endl;
+
+			//segments should partition [0.0, 1.0):
+			assert(!segments.empty());
+			assert(segments[0]->begin == 0.0f);
+			assert(segments.back()->end == 1.0f);
+			for (uint32_t i = 1; i < segments.size(); ++i) {
+				assert(segments[i-1]->end == segments[i]->begin);
+			}
+
+			//copy stitches to segments:
+			auto const &stitches = active_stitches[ai];
+			auto si = stitches.begin();
+			for (auto seg : segments) {
+				if (si == stitches.end()) break;
+				assert(si->t >= seg->begin); //segments should cover everything.
+				while (si != stitches.end() && (si->t < seg->end)) {
+					seg->stitches.emplace_back(si - stitches.begin());
+					++si;
+				}
+			}
+			assert(si == stitches.end()); //segments should cover everything.
+		}
+	}
+
+	//merge segments because it's probably more convenient for balancing:
+	uint32_t active_merges = 0;
+	for (auto &anm : matches) {
+		if (anm.second.active.size() <= 1) continue;
+		assert(anm.first.first != -1U);
+		uint32_t ai = anm.first.first;
+		bool is_loop = (active_chains[ai].empty() || active_chains[ai][0] == active_chains[ai].back());
+		if (!is_loop) continue;
+		std::sort(anm.second.active.begin(), anm.second.active.end(), [](BeginEndStitches const &a, BeginEndStitches const &b){
+			return a.begin < b.begin;
+		});
+		if (anm.second.active[0].begin == 0.0f && anm.second.active.back().end == 1.0f) {
+			++active_merges;
+			anm.second.active.back().end = anm.second.active[0].end;
+			anm.second.active.back().stitches.insert(anm.second.active.back().stitches.end(), anm.second.active[0].stitches.begin(), anm.second.active[0].stitches.end());
+			anm.second.active.erase(anm.second.active.begin());
+		}
+		assert(anm.second.active.size() <= 2); //<-- should be guaranteed by flatten
+	}
+	std::cout << "Merged " << active_merges << " active segments." << std::endl;
+
+	uint32_t next_merges = 0;
+	for (auto &anm : matches) {
+		if (anm.second.next.size() <= 1) continue;
+		assert(anm.first.second != -1U);
+		uint32_t ni = anm.first.second;
+		bool is_loop = (next_chains[ni].empty() || next_chains[ni][0] == next_chains[ni].back());
+		if (!is_loop) continue;
+		std::sort(anm.second.next.begin(), anm.second.next.end(), [](BeginEnd const &a, BeginEnd const &b){
+			return a.begin < b.begin;
+		});
+		if (anm.second.next[0].begin == 0.0f && anm.second.next.back().end == 1.0f) {
+			++next_merges;
+			anm.second.next.back().end = anm.second.next[0].end;
+			anm.second.next.erase(anm.second.next.begin());
+		}
+		assert(anm.second.next.size() <= 2); //<-- should be guaranteed by flatten
+	}
+	std::cout << "Merged " << next_merges << " next segments." << std::endl;
+
+
+	{ //balance stitch assignments for merges:
+		//sort ranges from matches back to actives: (doing again because of merging)
+		std::vector< std::vector< BeginEndStitches * > > active_segments(active_chains.size());
+		for (auto &anm : matches) {
+			if (anm.first.first == -1U) {
+				assert(anm.second.active.empty());
+				continue;
+			}
+			for (auto &bse : anm.second.active) {
+				assert(bse.next == anm.first.second); //'next' should be set correctly!
+				active_segments[anm.first.first].emplace_back(&bse);
+			}
+		}
+
+		for (uint32_t ai = 0; ai < active_chains.size(); ++ai) {
+			auto &segments = active_segments[ai];
+			assert(!segments.empty());
+
+			std::sort(segments.begin(), segments.end(), [](BeginEndStitches const *a, BeginEndStitches const *b) {
+				return a->begin < b->begin;
+			});
+
+			//Note: because of merging, last segment may wrap around weirdly;
+			// -- this is okay!
+			bool is_loop = (active_chains[ai].empty() || active_chains[ai][0] == active_chains[ai].back());
+			assert(
+				(segments[0]->begin == 0.0f && segments.back()->end == 1.0f)
+				|| (is_loop && (segments[0]->begin == segments.back()->end))
+			);
+			//segments should still partition [0,1):
+			for (uint32_t i = 1; i < segments.size(); ++i) {
+				assert(segments[i-1]->end == segments[i]->begin);
+			}
+
+			//find counts (on the way to finding a singleton segment):
+			std::unordered_map< uint32_t, uint32_t > next_counts;
+			for (auto seg : segments) {
+				next_counts.insert(std::make_pair(seg->next, 0)).first->second += 1;
+			}
+
+			uint32_t singles = 0;
+			uint32_t doubles = 0;
+			uint32_t multis = 0;
+			for (auto const &nc : next_counts) {
+				if (nc.second == 1) ++singles;
+				else if (nc.second == 2) ++doubles;
+				else ++multis;
+			}
+			assert(multis == 0);
+
+			if (singles == 1 && doubles == 0 && multis == 0) {
+				//just one segment, nothing to re-assign.
+				continue;
+			} else if (singles == 2 && doubles == 0 && multis == 0) {
+				//just two segments, *also* always balanced
+				continue;
+			} else if (!(singles == 2 && multis == 0)) {
+				throw std::runtime_error("Unhandled split situation with " + std::to_string(singles) + " singles, " + std::to_string(doubles) + " doubles, and " + std::to_string(multis) + " multis.");
+			}
+			assert(singles == 2 && multis == 0);
+
+			//rotate until a single is in the first position:
+			for (uint32_t s = 0; s < segments.size(); ++s) {
+				if (next_counts[segments[s]->next] == 1) {
+					std::rotate(segments.begin(), segments.begin() + s, segments.end());
+					break;
+				}
+			}
+			assert(next_counts[segments[0]->next] == 1);
+
+			//expecting things to look like this now (doubles, in order, then another single, then the doubles, reversed):
+			// a b c d c b
+			assert(segments.size() % 2 == 0);
+			assert(next_counts[segments[segments.size()/2]->next] == 1);
+			for (uint32_t i = 1; i < segments.size()/2; ++i) {
+				assert(segments[i]->next == segments[segments.size()-i]->next);
+			}
+			assert(segments.size() >= 6);
+
+			//now push extra stitches from the center outward:
+			uint32_t m = (segments.size()/2)/2; //so a b c b -> m = 1 ; a b c d e d c b -> m = 2;
+			assert(0 < m && m < segments.size()/2);
+			{ //push from the middle segment outward (alternating sides):
+				uint32_t mo = segments.size()-m;
+				assert(segments[mo]->next == segments[m]->next);
+				while (segments[m]->stitches.size() > segments[mo]->stitches.size()) {
+					segments[m+1]->stitches.insert(segments[m+1]->stitches.begin(), segments[m]->stitches.back());
+					segments[m]->stitches.pop_back();
+					if (segments[m]->stitches.size() > segments[mo]->stitches.size()) {
+						segments[m-1]->stitches.push_back(segments[m]->stitches[0]);
+						segments[m]->stitches.erase(segments[m]->stitches.begin());
+					}
+				}
+				while (segments[mo]->stitches.size() > segments[m]->stitches.size()) {
+					segments[mo-1]->stitches.push_back(segments[mo]->stitches[0]);
+					segments[mo]->stitches.erase(segments[mo]->stitches.begin());
+					if (segments[mo]->stitches.size() > segments[m]->stitches.size()) {
+						segments[mo+1]->stitches.insert(segments[mo+1]->stitches.begin(), segments[mo]->stitches.back());
+						segments[mo]->stitches.pop_back();
+					}
+				}
+			}
+			//push from left-side segments leftward:
+			for (uint32_t l = m-1; l > 0; --l) {
+				uint32_t lo = segments.size()-l;
+				assert(segments[lo]->next == segments[l]->next);
+				while (segments[l]->stitches.size() > segments[lo]->stitches.size()) {
+					segments[l-1]->stitches.push_back(segments[l]->stitches[0]);
+					segments[l]->stitches.erase(segments[l]->stitches.begin());
+				}
+				while (segments[lo]->stitches.size() > segments[l]->stitches.size()) {
+					segments[lo+1]->stitches.insert(segments[lo+1]->stitches.begin(), segments[lo]->stitches.back());
+					segments[lo]->stitches.pop_back();
+				}
+			}
+			//push from right-side segments leftward:
+			for (uint32_t r = m+1; r < segments.size()/2; ++r) {
+				uint32_t ro = segments.size()-r;
+				assert(segments[ro]->next == segments[r]->next);
+				while (segments[r]->stitches.size() > segments[ro]->stitches.size()) {
+					segments[r+1]->stitches.insert(segments[r+1]->stitches.begin(), segments[r]->stitches.back());
+					segments[r]->stitches.pop_back();
+				}
+				while (segments[ro]->stitches.size() > segments[r]->stitches.size()) {
+					segments[ro-1]->stitches.push_back(segments[ro]->stitches[0]);
+					segments[ro]->stitches.erase(segments[ro]->stitches.begin());
+				}
+			}
+
+			//check for balance:
+			for (uint32_t i = 1; i < segments.size()/2; ++i) {
+				uint32_t io = segments.size()-i;
+				assert(segments[i]->stitches.size() == segments[io]->stitches.size());
+			}
+
+			//TODO: will probably need to dump a somewhat legible visualization of this
+
+		}
+	}
+
+
+	//Look for merges/splits:
 	std::vector< uint32_t > active_matches(active_chains.size(), 0);
 	std::vector< uint32_t > next_matches(next_chains.size(), 0);
 	uint32_t empty_matches = 0;
@@ -414,6 +734,8 @@ void ak::link_chains(
 	}
 
 
+
+	//allocate next stitches:
 	next_stitches.assign(next_chains.size(), std::vector< ak::Stitch >());
 
 	//allocate stitch counts based on segment lengths + source stitches:
@@ -441,20 +763,17 @@ void ak::link_chains(
 		bool is_split_or_merge = (active_matches[anm.first.first] > 1 || next_matches[anm.first.second] > 1);
 		//if is_split_or_merge will only link 1-1
 
-		//compute min/max totals from active stitches:
+		//compute min/max totals from assigned stitches:
 		uint32_t active_ones = 0;
 		uint32_t active_anys = 0;
 		{
-			assert(anm.first.first < active_stitches.size());
-			auto const &stitches = active_stitches[anm.first.first];
-			auto si = stitches.begin();
+			std::vector< ak::Stitch > const &stitches = active_stitches[anm.first.first];
 			for (auto const &be : match.active) {
-				while (si != stitches.end() && (si->t < be.begin)) ++si;
-				while (si != stitches.end() && (si->t < be.end)) {
-					if      (si->flag == Stitch::FlagLinkOne) ++active_ones;
-					else if (si->flag == Stitch::FlagLinkAny) ++active_anys;
-					else assert(si->flag == Stitch::FlagLinkOne || si->flag == Stitch::FlagLinkAny);
-					++si;
+				for (auto si : be.stitches) {
+					assert(si < stitches.size());
+					if      (stitches[si].flag == Stitch::FlagLinkOne) ++active_ones;
+					else if (stitches[si].flag == Stitch::FlagLinkAny) ++active_anys;
+					else assert(stitches[si].flag == Stitch::FlagLinkOne || stitches[si].flag == Stitch::FlagLinkAny);
 				}
 			}
 		}
@@ -493,9 +812,13 @@ void ak::link_chains(
 		float total_length = 0.0f;
 		std::cout << "Matching to"; //DEBUG
 		for (auto const &be : match.next) {
-			std::cout << " [" << be.begin << ", " << be.end << ")"; //DEBUG
-			assert(be.begin < be.end);
-			total_length += be.end - be.begin;
+			std::cout << " [" << be.begin << ", " << be.end << ")"; std::cout.flush(); //DEBUG
+			if (be.begin <= be.end) {
+				total_length += be.end - be.begin;
+			} else {
+				assert(be.begin < be.end + 1.0f);
+				total_length += (be.end + 1.0f) - be.begin;
+			}
 		}
 		std::cout << std::endl; //DEBUG
 		total_length *= lengths.back();
@@ -530,7 +853,7 @@ void ak::link_chains(
 		if (stitches > 0) {
 			//spread stitches among "allocation ranges" (same discard status)
 			struct Alloc {
-				Alloc(float begin_, float end_, bool first_one_, bool last_one_) : begin(begin_), end(end_), first_one(first_one_), last_one(last_one_) { }
+				Alloc(float begin_, float end_, bool first_one_, bool last_one_) : begin(begin_), end(end_), first_one(first_one_), last_one(last_one_) { assert(begin < end); }
 				float begin, end;
 				bool first_one, last_one;
 				uint32_t stitches = 0;
@@ -538,21 +861,31 @@ void ak::link_chains(
 			};
 			std::vector< Alloc > alloc;
 			for (auto const &be : match.next) {
-				alloc.emplace_back(be.begin, be.end, false, false);
-				//split allocation range on discards:
-				for (auto tdi = discard_after.begin(); tdi != discard_after.end(); ++tdi) {
-					if (next_is_loop && tdi == discard_after.begin()) continue;
-					if (tdi->first < alloc.back().begin) {
-					} else if (tdi->first == alloc.back().begin) {
-						alloc.back().first_one = true;
-					} else if (tdi->first < alloc.back().end) {
-						alloc.back().last_one = true;
-						alloc.back().end = tdi->first;
-						alloc.emplace_back(tdi->first, be.end, true, false);
-					} else if (tdi->first == alloc.back().end) {
-						alloc.back().last_one = true;
-					} else { assert(tdi->first > alloc.back().end);
+				auto split_back = [&]() {
+					//split allocation range on discards:
+					for (auto tdi = discard_after.begin(); tdi != discard_after.end(); ++tdi) {
+						if (next_is_loop && tdi == discard_after.begin()) continue;
+						if (tdi->first < alloc.back().begin) {
+						} else if (tdi->first == alloc.back().begin) {
+							alloc.back().first_one = true;
+						} else if (tdi->first < alloc.back().end) {
+							alloc.back().last_one = true;
+							alloc.back().end = tdi->first;
+							alloc.emplace_back(tdi->first, be.end, true, false);
+						} else if (tdi->first == alloc.back().end) {
+							alloc.back().last_one = true;
+						} else { assert(tdi->first > alloc.back().end);
+						}
 					}
+				};
+				if (be.begin <= be.end) {
+					alloc.emplace_back(be.begin, be.end, false, false);
+					split_back();
+				} else {
+					alloc.emplace_back(be.begin, 1.0f, false, false);
+					split_back();
+					alloc.emplace_back(0.0f, be.end, false, false);
+					split_back();
 				}
 			}
 			uint32_t total_ones = 0;
@@ -560,6 +893,7 @@ void ak::link_chains(
 				a.stitches = (a.first_one ? 1 : 0) + (a.last_one ? 1 : 0);
 				total_ones += a.stitches;
 				a.length = (a.end - a.begin) * lengths.back();
+				assert(a.length >= 0.0f);
 			}
 
 			assert(total_ones == next_ones); //better have the same number of ones as we accounted for previously
@@ -603,6 +937,70 @@ void ak::link_chains(
 		});
 	}
 
+	auto make_stitch_info = [&slice](
+		std::vector< uint32_t > const &chain,
+		std::vector< float > const &lengths,
+		std::vector< ak::Stitch > const &stitches,
+		std::vector< glm::vec3 > *stitch_locations_,
+		std::vector< bool > *stitch_linkones_ ) {
+
+		assert(chain.size() == lengths.size());
+
+		assert(stitch_locations_);
+		auto &stitch_locations = *stitch_locations_;
+		stitch_locations.clear();
+
+		assert(stitch_linkones_);
+		auto &stitch_linkones = *stitch_linkones_;
+		stitch_linkones.clear();
+
+		auto li = lengths.begin();
+		for (auto si = stitches.begin(); si != stitches.end(); ++si) {
+			float l = si->t * lengths.back();
+			assert(si->t >= 0.0f && si->t <= 1.0f);
+			while (li != lengths.end() && *li <= l) ++li;
+			assert(li != lengths.end());
+			assert(li != lengths.begin());
+			uint32_t i = li - lengths.begin();
+
+			stitch_locations.emplace_back(
+				glm::mix(
+					slice.vertices[chain[i-1]],
+					slice.vertices[chain[i]],
+					(l - *(li-1)) / (*li - *(li-1))
+				)
+			);
+			stitch_linkones.emplace_back( si->flag == ak::Stitch::FlagLinkOne );
+		}
+	};
+
+	std::vector< std::vector< glm::vec3 > > all_active_stitch_locations(active_chains.size());
+	std::vector< std::vector< bool > > all_active_stitch_linkones(active_chains.size());
+
+	std::vector< std::vector< glm::vec3 > > all_next_stitch_locations(next_chains.size());
+	std::vector< std::vector< bool > > all_next_stitch_linkones(next_chains.size());
+	
+	for (uint32_t ai = 0; ai < active_chains.size(); ++ai) {
+		assert(ai < active_stitches.size());
+		make_stitch_info(
+			active_chains[ai],
+			active_lengths[ai],
+			active_stitches[ai],
+			&all_active_stitch_locations[ai],
+			&all_active_stitch_linkones[ai] );
+	}
+
+	for (uint32_t ni = 0; ni < next_chains.size(); ++ni) {
+		assert(ni < next_stitches.size());
+		make_stitch_info(
+			next_chains[ni],
+			next_lengths[ni],
+			next_stitches[ni],
+			&all_next_stitch_locations[ni],
+			&all_next_stitch_linkones[ni] );
+	}
+
+
 	for (auto const &anm : matches) {
 		Match const &match = anm.second;
 
@@ -616,78 +1014,31 @@ void ak::link_chains(
 		assert(!match.active.empty());
 		assert(!match.next.empty());
 
-		//read back all stitches in a particular set of ranges:
-		auto extract_stitch_info = [&slice](
-			std::vector< uint32_t > const &chain,
-			std::vector< float > const &lengths,
-			std::vector< ak::Stitch > const &stitches,
-			std::vector< BeginEnd > const &ranges,
-			std::vector< uint32_t > *stitch_indices_,
-			std::vector< glm::vec3 > *stitch_locations_,
-			std::vector< bool > *stitch_linkones_ ) {
-
-			assert(chain.size() == lengths.size());
-
-			assert(stitch_indices_);
-			auto &stitch_indices = *stitch_indices_;
-			stitch_indices.clear();
-
-			assert(stitch_locations_);
-			auto &stitch_locations = *stitch_locations_;
-			stitch_locations.clear();
-
-			assert(stitch_linkones_);
-			auto &stitch_linkones = *stitch_linkones_;
-			stitch_linkones.clear();
-
-			auto li = lengths.begin();
-			auto si = stitches.begin();
-			for (auto const &be : ranges) {
-				while (si != stitches.end() && si->t < be.begin) ++si;
-				while (si != stitches.end() && si->t <= be.end) {
-					float l = si->t * lengths.back();
-					while (li != lengths.end() && *li <= l) ++li;
-					assert(li != lengths.end());
-					assert(li != lengths.begin());
-					uint32_t i = li - lengths.begin();
-
-					stitch_indices.emplace_back(si - stitches.begin());
-					stitch_locations.emplace_back(
-						glm::mix(
-							slice.vertices[chain[i-1]],
-							slice.vertices[chain[i]],
-							(l - *(li-1)) / (*li - *(li-1))
-						)
-					);
-					stitch_linkones.emplace_back( si->flag == ak::Stitch::FlagLinkOne );
-					++si;
-				}
-			}
-		};
-
 		std::vector< uint32_t > next_stitch_indices;
 		std::vector< glm::vec3 > next_stitch_locations;
 		std::vector< bool > next_stitch_linkones;
-		extract_stitch_info(
-			next_chains[anm.first.second],
-			next_lengths[anm.first.second],
-			next_stitches[anm.first.second],
-			match.next,
-			&next_stitch_indices,
-			&next_stitch_locations,
-			&next_stitch_linkones );
+		for (auto const &be : match.next) {
+			auto const &ns = next_stitches[anm.first.second];
+			for (auto const &s : ns) {
+				if (be.begin <= s.t && s.t < be.end) {
+					uint32_t si = &s - &ns[0];
+					next_stitch_indices.emplace_back(si);
+					next_stitch_locations.emplace_back(all_next_stitch_locations[anm.first.second][si]);
+					next_stitch_linkones.emplace_back(all_next_stitch_linkones[anm.first.second][si]);
+				}
+			}
+		}
 
 		std::vector< uint32_t > active_stitch_indices;
 		std::vector< glm::vec3 > active_stitch_locations;
 		std::vector< bool > active_stitch_linkones;
-		extract_stitch_info(
-			active_chains[anm.first.first],
-			active_lengths[anm.first.first],
-			active_stitches[anm.first.first],
-			match.active,
-			&active_stitch_indices,
-			&active_stitch_locations,
-			&active_stitch_linkones );
+		for (auto const &be : match.active) {
+			for (auto si : be.stitches) {
+				active_stitch_indices.emplace_back(si);
+				active_stitch_locations.emplace_back(all_active_stitch_locations[anm.first.first][si]);
+				active_stitch_linkones.emplace_back(all_active_stitch_linkones[anm.first.first][si]);
+			}
+		}
 
 		//figure out how to link to next stitches:
 		{ //DEBUG:
@@ -839,6 +1190,85 @@ void ak::link_chains(
 
 
 //-------------------------------------------------------------------
+
+//fill in any '-1U' segments with nearest assigned indices (where 'weights' give location widths):
+bool fill_unassigned(std::vector< uint32_t > &closest, std::vector< float > const &weights, bool is_loop) {
+	bool have_assigned = false;
+	for (auto c : closest) {
+		if (c != -1U) {
+			have_assigned = true;
+			break;
+		}
+	}
+	if (!have_assigned) return false;
+
+	auto do_range = [&](uint32_t first, uint32_t last) {
+		uint32_t before = closest[first > 0 ? first - 1 : closest.size()-1];
+		uint32_t after = closest[last + 1 < closest.size() ? last + 1 : 0];
+		if (!is_loop) {
+			if (first == 0) {
+				assert(last + 1 < closest.size());
+				before = after;
+			}
+			if (last + 1 == closest.size()) {
+				assert(first > 0);
+				after = before;
+			}
+		}
+		assert(closest[first] == -1U);
+		assert(closest[last] == -1U);
+		assert(before != -1U);
+		assert(after != -1U);
+
+		//---------- fill in approximately equal weight sums -----------
+		
+		float total = 0.0f;
+		{ //first pass: figure out total weight sum:
+			uint32_t i = first;
+			while (true) {
+				assert(closest[i] == -1U);
+				total += weights[i];
+				if (i == last) break;
+			++i;
+			}
+		}
+		float sum = 0.0f;
+		{ //second pass: assign before/after based on weight sum:
+			uint32_t i = first;
+			while (true) {
+				if (sum + 0.5f * weights[i] < 0.5f * total) {
+					closest[i] = before;
+				} else {
+					closest[i] = after;
+				}
+				sum += weights[i];
+				if (i == last) break;
+				++i;
+			}
+		}
+
+	};
+
+	for (uint32_t seed = 0; seed < closest.size(); ++seed) {
+		if (closest[seed] != -1U) continue;
+		uint32_t first = seed;
+		while ((first > 0 || is_loop) && closest[first > 0 ? first - 1 : closest.size()-1] == -1U) {
+			first = (first > 0 ? first - 1 : closest.size()-1);
+		}
+		uint32_t last = seed;
+		while ((last + 1 < closest.size() || is_loop) && closest[last + 1 < closest.size() ? last + 1 : 0] == -1U) {
+			last = (last + 1 < closest.size() ? last + 1 : 0);
+		}
+
+		do_range(first, last);
+	}
+
+	for (auto c : closest) {
+		assert(c != -1U);
+	}
+
+	return true;
+};
 
 void flatten(std::vector< uint32_t > &closest, std::vector< float > const &weights, bool is_loop) {
 	assert(closest.size() == weights.size());
@@ -1200,6 +1630,9 @@ void flatten(std::vector< uint32_t > &closest, std::vector< float > const &weigh
 		for (uint32_t seed = 0; seed < closest.size(); ++seed) {
 			if (!relabel[seed]) continue;
 			uint32_t first = seed;
+			while (relabel[first > 0 ? first - 1 : closest.size()-1]) {
+				first = (first > 0 ? first - 1 : closest.size()-1);
+			}
 			uint32_t last = seed;
 			while (relabel[last + 1 < closest.size() ? last + 1 : 0]) {
 				last = (last + 1 < closest.size() ? last + 1 : 0);
