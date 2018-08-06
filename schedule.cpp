@@ -1743,10 +1743,275 @@ int main(int argc, char **argv) {
 		return ret;
 	};
 
+	//helper: flop to one bed (returns bed flopped to, if no preference given)
+	auto stash = [&add_instr](Storage const *storage, char bed = '\0', int32_t offset = 0) -> char { //n.b. nonzero offset only makes sense when already stashed on *other* bed (maybe?)
+		//TODO
+
+		char target = (bed == '\0' ? 'b' : bed);
+
+		std::string instr = "m.stash(";
+		instr += '\''; instr += target; instr += '\'';
+		instr += ", ";
+		instr += std::to_string(offset);
+		instr += ", [";
+		instr += "]);";
+
+		add_instr(instr);
+		return target;
+	};
+
+	//helper: flop from one bed
+	auto unstash = [&add_instr](Storage const *storage) {
+		//TODO
+
+		std::string instr = "m.unstash([";
+		instr += "]);";
+
+		add_instr(instr);
+
+	};
+
 	//helper:
-	auto reshape = [](std::unordered_map< Storage const *, std::pair< int32_t, Shape > > const &from_layout, 
-	                  std::unordered_map< Storage const *, std::pair< int32_t, Shape > > const &to_layout) {
-		//TODO: move things around on the beds!
+	auto reshape = [&add_instr,&stash,&unstash,&typeset_bed_needle](std::unordered_map< Storage const *, std::pair< int32_t, Shape > > from_layout, 
+	                            std::unordered_map< Storage const *, std::pair< int32_t, Shape > > const &to_layout) {
+		//move things between different shapes:
+		assert(from_layout.size() == to_layout.size()); //layouts should have the same elements
+
+		//sort storages left-to-right:
+		std::vector< Storage const * > active;
+		for (auto const &sls : from_layout) {
+			active.emplace_back(sls.first);
+		}
+		std::sort(active.begin(), active.end(), [&](Storage const *a, Storage const *b) {
+			auto fa = from_layout.find(a);
+			assert(fa != from_layout.end());
+			auto fb = from_layout.find(b);
+			assert(fb != from_layout.end());
+			return fa->second.first < fb->second.first;
+		});
+
+		//check for anything that needs rolling:
+		for (auto storage : active) {
+			Shape *from_shape;
+			int32_t *from_left;
+			{
+				auto f = from_layout.find(storage);
+				assert(f != from_layout.end());
+				from_left = &f->second.first;
+				from_shape = &f->second.second;
+			}
+			Shape const *to_shape;
+			int32_t const *to_left;
+			{
+				auto f = to_layout.find(storage);
+				assert(f != to_layout.end());
+				to_left = &f->second.first;
+				to_shape = &f->second.second;
+			}
+			if (from_shape->pack() != to_shape->pack()) {
+				//must roll the shape.
+				{
+					uint32_t storage_idx = -1U;
+					for (uint32_t i = 0; i < active.size(); ++i) {
+						if (active[i] == storage) {
+							assert(storage_idx == -1U);
+							storage_idx = i;
+						}
+					}
+					assert(storage_idx != -1U);
+
+					int32_t front_min, front_max, back_min, back_max;
+					from_shape->size_to_range(storage->size(), &front_min, &front_max, &back_min, &back_max, *from_left);
+
+					//TODO: this would be improved a whole lot by having a stash function that knows about the order of storages, then it could do this recursively, which would be much cleaner!
+
+					{ //stash stuff to the left:
+						char prev_bed = '\0';
+						int32_t prev_back_min = back_min;
+						int32_t prev_front_min = front_min;
+						for (uint32_t i = storage_idx - 1; i < active.size(); --i) {
+							Storage const *other = active[i];
+							assert(other != storage);
+							Shape const *other_shape;
+							int32_t const *other_left;
+							{
+								auto f = from_layout.find(other);
+								assert(f != from_layout.end());
+								other_left = &f->second.first;
+								other_shape = &f->second.second;
+							}
+							int32_t other_front_min, other_front_max, other_back_min, other_back_max;
+							other_shape->size_to_range(other->size(), &other_front_min, &other_front_max, &other_back_min, &other_back_max, *other_left);
+							assert(other_front_max < prev_front_min);
+							assert(other_back_max < prev_back_min);
+
+							char stash_bed;
+							if (other_front_max == prev_back_min) {
+								// o p p
+								// o o p
+								stash_bed = (prev_bed == 'b' ? '\0' : 'f');
+							} else if (other_back_max == prev_front_min) {
+								// o o p
+								// o p p
+								stash_bed = (prev_bed == 'f' ? '\0' : 'b');
+							} else {
+								stash_bed = '\0';
+							}
+
+							prev_bed = stash(other, stash_bed);
+							prev_front_min = other_front_min;
+							prev_back_min = other_back_min;
+						}
+					}
+
+					{ //stash stuff to the right:
+						char prev_bed = '\0';
+						int32_t prev_back_max = back_max;
+						int32_t prev_front_max = front_max;
+						for (uint32_t i = storage_idx - 1; i < active.size(); --i) {
+							Storage const *other = active[i];
+							assert(other != storage);
+							Shape const *other_shape;
+							int32_t const *other_left;
+							{
+								auto f = from_layout.find(other);
+								assert(f != from_layout.end());
+								other_left = &f->second.first;
+								other_shape = &f->second.second;
+							}
+							int32_t other_front_min, other_front_max, other_back_min, other_back_max;
+							other_shape->size_to_range(other->size(), &other_front_min, &other_front_max, &other_back_min, &other_back_max, *other_left);
+							assert(prev_front_max < other_front_min);
+							assert(prev_back_max < other_back_min);
+
+							char stash_bed;
+							if (prev_front_max == other_back_min) {
+								// p o o
+								// p p o
+								stash_bed = (prev_bed == 'b' ? '\0' : 'f');
+							} else if (prev_back_max == other_front_min) {
+								// p p o
+								// p o o
+								stash_bed = (prev_bed == 'f' ? '\0' : 'b');
+							} else {
+								stash_bed = '\0';
+							}
+
+							prev_bed = stash(other, stash_bed);
+							prev_front_max = other_front_max;
+							prev_back_max = other_back_max;
+						}
+					}
+				}
+
+				unstash(storage);
+
+				std::string from_str = "";
+				std::string to_str = "";
+
+				for (uint32_t i = 0; i < storage->size(); ++i) {
+					char from_bed;
+					int32_t from_needle;
+					from_shape->size_index_to_bed_needle(storage->size(), i, &from_bed, &from_needle);
+					from_needle += *from_left;
+
+					if (i != 0) from_str += ", ";
+					from_str += typeset_bed_needle(from_bed, from_needle);
+
+					char to_bed;
+					int32_t to_needle;
+					to_shape->size_index_to_bed_needle(storage->size(), i, &to_bed, &to_needle);
+					to_needle += *to_left;
+
+					if (i != 0) to_str += ", ";
+					to_str += typeset_bed_needle(to_bed, to_needle);
+				}
+
+				add_instr(
+					"m.roll_cycle([" + from_str + "]\n"
+					"             [" + to_str + "]);"
+				);
+
+				*from_shape = *to_shape;
+			}
+		}
+
+		bool need_shift = false;
+		for (auto storage : active) {
+			Shape *from_shape;
+			int32_t *from_left;
+			{
+				auto f = from_layout.find(storage);
+				assert(f != from_layout.end());
+				from_left = &f->second.first;
+				from_shape = &f->second.second;
+			}
+			Shape const *to_shape;
+			int32_t const *to_left;
+			{
+				auto f = to_layout.find(storage);
+				assert(f != to_layout.end());
+				to_left = &f->second.first;
+				to_shape = &f->second.second;
+			}
+			assert(from_shape->pack() == to_shape->pack());
+
+			if (*from_left != *to_left) {
+				//there is a need to shift!
+				need_shift = true;
+			}
+		}
+
+		char from_bed = 'b';
+		char to_bed = 'f';
+
+		if (need_shift) {
+			for (auto storage : active) {
+				stash(storage, from_bed);
+			}
+		}
+
+		while (need_shift) {
+			need_shift = false;
+
+			//TODO: need to do this in the proper order to avoid loops getting snagged at irregular edges:
+			for (auto storage : active) {
+				Shape *from_shape;
+				int32_t *from_left;
+				{
+					auto f = from_layout.find(storage);
+					assert(f != from_layout.end());
+					from_left = &f->second.first;
+					from_shape = &f->second.second;
+				}
+				Shape const *to_shape;
+				int32_t const *to_left;
+				{
+					auto f = to_layout.find(storage);
+					assert(f != to_layout.end());
+					to_left = &f->second.first;
+					to_shape = &f->second.second;
+				}
+				assert(from_shape->pack() == to_shape->pack());
+
+				int32_t offset = *to_left - *from_left;
+				//racking limit (attempt!)
+				if (offset <-4) offset = -4;
+				if (offset > 4) offset =  4;
+
+				stash(storage, to_bed, offset);
+
+				*from_left += offset;
+	
+				if (*from_left != *to_left) {
+					//there is (still) a need to shift!
+					need_shift = true;
+				}
+			}
+
+			std::swap(from_bed, to_bed);
+		}
+
 	};
 
 	std::unordered_map< Storage const *, std::pair< int32_t, Shape > > storage_layouts; //<-- is this really needed?
@@ -1897,6 +2162,11 @@ int main(int argc, char **argv) {
 			reshape(old_layouts, storage_layouts);
 		}
 
+		//make sure ins are ready to knit:
+		for (auto in : step.in) {
+			unstash(&storages[in]);
+		}
+
 		{ //reinterpret in[0..] as inter + outs[1...]:
 			std::vector< Loop > inter_back;
 			std::vector< Loop > inter_front;
@@ -2031,6 +2301,8 @@ int main(int argc, char **argv) {
 					auto ret = loop_inds.insert(std::make_pair(storages[step.out[0]][o], o));
 					assert(ret.second);
 				}
+
+				//TODO: need to unstash left/right if there are ragged edge overlaps because cast-on would otherwise end up on the wrong side of adjacent tubes.
 				
 				std::string instr = "m.start_tube(";
 				instr += (stitches[step.begin].direction == Stitch::Clockwise ? "'clockwise'" : "'anticlockwise'");

@@ -79,6 +79,32 @@ struct Shape {
 	}
 #endif
 	//------------------
+	void size_to_range(uint32_t size, int32_t *front_min_, int32_t *front_max_, int32_t *back_min_, int32_t *back_max_, int32_t left = 0) const {
+		uint32_t front_add = ((nibbles & BackLeft) ? 1 : 0);
+		uint32_t back_add = ((nibbles & FrontLeft) ? 1 : 0);
+
+		uint32_t width = size
+			+ ((nibbles & BackLeft) ? 1 : 0)
+			+ ((nibbles & FrontLeft) ? 1 : 0)
+			+ ((nibbles & BackRight) ? 1 : 0)
+			+ ((nibbles & FrontRight) ? 1 : 0);
+		assert(width % 2 == 0);
+		width /= 2;
+
+		uint32_t on_front = width
+			- ((nibbles & FrontLeft) ? 1 : 0)
+			- ((nibbles & FrontRight) ? 1 : 0);
+		uint32_t on_back = width
+			- ((nibbles & BackLeft) ? 1 : 0)
+			- ((nibbles & BackRight) ? 1 : 0);
+		assert(on_front + on_back == size);
+
+		if (front_min_) *front_min_ = front_add + left;
+		if (front_max_) *front_max_ = int32_t(front_add + on_front) - 1 + left;
+		if (back_min_) *back_min_ = back_add + left;
+		if (back_max_) *back_max_ = int32_t(back_add + on_back) - 1 + left;
+	}
+	//------------------
 	void size_index_to_bed_needle(uint32_t size, uint32_t index, char *bed_, int32_t *needle_) const {
 		assert(index < size);
 

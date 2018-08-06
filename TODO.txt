@@ -46,3 +46,6 @@ Interruption: Why are the *so many* options reported for splits? Ah, because we'
 ~Scheduling~
 
 Fixed some bugs in shape assignment to options; running into the 'embed_DAG is slow' problem again.
+
+Instruction generation would be a lot cleaner with some map<>s to track loop locations and storage stash statuses.
+(actually, could avoid tracking stash statuses by reading tracked loop locations, which imply de-facto stash status)
