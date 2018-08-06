@@ -54,8 +54,76 @@ struct Shape {
 	}
 
 	//------------------
-	template< typename T >
-	void append_to_beds(std::vector< T > const &data, T const &gap, std::vector< T > *front_, std::vector< T > *back_) const {
+#if 0 // this would be handy but can be avoided at the moment
+	//Shape::from_beds() inverts Shape::append_to_beds() [and also works if there is other stuff on the beds]
+	template< typename C, typename T >
+	static bool from_beds(C const &data, T const &gap, std::vector< T > const &front, std::vector< T > const &back, Shape *shape_, uint32_t *left_) {
+		assert(!data.empty()); //<-- shape doesn't make sense on empty bed.
+
+		assert(shape_);
+		auto &shape = *shape_;
+
+		assert(left_);
+		auto &left = *left_;
+
+		std::vector< uint32_t > front_inds(-1U);
+		std::vector< uint32_t > back_inds(-1U);
+
+		//find first data item:
+		uint32_t at = -1U;
+		bool at_front = false;
+		for (uint32_t i = 0; i < front.size(); ++i) {
+			if (Front[i]
+		}
+
+	}
+#endif
+	//------------------
+	void size_index_to_bed_needle(uint32_t size, uint32_t index, char *bed_, int32_t *needle_) const {
+		assert(index < size);
+
+		assert(bed_);
+		auto &bed = *bed_;
+
+		assert(needle_);
+		auto &needle = *needle_;
+
+		uint32_t front_add = ((nibbles & BackLeft) ? 1 : 0);
+		uint32_t back_add = ((nibbles & FrontLeft) ? 1 : 0);
+
+		//figure out how many items go on the back and how many on the front:
+		uint32_t width = size
+			+ ((nibbles & BackLeft) ? 1 : 0)
+			+ ((nibbles & FrontLeft) ? 1 : 0)
+			+ ((nibbles & BackRight) ? 1 : 0)
+			+ ((nibbles & FrontRight) ? 1 : 0);
+		assert(width % 2 == 0);
+		width /= 2;
+
+		uint32_t on_front = width
+			- ((nibbles & FrontLeft) ? 1 : 0)
+			- ((nibbles & FrontRight) ? 1 : 0);
+		uint32_t on_back = width
+			- ((nibbles & BackLeft) ? 1 : 0)
+			- ((nibbles & BackRight) ? 1 : 0);
+		assert(on_front + on_back == size);
+
+		index = (index + roll) % size;
+
+		if (index < on_front) {
+			bed = 'f';
+			needle = front_add + index;
+		} else { assert(index < size);
+			bed = 'b';
+			index -= on_front;
+			assert(index < on_back);
+			needle = back_add + on_back - 1 - index;
+		}
+	}
+
+	//------------------
+	template< typename C, typename T >
+	void append_to_beds(C const &data, T const &gap, std::vector< T > *front_, std::vector< T > *back_) const {
 		assert(front_);
 		auto &front = *front_;
 		assert(back_);

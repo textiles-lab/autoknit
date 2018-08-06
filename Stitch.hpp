@@ -28,7 +28,7 @@ struct Stitch {
 	//direction of stitch (relative to current tube):
 	enum : char {
 		CW = 'c', Clockwise = CW,
-		AC = 'a', Anticlockwise = AC, CCW = AC, Counterclocwise = AC,
+		AC = 'a', Anticlockwise = AC, CCW = AC, Counterclockwise = AC,
 	};
 	char direction = CW;
 	//ins and outs are in construction order:

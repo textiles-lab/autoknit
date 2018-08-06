@@ -12,6 +12,7 @@
 #include <algorithm>
 #include <list>
 #include <unordered_map>
+#include <fstream>
 
 //Loop held on a needle:
 struct Loop {
@@ -462,6 +463,9 @@ int main(int argc, char **argv) {
 				std::cout << "step[" << (&step - &steps[0]) << "]:\n";
 				std::cout << "  in:";
 				for (auto i : step.in) std::cout << ' ' << storage_to_string(i);
+				std::cout << '\n';
+				std::cout << " int:";
+				for (auto const &l : step.inter) std::cout << ' ' << l.to_string();
 				std::cout << '\n';
 				std::cout << " out:";
 				for (auto o : step.out) std::cout << ' ' << storage_to_string(o);
@@ -1030,6 +1034,25 @@ int main(int argc, char **argv) {
 	for (auto &step : steps) {
 		if (!(step.in.size() <= 1 && step.out.size() <= 1)) continue; //skip exciting steps
 
+		uint32_t inter_roll = 0; //such that: storages[step.in[0]][i] == step.inter[i + inter_roll]
+		//used to fix up inter_shape relative to in_shape so the stitches are in the same places.
+		if (step.in.size() == 1) {
+			assert(step.inter.size() == storages[step.in[0]].size());
+			inter_roll = -1U;
+			for (uint32_t roll = 0; roll < step.inter.size(); ++roll) {
+				if (storages[step.in[0]][0] == step.inter[roll]) {
+					assert(inter_roll == -1U);
+					inter_roll = roll;
+				}
+			}
+			assert(inter_roll != -1U);
+			for (uint32_t i = 0; i < step.inter.size(); ++i) {
+				assert(storages[step.in[0]][i] == step.inter[(i + inter_roll) % step.inter.size()]);
+			}
+		} else {
+			assert(step.inter.empty());
+		}
+
 		if (step.in.size() == 0 && step.out.size() == 1) {
 			//Starts a cycle -- can do so in any order.
 			assert(stitches[step.begin].type == Stitch::Start);
@@ -1057,8 +1080,18 @@ int main(int argc, char **argv) {
 			option.in_order = {0};
 			for (auto const &in_shape : in_shapes) {
 				option.cost = ScheduleCost::shape_cost(in_shape);
-				option.inter_shape = in_shape.pack();
+				Shape inter_shape = in_shape;
+				inter_shape.roll = (in_shape.roll + step.inter.size() - inter_roll) % step.inter.size();
+				option.inter_shape = inter_shape.pack();
 				option.in_shapes = {in_shape.pack()};
+
+				/*{ //DEBUG: in/inter shapes should match, right?
+					std::vector< Loop > in_front, in_back, inter_front, inter_back;
+					Shape::unpack(option.in_shapes[0]).append_to_beds(storages[step.in[0]], INVALID_LOOP, &in_front, &in_back);
+					Shape::unpack(option.inter_shape).append_to_beds(step.inter, INVALID_LOOP, &inter_front, &inter_back);
+					assert(in_front == inter_front && in_back == inter_back);
+				}*/
+
 				step.options.emplace_back(option);
 			}
 
@@ -1074,7 +1107,9 @@ int main(int argc, char **argv) {
 			option.out_order = {0};
 			for (auto const &in_shape : in_shapes) {
 				option.in_shapes = {in_shape.pack()};
-				option.inter_shape = in_shape.pack();
+				Shape inter_shape = in_shape;
+				inter_shape.roll = (in_shape.roll + step.inter.size() - inter_roll) % step.inter.size();
+				option.inter_shape = inter_shape.pack();
 				for (auto const &out_shape : out_shapes) {
 					option.out_shapes = {out_shape.pack()};
 
@@ -1085,6 +1120,13 @@ int main(int argc, char **argv) {
 						storages[step.out[0]].size(), out_shape,
 						step.inter_to_out
 					);
+
+					/*{ //DEBUG: in/inter shapes should match, right?
+						std::vector< Loop > in_front, in_back, inter_front, inter_back;
+						Shape::unpack(option.in_shapes[0]).append_to_beds(storages[step.in[0]], INVALID_LOOP, &in_front, &in_back);
+						Shape::unpack(option.inter_shape).append_to_beds(step.inter, INVALID_LOOP, &inter_front, &inter_back);
+						assert(in_front == inter_front && in_back == inter_back);
+					}*/
 
 					step.options.emplace_back(option);
 				}
@@ -1685,112 +1727,661 @@ int main(int argc, char **argv) {
 
 	//--- Dump knitting instructions steps ----
 
-	std::unordered_map< uint32_t, std::pair< int32_t, Shape > > storage_layouts; //<-- is this really needed?
+	std::vector< std::string > instructions;
+	auto add_instr = [&instructions](std::string const &instr) {
+		instructions.emplace_back(instr);
+		std::cout << instr << std::endl; //DEBUG
+	};
+
+	//helper:
+	auto typeset_bed_needle = [](char bed, int32_t needle) -> std::string {
+		std::string ret;
+		ret += '\'';
+		ret += bed;
+		ret += std::to_string(needle);
+		ret += '\'';
+		return ret;
+	};
+
+	//helper:
+	auto reshape = [](std::unordered_map< Storage const *, std::pair< int32_t, Shape > > const &from_layout, 
+	                  std::unordered_map< Storage const *, std::pair< int32_t, Shape > > const &to_layout) {
+		//TODO: move things around on the beds!
+	};
+
+	std::unordered_map< Storage const *, std::pair< int32_t, Shape > > storage_layouts; //<-- is this really needed?
 	for (uint32_t stepi = 0; stepi < steps.size(); ++stepi) {
+		std::cout << "Step[" << stepi << "]:" << std::endl; //DEBUG
+		add_instr("//steps[" + std::to_string(stepi) + "]:");
 		auto const &step = steps[stepi];
 		assert(step_options[stepi] < step.options.size());
 		auto const &option = step.options[step_options[stepi]];
 
-		{ //reshape to get ready for step -- shift everything to the correct offset and (maybe) also transform some things:
-			std::unordered_map< uint32_t, std::pair< int32_t, Shape > > old_layouts = storage_layouts;
+		//partition storages into stuff to the left of the step and stuff to the right (useful if we need to shove):
+		std::vector< uint32_t > left_of_step;
+		std::vector< uint32_t > right_of_step;
+		{
+			//use 'storage_positions' which are abstract indices that yield a total order:
+			int32_t step_min = std::numeric_limits< int32_t >::max();
+			int32_t step_max = std::numeric_limits< int32_t >::min();
+			for (auto si : step.in) {
+				step_min = std::min(step_min, storage_positions[si]);
+				step_max = std::max(step_max, storage_positions[si]);
+			}
+			for (auto si : step.out) {
+				step_min = std::min(step_min, storage_positions[si]);
+				step_max = std::max(step_max, storage_positions[si]);
+			}
+			assert(step_min <= step_max);
 
+			std::set< uint32_t > in_step(step.in.begin(), step.in.end());
+			for (auto const &sls : storage_layouts) {
+				uint32_t idx = sls.first - &storages[0];
+				assert(idx < storages.size()); //at this point, no inters should be in storages!
+				if (in_step.count(idx)) continue;
+				uint32_t pos = storage_positions[idx];
+				if (pos < step_min) {
+					left_of_step.emplace_back(idx);
+				} else if (pos > step_max) {
+					right_of_step.emplace_back(idx);
+				} else {
+					assert(pos < step_min || pos > step_max); //can't have another storage sitting in the middle of the step.
+				}
+			}
+		}
+		//DEBUG:
+		std::cout << "  layout: ";
+		for (auto si : left_of_step) std::cout << si << ' ';
+		std::cout << '[';
+		for (auto i : option.in_order) std::cout << (i == option.in_order[0] ? "" : " ") << step.in[i];
+		std::cout << " -> ";
+		for (auto o : option.out_order) std::cout << (o == option.out_order[0] ? "" : " ") << step.out[o];
+		std::cout << ']';
+		for (auto si : right_of_step) std::cout << ' ' << si;
+		std::cout << std::endl;
+
+
+		//Compute the location of each loop in the step inputs:
+		int32_t step_left = 0;
+		std::vector< Loop > step_back;
+		std::vector< Loop > step_front;
+
+		//helper: will be useful for looking up shape locations in composite shape later:
+		auto left_from_step = [&step_left, &step_back, &step_front](Shape const &shape, Storage const &loops) {
+			//recomputing this is wasteful but keeps the other code cleaner:
+			std::map< Loop, int32_t > step_needle;
+			for (uint32_t i = 0; i < step_back.size(); ++i) {
+				if (step_back[i] != INVALID_LOOP) {
+					auto ret = step_needle.insert(std::make_pair(step_back[i], step_left + i));
+					assert(ret.second);
+				}
+			}
+			for (uint32_t i = 0; i < step_front.size(); ++i) {
+				if (step_front[i] != INVALID_LOOP) {
+					auto ret = step_needle.insert(std::make_pair(step_front[i], step_left + i));
+					assert(ret.second);
+				}
+			}
+
+			//use step_needle as lookup structure to figure out left:
+			std::vector< Loop > front, back;
+			shape.append_to_beds(loops, INVALID_LOOP, &front, &back);
+			int32_t left = std::numeric_limits< int32_t >::max();
+			for (uint32_t i = 0; i < back.size(); ++i) {
+				if (back[i] == INVALID_LOOP) continue;
+				auto l = step_needle.find(back[i]);
+				assert(l != step_needle.end());
+				int32_t pos = l->second - int32_t(i);
+				if (left == std::numeric_limits< int32_t >::max()) left = pos;
+				assert(left == pos);
+			}
+			for (uint32_t i = 0; i < front.size(); ++i) {
+				if (front[i] == INVALID_LOOP) continue;
+				auto l = step_needle.find(front[i]);
+				assert(l != step_needle.end());
+				int32_t pos = l->second - int32_t(i);
+				if (left == std::numeric_limits< int32_t >::max()) left = pos;
+				assert(left == pos);
+			}
+			return left;
+		};
+
+		{ //reshape to get ready for step -- shift everything to the correct offset and (maybe) also transform some things:
+			auto old_layouts = storage_layouts;
+
+			//move everything to the in shape: (most things shouldn't need it)
 			assert(option.in_shapes.size() == step.in.size());
 			for (uint32_t i = 0; i < step.in.size(); ++i) {
-				auto f = storage_layouts.find(step.in[i]);
+				auto f = storage_layouts.find(&storages[step.in[i]]);
 				assert(f != storage_layouts.end());
-				f->second.second = Shape::unpack(option.in_shapes[i]); //<-- in some few cases, option's selected layout will be different from storage layout.
+				if (f->second.second.pack() != option.in_shapes[i]) {
+					std::cout << "  NOTE: late reshape for storage " << step.in[i] << std::endl; //DEBUG
+					f->second.second = Shape::unpack(option.in_shapes[i]); //<-- in some few cases, option's selected layout will be different from storage layout.
+				}
 			}
-			//compact if needed:
-			std::vector< uint32_t > back;
-			std::vector< uint32_t > front;
+
+			//compute the composite shape:
 			for (uint32_t i : option.in_order) {
-				std::vector< uint32_t > id(storages[step.in[i]].size(), step.in[i]);
-				auto f = storage_layouts.find(step.in[i]);
+				auto f = storage_layouts.find(&storages[step.in[i]]);
 				assert(f != storage_layouts.end());
-				f->second.second.append_to_beds(id, -1U, &front, &back);
+				f->second.second.append_to_beds(storages[step.in[i]], INVALID_LOOP, &step_front, &step_back);
 			}
+
+			{ //DEBUG:
+				std::string front_string, back_string;
+				typeset_beds< Loop >(step_front, step_back, [](Loop const &l){
+					return l.to_string();
+				}, " ", &front_string, &back_string);
+				std::cout << "  in: " << back_string << std::endl;
+				std::cout << "      " << front_string << std::endl;
+			}
+
+
+			//figure out the left edge:
+			//TODO: some sort of minimization to shift to the middle of the open space.
 			if (!step.in.empty()) {
-				uint32_t packed_width = std::max(back.size(), front.size());
-
-				int32_t left;
-				{
-					auto f = storage_layouts.find(step.in[option.in_order[0]]);
-					assert(f != storage_layouts.end());
-					left = f->first;
-				}
-				int32_t right;
-				{
-					auto f = storage_layouts.find(step.in[option.in_order.back()]);
-					assert(f != storage_layouts.end());
-					right = f->first + storage_widths[step.in[option.in_order.back()]];
-				}
-
-				int32_t ofs_left = (right + 1 - left - int32_t(packed_width)) / 2 + left;
-				std::cout << "ofs_left: " << ofs_left << std::endl;
-
-				for (uint32_t in : step.in) {
-					int32_t l = std::numeric_limits< int32_t >::max();
-					for (uint32_t i = 0; i < back.size(); ++i) {
-						if (back[i] == in) {
-							l = std::min(l, int32_t(i));
-							break;
-						}
-					}
-					for (uint32_t i = 0; i < front.size(); ++i) {
-						if (front[i] == in) {
-							l = std::min(l, int32_t(i));
-							break;
-						}
-					}
-					assert(l != std::numeric_limits< int32_t >::max());
-					std::cout << "Compact from " << storage_layouts.at(in).first << " to " << ofs_left + l << std::endl;
-					auto f = storage_layouts.find(in);
-					assert(f != storage_layouts.end());
-					f->second.first = ofs_left + l;
-				}
+				auto f = storage_layouts.find(&storages[step.in[option.in_order[0]]]);
+				assert(f != storage_layouts.end());
+				step_left = f->second.first;
 			}
 
-			//TODO: reshape(old_layouts, storage_layouts);
+			//reposition ins based on the chosen left edge:
+			for (auto in : step.in) {
+				auto f = storage_layouts.find(&storages[in]);
+				assert(f != storage_layouts.end());
+				int32_t new_left = left_from_step(f->second.second, storages[in]);
+				assert(new_left != std::numeric_limits< int32_t >::max());
+				f->second.first = new_left;
+			}
+
+			reshape(old_layouts, storage_layouts);
 		}
 
+		{ //reinterpret in[0..] as inter + outs[1...]:
+			std::vector< Loop > inter_back;
+			std::vector< Loop > inter_front;
 
-		{ //TODO: in -> inter + out; reshape inter_shape -> outs[0] shape (with mapping), actually knit some stitches
-			//in[0 .. n] should be reinterpret-able as inter_shape + outs[1...] shapes
+			if (step.out.empty()) {
+				//special case: no outputs, so inter is *just* inter:
+				Shape shape = Shape::unpack(option.inter_shape);
+				shape.append_to_beds(step.inter, INVALID_LOOP, &inter_front, &inter_back);
+			} else {
+				for (auto o : option.out_order) {
+					if (o == 0) {
+						if (!step.inter.empty()) {
+							Shape shape = Shape::unpack(option.inter_shape);
+							shape.append_to_beds(step.inter, INVALID_LOOP, &inter_front, &inter_back);
+						}
+					} else {
+						Shape shape = Shape::unpack(option.out_shapes[o]);
+						shape.append_to_beds(storages[step.out[o]], INVALID_LOOP, &inter_front, &inter_back);
+					}
+				}
+			}
 
+			{ //DEBUG:
+				std::string front_string, back_string;
+				typeset_beds< Loop >(inter_front, inter_back, [](Loop const &l){
+					return l.to_string();
+				}, " ", &front_string, &back_string);
+				std::cout << " int: " << back_string << std::endl;
+				std::cout << "      " << front_string << std::endl;
+			}
+
+			assert(inter_back == step_back);
+			assert(inter_front == step_front);
+
+			//surgery on layouts to reflect the reinterpretation:
 			for (uint32_t i = 0; i < step.in.size(); ++i) {
-				auto f = storage_layouts.find(step.in[i]);
+				auto f = storage_layouts.find(&storages[step.in[i]]);
 				assert(f != storage_layouts.end());
 				storage_layouts.erase(f);
 			}
-			//TODO: figure out the proper offsets by reading them off of the shapes after transformation.
-			for (uint32_t o = 0; o < step.out.size(); ++o) {
-				int32_t left = std::numeric_limits< int32_t >::max();
-				for (auto const &sl : step_storages[stepi]) {
-					if (sl.storage == step.out[o]) {
-						assert(left == std::numeric_limits< int32_t >::max());
-						left = sl.left;
-					}
-				}
-				assert(left != std::numeric_limits< int32_t >::max());
-				auto ret = storage_layouts.insert(std::make_pair(step.out[o], std::make_pair(left, Shape::unpack(option.out_shapes[o]))));
+
+			//don't track inter in layouts because it shouldn't be stashed or shifted with the others (??)
+					/*{ //NOTE: maybe don't do this if inter is empty?
+				int32_t left = left_from_step(Shape::unpack(option.inter_shape), step.inter);
+				auto ret = storage_layouts.insert(std::make_pair(&step.inter, std::make_pair(left, Shape::unpack(option.inter_shape))));
+				assert(ret.second);
+			}*/
+			for (uint32_t o = 1; o < step.out.size(); ++o) {
+				int32_t left = left_from_step(Shape::unpack(option.out_shapes[o]), storages[step.out[o]]);
+				auto ret = storage_layouts.insert(std::make_pair(&storages[step.out[o]], std::make_pair(left, Shape::unpack(option.out_shapes[o]))));
 				assert(ret.second);
 			}
 		}
 
+		//actually get around to doing the step:
+		if (stitches[step.begin].type == Stitch::Start) {
+			//cast-ons should be all cast-on:
+			for (uint32_t s = step.begin; s != step.end; ++s) {
+				assert(stitches[s].type == Stitch::Start);
+			}
 
-		{ //maintain active storage lists properly:
-			std::unordered_map< uint32_t, std::pair< int32_t, Shape > > old_layouts = storage_layouts;
+			assert(step.inter.empty());
+			assert(step.out.size() == 1);
+			assert(left_of_step.size() + right_of_step.size() == storage_layouts.size()); //don't have layout for out[0] stored yet.
+
+			{ //move everything else left/right to post-step locations:
+				auto old_layouts = storage_layouts;
+				for (uint32_t s : left_of_step) {
+					auto f = storage_layouts.find(&storages[s]);
+					assert(f != storage_layouts.end());
+					bool found = false;
+					for (auto const &sl : step_storages[stepi]) {
+						if (sl.storage == s) {
+							assert(!found);
+							found = true;
+							f->second.first = sl.left;
+						}
+					}
+				}
+				for (uint32_t s : right_of_step) {
+					auto f = storage_layouts.find(&storages[s]);
+					assert(f != storage_layouts.end());
+					bool found = false;
+					for (auto const &sl : step_storages[stepi]) {
+						if (sl.storage == s) {
+							assert(!found);
+							found = true;
+							f->second.first = sl.left;
+						}
+					}
+				}
+				reshape(old_layouts, storage_layouts);
+			}
+
+			//actually knit a cast-on:
+			{ //PARANOIA: does shape-to-needle stuff actually work?
+				assert(!storages[step.out[0]].empty());
+				uint32_t size = storages[step.out[0]].size();
+				std::vector< Loop > out_back;
+				std::vector< Loop > out_front; 
+				Shape shape = Shape::unpack(option.out_shapes[0]);
+				shape.append_to_beds(storages[step.out[0]], INVALID_LOOP, &out_front, &out_back);
+				for (uint32_t i = 0; i < size; ++i) {
+					char bed;
+					int32_t needle;
+					shape.size_index_to_bed_needle(size, i, &bed, &needle);
+					if (bed == 'f') {
+						assert(uint32_t(needle) < out_front.size());
+						assert(out_front[needle] == storages[step.out[0]][i]);
+					} else if (bed == 'b') {
+						assert(uint32_t(needle) < out_back.size());
+						assert(out_back[needle] == storages[step.out[0]][i]);
+					} else {
+						assert(bed == 'f' || bed == 'b');
+					}
+				}
+			}
+
+			{
+				Shape shape = Shape::unpack(option.out_shapes[0]);
+				int32_t left = -1U;
+				for (auto const &sl : step_storages[stepi]) {
+					if (sl.storage == step.out[0]) {
+						assert(left == -1U);
+						left = sl.left;
+					}
+				}
+				assert(left != -1U);
+
+				std::map< Loop, uint32_t > loop_inds;
+				for (uint32_t o = 0; o < storages[step.out[0]].size(); ++o) {
+					auto ret = loop_inds.insert(std::make_pair(storages[step.out[0]][o], o));
+					assert(ret.second);
+				}
+				
+				std::string instr = "m.start_tube(";
+				instr += (stitches[step.begin].direction == Stitch::Clockwise ? "'clockwise'" : "'anticlockwise'");
+				instr += ", [";
+				for (uint32_t s = step.begin; s != step.end; ++s) {
+					auto const &st = stitches[s];
+					assert(st.type == Stitch::Start);
+					assert(st.out[0] != -1U && st.out[1] == -1U);
+
+					Loop out0(s, 0);
+					auto f0 = loop_inds.find(out0);
+					assert(f0 != loop_inds.end());
+
+					{//PARANOIA: should be exactly one loop here:
+						uint32_t on_needle = 0;
+						for (auto const &li : loop_inds) {
+							if (li.second == f0->second) ++on_needle;
+						}
+						assert(on_needle == 1);
+					}
+
+					char bed;
+					int32_t needle;
+					shape.size_index_to_bed_needle(storages[step.out[0]].size(), f0->second, &bed, &needle);
+					needle += left;
+
+					if (s != step.begin) instr += ", ";
+					instr += typeset_bed_needle(bed, needle);
+				}
+				instr += "]);";
+
+				add_instr(instr);
+
+				//add new tube to layouts:
+				auto ret = storage_layouts.insert(std::make_pair(&storages[step.out[0]], std::make_pair(left, shape)));
+				assert(ret.second);
+			}
+
+		} else if (stitches[step.begin].type == Stitch::End) {
+			assert(step.out.empty());
+			assert(step.in.size() == 1);
+
+			Shape inter_shape = Shape::unpack(option.inter_shape);
+			int32_t inter_left = left_from_step(inter_shape, step.inter);
+
+			std::map< Loop, uint32_t > loop_inds;
+			for (uint32_t i = 0; i < step.inter.size(); ++i) {
+				auto ret = loop_inds.insert(std::make_pair(step.inter[i], i));
+				assert(ret.second);
+			}
+
+			std::string instr = "m.end_tube(";
+			instr += (stitches[step.begin].direction == Stitch::Clockwise ? "'clockwise'" : "'anticlockwise'");
+			instr += ", [";
+			for (uint32_t s = step.begin; s != step.end; ++s) {
+				auto const &st = stitches[s];
+				assert(st.type == Stitch::End);
+				assert(st.in[0] != -1U && st.in[1] == -1U);
+
+				Loop in0(st.in[0], stitches[st.in[0]].find_out(s));
+				assert(in0.idx == 0 || in0.idx == 1);
+				auto f0 = loop_inds.find(in0);
+				assert(f0 != loop_inds.end());
+
+				{//PARANOIA: should be exactly one loop here:
+					uint32_t on_needle = 0;
+					for (auto const &li : loop_inds) {
+						if (li.second == f0->second) ++on_needle;
+					}
+					assert(on_needle == 1);
+				}
+
+				char bed;
+				int32_t needle;
+				inter_shape.size_index_to_bed_needle(step.inter.size(), f0->second, &bed, &needle);
+				needle += inter_left;
+
+				if (s != step.begin) instr += ", ";
+				instr += typeset_bed_needle(bed, needle);
+			}
+			instr += "]);";
+
+			add_instr(instr);
+
+		} else {
+			assert(step.out.size() >= 1);
+			assert(step.in.size() >= 1);
+
+			/* TODO: figure out free range for xfers (and maybe shift outs[1..] to the side to make room?)
+			//okay, how many needles are needed during step?
+			int32_t min_used = std::numeric_limits< int32_t >::max();
+			int32_t max_used = std::numeric_limits< int32_t >::min();
+			if (stitches[step.begin] == Stitch::Begin) {
+				assert(step.out.size() == 1);
+				auto f = storage_layouts.find(&storages[step.out[0]]);
+
+			} else if (stitches[step.begin] == Stitch::End) {
+			} else {
+				if (!inter.empty()) {
+					inter_left = left_from_step(Shape::unpack(option.inter_shape), step.inter);
+				}
+			}
+			*/
+
+			Shape inter_shape = Shape::unpack(option.inter_shape);
+			int32_t inter_left = left_from_step(inter_shape, step.inter);
+
+
+			Shape out_shape = Shape::unpack(option.out_shapes[0]);
+			int32_t out_left = -1U;
+			for (auto const &sl : step_storages[stepi]) {
+				if (sl.storage == step.out[0]) {
+					assert(out_left == -1U);
+					out_left = sl.left;
+				}
+			}
+			assert(out_left != -1U);
+
+			//transform from inter_shape / inter_left to out_shape / out_left:
+			std::string from_str, to_str;
+			bool need_xfer = false;
+			for (uint32_t i = 0; i < step.inter.size(); ++i) {
+				char from_bed;
+				int32_t from_needle;
+				inter_shape.size_index_to_bed_needle(step.inter.size(), i, &from_bed, &from_needle);
+				from_needle += inter_left;
+
+				uint32_t to_i = step.inter_to_out[i];
+				assert(to_i < storages[step.out[0]].size());
+				char to_bed;
+				int32_t to_needle;
+				out_shape.size_index_to_bed_needle(storages[step.out[0]].size(), to_i, &to_bed, &to_needle);
+				to_needle += out_left;
+
+				if (!from_str.empty()) from_str += ", ";
+				from_str += typeset_bed_needle(from_bed, from_needle);
+
+				if (!to_str.empty()) to_str += ", ";
+				to_str += typeset_bed_needle(to_bed, to_needle);
+
+				if (from_bed != to_bed || from_needle != to_needle) need_xfer = true;
+			}
+			if (need_xfer) {
+				std::string instr = 
+				"m.xfer_cycle([" + from_str + "]\n"
+				"             [" + to_str + "]);";
+
+				add_instr(instr);
+			}
+
+			{ //perform stitches:
+
+				//record where each loop in 'inter' currently resides in the out shape:
+				// (doing this because inter is in ccw order, and stitches may be in either direction)
+				std::map< Loop, uint32_t > loop_inds;
+				for (uint32_t i = 0; i < step.inter.size(); ++i) {
+					auto ret = loop_inds.insert(std::make_pair(step.inter[i], step.inter_to_out[i]));
+					assert(ret.second);
+				}
+
+				for (uint32_t s = step.begin; s != step.end; ++s) {
+					auto const &st = stitches[s];
+					if (st.type == Stitch::Knit || st.type == Stitch::Miss || st.type == Stitch::Tuck) {
+						//should have one input:
+						assert(st.in[0] != -1U && st.in[1] == -1U);
+						//make sure it's in the expected place in step.inter:
+						Loop in0(st.in[0], stitches[st.in[0]].find_out(s));
+						assert(in0.idx == 0 || in0.idx == 1);
+						auto f0 = loop_inds.find(in0);
+						assert(f0 != loop_inds.end());
+
+						{//PARANOIA: should be exactly one loop here:
+							uint32_t on_needle = 0;
+							for (auto const &li : loop_inds) {
+								if (li.second == f0->second) ++on_needle;
+							}
+							assert(on_needle == 1);
+						}
+
+						char bed;
+						int32_t needle;
+						out_shape.size_index_to_bed_needle(storages[step.out[0]].size(), f0->second, &bed, &needle);
+						needle += out_left;
+
+						{
+							std::string instr;
+							if      (st.type == Stitch::Knit) instr += "m.knit(";
+							else if (st.type == Stitch::Tuck) instr += "m.tuck(";
+							else if (st.type == Stitch::Miss) instr += "m.miss(";
+							else assert(0 && "bad stitch type");
+
+							instr += '\'';
+							if (st.direction == Stitch::Clockwise) {
+								instr += (bed == 'f' ? '-' : '+');
+							} else { assert(st.direction == Stitch::Counterclockwise);
+								instr += (bed == 'f' ? '+' : '-');
+							}
+							instr += '\'';
+							instr += ", " + typeset_bed_needle(bed, needle) + ");";
+
+							add_instr(instr);
+						}
+					} else if (st.type == Stitch::Increase) {
+						//should have one input:
+						assert(st.in[0] != -1U && st.in[1] == -1U);
+						//make sure it's in the expected place in step.inter:
+						Loop in0(st.in[0], stitches[st.in[0]].find_out(s));
+						assert(in0.idx == 0 || in0.idx == 1);
+						auto f0 = loop_inds.find(in0);
+						assert(f0 != loop_inds.end());
+
+						{//PARANOIA: should be exactly one loop here:
+							uint32_t on_needle = 0;
+							for (auto const &li : loop_inds) {
+								if (li.second == f0->second) ++on_needle;
+							}
+							assert(on_needle == 1);
+						}
+
+						char bed0;
+						int32_t needle0;
+						out_shape.size_index_to_bed_needle(storages[step.out[0]].size(), f0->second, &bed0, &needle0);
+						needle0 += out_left;
+
+						uint32_t idx1 = f0->second;
+						if (st.direction == Stitch::Clockwise) {
+							idx1 = (idx1 > 0 ? idx1 - 1 : storages[step.out[0]].size()-1);
+						} else {
+							idx1 = (idx1 + 1 < storages[step.out[0]].size() ? idx1 + 1 : 0);
+						}
+
+						{//PARANOIA: shouldn't be a loop here:
+							for (auto const &li : loop_inds) {
+								assert(li.second != idx1);
+							}
+						}
+
+						char bed1;
+						int32_t needle1;
+						out_shape.size_index_to_bed_needle(storages[step.out[0]].size(), idx1, &bed1, &needle1);
+						needle1 += out_left;
+
+						{
+							std::string instr = "m.increase(";
+							instr += '\'';
+							if (st.direction == Stitch::Clockwise) {
+								instr += (bed0 == 'f' ? '-' : '+');
+							} else { assert(st.direction == Stitch::Counterclockwise);
+								instr += (bed0 == 'f' ? '+' : '-');
+							}
+							instr += '\'';
+							instr += ", ";
+							instr += typeset_bed_needle(bed0, needle0);
+							instr += ", ";
+
+							instr += '\'';
+							if (st.direction == Stitch::Clockwise) {
+								instr += (bed1 == 'f' ? '-' : '+');
+							} else { assert(st.direction == Stitch::Counterclockwise);
+								instr += (bed1 == 'f' ? '+' : '-');
+							}
+							instr += '\'';
+							instr += ", ";
+							instr += typeset_bed_needle(bed0, needle0);
+							instr += ");";
+
+							add_instr(instr);
+						}
+
+					} else if (st.type == Stitch::Decrease) {
+						//should have two inputs:
+						assert(st.in[0] != -1U && st.in[1] != -1U);
+
+						//make sure inputs are in the expected place in step.inter:
+						Loop in0(st.in[0], stitches[st.in[0]].find_out(s));
+						assert(in0.idx == 0 || in0.idx == 1);
+						auto f0 = loop_inds.find(in0);
+						assert(f0 != loop_inds.end());
+
+						Loop in1(st.in[0], stitches[st.in[0]].find_out(s));
+						assert(in1.idx == 0 || in1.idx == 1);
+						auto f1 = loop_inds.find(in1);
+						assert(f1 != loop_inds.end());
+						assert(f1->second == f0->second);
+
+						{//PARANOIA: should be exactly two loops here:
+							uint32_t on_needle = 0;
+							for (auto const &li : loop_inds) {
+								if (li.second == f0->second) ++on_needle;
+							}
+							assert(on_needle == 2);
+						}
+
+						char bed0;
+						int32_t needle0;
+						out_shape.size_index_to_bed_needle(storages[step.out[0]].size(), f0->second, &bed0, &needle0);
+						needle0 += out_left;
+
+						{
+							std::string instr = "m.decrease(";
+							instr += '\'';
+							if (st.direction == Stitch::Clockwise) {
+								instr += (bed0 == 'f' ? '-' : '+');
+							} else { assert(st.direction == Stitch::Counterclockwise);
+								instr += (bed0 == 'f' ? '+' : '-');
+							}
+							instr += '\'';
+							instr += ", ";
+							instr += typeset_bed_needle(bed0, needle0);
+							instr += ");";
+
+							add_instr(instr);
+						}
+
+					} else {
+						assert(0 && "bad stitch type");
+					}
+				}
+			}
+
+			//add new tube to layouts:
+			auto ret = storage_layouts.insert(std::make_pair(&storages[step.out[0]], std::make_pair(out_left, out_shape)));
+			assert(ret.second);
+
+		}
+
+
+
+		{ //make sure everything gets to the final output position:
+			auto old_layouts = storage_layouts;
 
 			for (auto const &sl : step_storages[stepi]) {
-				auto f = storage_layouts.find(sl.storage);
+				auto f = storage_layouts.find(&storages[sl.storage]);
 				assert(f != storage_layouts.end());
 				assert(f->second.second.pack() == storage_shapes[sl.storage]);
 				f->second.first = sl.left;
 			}
 
-			//TODO: reshape(old_layouts, storage_layouts);
+			reshape(old_layouts, storage_layouts);
 		}
 
+	}
+
+	//write instructions to output file:
+	if (out_js != "") {
+		std::ofstream js(out_js, std::ios::binary);
+		for (auto const &instr : instructions) {
+			js << instr << '\n';
+		}
+		js.close();
+		std::cout << "Wrote '" << out_js << "'." << std::endl;
 	}
 
 	return 0;
