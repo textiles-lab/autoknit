@@ -11,6 +11,7 @@
 #include <set>
 #include <algorithm>
 #include <list>
+#include <unordered_map>
 
 //Loop held on a needle:
 struct Loop {
@@ -41,7 +42,7 @@ struct CycleIndex {
 	uint32_t cycle = -1U;
 	uint32_t index = -1U;
 	bool operator!=(CycleIndex const &o) const {
-		return cycle != o.cycle && index != o.index;
+		return cycle != o.cycle || index != o.index;
 	}
 	std::string to_string() const {
 		if (cycle == -1U && index == -1U) return ".";
@@ -124,11 +125,11 @@ int main(int argc, char **argv) {
 
 	struct ScheduleOption {
 		ScheduleCost cost;
-		std::vector< uint32_t > in_order;
-		std::vector< PackedShape > in_shapes;
+		std::vector< uint32_t > in_order; //indexes into step.in
+		std::vector< PackedShape > in_shapes; //in_shapes[i] is shape for step.in[i]
 		PackedShape inter_shape;
-		std::vector< uint32_t > out_order;
-		std::vector< PackedShape > out_shapes;
+		std::vector< uint32_t > out_order; //indexes into step.out
+		std::vector< PackedShape > out_shapes; //out_shapes[i] is shape for step.out[i]
 	};
 
 	struct Step {
@@ -294,6 +295,7 @@ int main(int argc, char **argv) {
 
 				//flip and re-jigger yarn storages:
 				auto link_ccw = [&outs](Loop const &a, Loop const &b) {
+					//std::cout << "Linking " << a.to_string() << " -> " << b.to_string() << std::endl; //DEBUG
 					std::list< Storage >::iterator sa = outs.end();
 					uint32_t la = -1U;
 					std::list< Storage >::iterator sb = outs.end();
@@ -371,10 +373,6 @@ int main(int argc, char **argv) {
 
 				};
 
-				for (uint32_t i = 0; i + 1 < in_chain.size(); ++i) {
-					link_ccw(in_chain[i], in_chain[i+1]);
-				}
-
 				if (yarn.loop != INVALID_LOOP) {
 					if (yarn.direction != stitches[step.begin].direction) {
 						//reversing direction should happen on the same stitch:
@@ -389,7 +387,12 @@ int main(int argc, char **argv) {
 					}
 				}
 
+				for (uint32_t i = 0; i + 1 < in_chain.size(); ++i) {
+					link_ccw(in_chain[i], in_chain[i+1]);
+				}
+			
 				//Now 'outs' should have in_chain in one ccw list.
+
 
 				// --> replace with out_chain.
 				if (in_chain.empty()) {
@@ -443,6 +446,26 @@ int main(int argc, char **argv) {
 				for (uint32_t i = base; i < storages.size(); ++i) {
 					step.out.push_back(i);
 				}
+			}
+
+			{ //DEBUG: dump step ins/outs
+				auto storage_to_string = [&](uint32_t idx) {
+					assert(idx < storages.size());
+					std::string ret = std::to_string(idx) + "[";
+					for (auto const &s : storages[idx]) {
+						if (&s != &storages[idx][0]) ret += ' ';
+						ret += s.to_string();
+					}
+					ret += "]";
+					return ret;
+				};
+				std::cout << "step[" << (&step - &steps[0]) << "]:\n";
+				std::cout << "  in:";
+				for (auto i : step.in) std::cout << ' ' << storage_to_string(i);
+				std::cout << '\n';
+				std::cout << " out:";
+				for (auto o : step.out) std::cout << ' ' << storage_to_string(o);
+				std::cout << std::endl;
 			}
 
 			if (step.in.size() > 0 && step.out.size() > 0) {
@@ -513,20 +536,24 @@ int main(int argc, char **argv) {
 				step.inter_to_out = inter_to_out;
 			}
 
-			/*{ //DEBUG
-				for (StorageIdx s : step.in) {
-					std::cout << "  uses storages[" << s << "]:";
-					for (auto const &l : storages[s]) std::cout << " " << l.to_string();
-					std::cout << "\n";
+			{
+				if (step.end >= stitches.size() || stitches[step.end].yarn != stitches[step.end-1].yarn) {
+					auto f = active_yarns.find(stitches[step.begin].yarn);
+					assert(f != active_yarns.end());
+					active_yarns.erase(f);
+					assert(active_yarns.empty()); //<-- should only have had one yarn active at a time anyway.
+				} else {
+					yarn.loop = Loop(
+						step.end-1,
+						stitches[step.end-1].out[1] != -1U ? 1 : 0
+					);
+					assert(stitches[step.end-1].out[yarn.loop.idx] != -1U);
+					yarn.direction = stitches[step.end-1].direction;
 				}
-				for (StorageIdx s : step.out) {
-					std::cout << "  makes storages[" << s << "]:";
-					for (auto const &l : storages[s]) std::cout << " " << l.to_string();
-					std::cout << "\n";
-				}
-				std::cout.flush();
-			}*/
+			}
 
+#if 0
+			//more advanced yarn handling; not particularly well-handled
 			{ //update active yarn:
 				if (out_chain.empty()) {
 					//no outs -> take yarn out.
@@ -542,7 +569,6 @@ int main(int argc, char **argv) {
 					yarn.direction = stitches[step.end-1].direction;
 				}
 			}
-
 			{ //update ~other ~ yarns:
 				std::map< Loop, Loop > cw_out;
 				std::map< Loop, Loop > ccw_out;
@@ -592,6 +618,7 @@ int main(int argc, char **argv) {
 					}
 				}
 			}
+#endif
 
 			{ //update active_loops:
 				for (StorageIdx i : step.in) {
@@ -685,7 +712,7 @@ int main(int argc, char **argv) {
 			assert(used == loops.size());
 		}
 
-		//intermediates[0] (== step.inter) gets knit on and changes contents before its output:
+		//intermediates[0] (== step.inter) gets knit on and changes contents before it is output:
 		assert(step.inter_to_out.size() == step.inter.size());
 
 		//TODO: ~cache of transfer costs~
@@ -810,11 +837,10 @@ int main(int argc, char **argv) {
 				std::cout << "    Testing:\n";
 				std::string front_string, back_string;
 				typeset_beds< CycleIndex >(expected_front, expected_back, [](CycleIndex const &ci){
-					return ci.to_string_simple();
-				}, "", &front_string, &back_string);
+					return ci.to_string();
+				}, " ", &front_string, &back_string);
 				std::cout << "      " << back_string << std::endl;
-				std::cout << "      " << front_string << std::endl;
-				*/
+				std::cout << "      " << front_string << std::endl;*/
 
 				for (uint32_t i = info.back_min; i <= info.back_max; ++i) {
 					uint32_t r = i - std::min(info.back_min, info.front_min);
@@ -867,8 +893,7 @@ int main(int argc, char **argv) {
 				return ci.to_string();
 			}, " ", &front_string, &back_string);
 			std::cout << "  " << back_string << std::endl;
-			std::cout << "  " << front_string << std::endl;
-			*/
+			std::cout << "  " << front_string << std::endl;*/
 
 			{ //new method: no baked-in transfers (will bake into edges instead):
 				//so just penalize for the intermediate shapes (might be double-charging?):
@@ -887,6 +912,21 @@ int main(int argc, char **argv) {
 
 				option.out_order = out_order;
 				option.out_shapes = inter_shapes;
+
+				//out0 needs to be assigned a shape, so pick the cheapest one:
+				std::vector< Shape > out0_shapes = Shape::make_shapes_for(outs[0].size());
+				ScheduleCost best_cost = ScheduleCost::max();
+				for (auto const &out0_shape : out0_shapes) {
+					ScheduleCost cost = ScheduleCost::shape_cost(out0_shape);
+					cost += ScheduleCost::transfer_cost(
+						intermediates[0].size(), Shape::unpack(inter_shapes[0]),
+						outs[0].size(), out0_shape,
+						step.inter_to_out);
+					if (cost < best_cost) {
+						best_cost = cost;
+						option.out_shapes[0] = out0_shape.pack();
+					}
+				}
 
 				step.options.emplace_back(option);
 			}
@@ -1056,7 +1096,8 @@ int main(int argc, char **argv) {
 
 	//---------------------
 	std::vector< int32_t > storage_positions(storages.size(), std::numeric_limits< int32_t >::max());
-	std::vector< PackedShape > storage_shapes(storages.size(), -1U);
+	std::vector< PackedShape > storage_shapes(storages.size(), -1U); //shapes of storages just after creation (should be same as the step_options of the step that made them)
+	std::vector< uint32_t > step_options(steps.size(), -1U); //shapes of in and out cycles
 	{ //Next up: do upward-planar embedding.
 
 		//For every 'interesting' step, build a DAGNode
@@ -1099,9 +1140,9 @@ int main(int argc, char **argv) {
 
 				//accumulate step costs into edge costs:
 				for (auto const &option : step.options) {
-					assert(option.in_order.size() == 1);
+					assert(option.in_order.size() == 1 && option.in_order[0] == 0);
 					assert(option.in_shapes.size() == 1);
-					assert(option.out_order.size() == 1);
+					assert(option.out_order.size() == 1 && option.out_order[0] == 0);
 					assert(option.out_shapes.size() == 1);
 
 					uint32_t in_shape = Shape::unpack(option.in_shapes[0]).index_for(storages[step.in[0]].size());
@@ -1215,7 +1256,8 @@ int main(int argc, char **argv) {
 						assert(out < out_edges.size());
 						dag_option.out_order.emplace_back(out_edges[out]);
 						assert(out < step.out.size());
-						dag_option.out_shapes.emplace_back(Shape::unpack(option.out_shapes[out]).index_for(storages[step.out[out]].size()));
+						assert(out < option.out_shapes.size());
+						dag_option.out_shapes.emplace_back(Shape::unpack(option.out_shapes[out]).index_for(storages[step.out[out]].size())); //<-- WHY IS THIS FAILING?
 						assert(dag_option.out_shapes.back() < edges[out_edges[out]].from_shapes); //DEBUG
 					}
 					assert(dag_option.out_order.size() == step.out.size());
@@ -1246,7 +1288,6 @@ int main(int argc, char **argv) {
 		assert(edge_positions.size() == edges.size());
 
 		//Go through steps and assign selected option:
-		std::vector< uint32_t > step_options(steps.size(), -1U);
 		assert(node_options.size() == nodes.size());
 		for (uint32_t n = 0; n < nodes.size(); ++n) {
 			assert(node_steps[n] < steps.size());
@@ -1493,10 +1534,17 @@ int main(int argc, char **argv) {
 		}
 	}
 
+	struct StorageLeft {
+		StorageLeft(uint32_t storage_, int32_t left_) : storage(storage_), left(left_) { }
+		uint32_t storage;
+		int32_t left;
+	};
+	std::vector< std::vector< StorageLeft > > step_storages; //left-edge positions for active storages just after the step
+	std::vector< uint32_t > storage_widths; //widths of each storage in their just-after-step shapes.
+
 	{ //Determine left-edge position for each active storage just after each step:
 
 		//this will be handy; max width (over front/back bed) of each storage:
-		std::vector< uint32_t > storage_widths;
 		storage_widths.reserve(storages.size());
 		for (auto const &storage : storages) {
 			Shape shape = Shape::unpack(storage_shapes[&storage-&storages[0]]);
@@ -1540,7 +1588,7 @@ int main(int argc, char **argv) {
 			gaps[si].assign(gaps[si].size(), 1); //just a 'lil space between everything
 		}
 
-		std::vector< std::vector< int32_t > > lefts;
+		std::vector< std::vector< int32_t > > lefts; //left edge of each active storage
 		lefts.reserve(steps.size());
 		for (uint32_t si = 0; si < steps.size(); ++si) {
 			std::vector< int32_t > left;
@@ -1552,6 +1600,17 @@ int main(int argc, char **argv) {
 			}
 			//TODO: shift storage left positions based on penalties
 			lefts.emplace_back(std::move(left));
+		}
+
+		step_storages.reserve(steps.size());
+		for (uint32_t si = 0; si < steps.size(); ++si) {
+			assert(lefts[si].size() == active[si].size());
+			step_storages.emplace_back();
+			auto &step_storage = step_storages.back();
+			step_storage.reserve(active[si].size());
+			for (uint32_t i = 0; i < active[si].size(); ++i) {
+				step_storage.emplace_back(active[si][i], lefts[si][i]);
+			}
 		}
 
 		{ //DEBUG: show where the steps sit on actual needles
@@ -1620,6 +1679,116 @@ int main(int argc, char **argv) {
 
 				std::cout << std::endl;
 			}
+		}
+
+	}
+
+	//--- Dump knitting instructions steps ----
+
+	std::unordered_map< uint32_t, std::pair< int32_t, Shape > > storage_layouts; //<-- is this really needed?
+	for (uint32_t stepi = 0; stepi < steps.size(); ++stepi) {
+		auto const &step = steps[stepi];
+		assert(step_options[stepi] < step.options.size());
+		auto const &option = step.options[step_options[stepi]];
+
+		{ //reshape to get ready for step -- shift everything to the correct offset and (maybe) also transform some things:
+			std::unordered_map< uint32_t, std::pair< int32_t, Shape > > old_layouts = storage_layouts;
+
+			assert(option.in_shapes.size() == step.in.size());
+			for (uint32_t i = 0; i < step.in.size(); ++i) {
+				auto f = storage_layouts.find(step.in[i]);
+				assert(f != storage_layouts.end());
+				f->second.second = Shape::unpack(option.in_shapes[i]); //<-- in some few cases, option's selected layout will be different from storage layout.
+			}
+			//compact if needed:
+			std::vector< uint32_t > back;
+			std::vector< uint32_t > front;
+			for (uint32_t i : option.in_order) {
+				std::vector< uint32_t > id(storages[step.in[i]].size(), step.in[i]);
+				auto f = storage_layouts.find(step.in[i]);
+				assert(f != storage_layouts.end());
+				f->second.second.append_to_beds(id, -1U, &front, &back);
+			}
+			if (!step.in.empty()) {
+				uint32_t packed_width = std::max(back.size(), front.size());
+
+				int32_t left;
+				{
+					auto f = storage_layouts.find(step.in[option.in_order[0]]);
+					assert(f != storage_layouts.end());
+					left = f->first;
+				}
+				int32_t right;
+				{
+					auto f = storage_layouts.find(step.in[option.in_order.back()]);
+					assert(f != storage_layouts.end());
+					right = f->first + storage_widths[step.in[option.in_order.back()]];
+				}
+
+				int32_t ofs_left = (right + 1 - left - int32_t(packed_width)) / 2 + left;
+				std::cout << "ofs_left: " << ofs_left << std::endl;
+
+				for (uint32_t in : step.in) {
+					int32_t l = std::numeric_limits< int32_t >::max();
+					for (uint32_t i = 0; i < back.size(); ++i) {
+						if (back[i] == in) {
+							l = std::min(l, int32_t(i));
+							break;
+						}
+					}
+					for (uint32_t i = 0; i < front.size(); ++i) {
+						if (front[i] == in) {
+							l = std::min(l, int32_t(i));
+							break;
+						}
+					}
+					assert(l != std::numeric_limits< int32_t >::max());
+					std::cout << "Compact from " << storage_layouts.at(in).first << " to " << ofs_left + l << std::endl;
+					auto f = storage_layouts.find(in);
+					assert(f != storage_layouts.end());
+					f->second.first = ofs_left + l;
+				}
+			}
+
+			//TODO: reshape(old_layouts, storage_layouts);
+		}
+
+
+		{ //TODO: in -> inter + out; reshape inter_shape -> outs[0] shape (with mapping), actually knit some stitches
+			//in[0 .. n] should be reinterpret-able as inter_shape + outs[1...] shapes
+
+			for (uint32_t i = 0; i < step.in.size(); ++i) {
+				auto f = storage_layouts.find(step.in[i]);
+				assert(f != storage_layouts.end());
+				storage_layouts.erase(f);
+			}
+			//TODO: figure out the proper offsets by reading them off of the shapes after transformation.
+			for (uint32_t o = 0; o < step.out.size(); ++o) {
+				int32_t left = std::numeric_limits< int32_t >::max();
+				for (auto const &sl : step_storages[stepi]) {
+					if (sl.storage == step.out[o]) {
+						assert(left == std::numeric_limits< int32_t >::max());
+						left = sl.left;
+					}
+				}
+				assert(left != std::numeric_limits< int32_t >::max());
+				auto ret = storage_layouts.insert(std::make_pair(step.out[o], std::make_pair(left, Shape::unpack(option.out_shapes[o]))));
+				assert(ret.second);
+			}
+		}
+
+
+		{ //maintain active storage lists properly:
+			std::unordered_map< uint32_t, std::pair< int32_t, Shape > > old_layouts = storage_layouts;
+
+			for (auto const &sl : step_storages[stepi]) {
+				auto f = storage_layouts.find(sl.storage);
+				assert(f != storage_layouts.end());
+				assert(f->second.second.pack() == storage_shapes[sl.storage]);
+				f->second.first = sl.left;
+			}
+
+			//TODO: reshape(old_layouts, storage_layouts);
 		}
 
 	}

@@ -26,6 +26,7 @@ Other than the flatten code being more permissive than it should be, balancing o
 
 NOTE: the 'flatten' code will currently accept situations with unpaired segments. This won't work with the split/merge balancing of Appendix A.
 
+
 -----
 DAG Embedding v2 ("multipass")
   time ./dist/schedule st:tests/st/test-B.st js:temp.js
@@ -39,3 +40,9 @@ Before: 8.766s
 
 Interruption: Why are the *so many* options reported for splits? Ah, because we're baking xfers into the nodes.
  Rolling xfers into edges for split/join nodes (which edge-collapse requires *anyway*) seems to really improve runtimes. (test-B gets to 1.509s)
+
+-----
+
+~Scheduling~
+
+Fixed some bugs in shape assignment to options; running into the 'embed_DAG is slow' problem again.

@@ -113,7 +113,12 @@ bool embed_DAG(
 
 	std::vector< std::pair< DAGCost, const State * > > to_expand;
 	std::unordered_map< State, DAGCost, HashState > visited;
-	std::unordered_set< State, HashState > expanded;
+	//std::unordered_set< State, HashState > expanded;
+
+	const uint32_t Initial = 8000000;
+	to_expand.reserve(Initial);
+	visited.reserve(Initial);
+	//expanded.reserve(Initial);
 	
 	std::greater< std::pair< DAGCost, const State * > > CompareCost;
 
@@ -310,11 +315,11 @@ bool embed_DAG(
 		assert(f != visited.end());
 		assert(!(cost < f->second));
 		if (cost == f->second) {
-			auto res = expanded.insert(state);
-			assert(res.second);
+			//auto res = expanded.insert(state);
+			//assert(res.second);
 			if ((++step) % 10000 == 0) {
 				//DEBUG:
-				std::cout << expanded.size() << "/" << visited.size() << "/" << to_expand.size() << "   ";
+				std::cout << /*expanded.size() << "/" <<*/ visited.size() << "/" << to_expand.size() << "   ";
 				std::cout << "[" << state.step << "]";
 				for (auto s : state.selected) std::cout << ' ' << (s == -1U ? std::string(".") : std::to_string(s));
 				std::cout << std::endl;
