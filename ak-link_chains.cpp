@@ -1689,6 +1689,7 @@ void flatten(std::vector< uint32_t > &closest, std::vector< float > const &weigh
 	auto queue_state = [&visited, &finished, &todo, bits](State const state, float const cost, State const from) {
 		assert(state.min != from.min || state.max != from.max); //must have done *something*
 
+		(void)bits;
 		//std::cout << state.to_string(bits) << " from " << from.to_string(bits) << " cost " << cost << std::endl; //DEBUG
 
 		if ((state.min != from.min && state.min == from.max)
