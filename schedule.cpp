@@ -1738,7 +1738,11 @@ int main(int argc, char **argv) {
 	auto typeset_bed_needle = [](char bed, int32_t needle) -> std::string {
 		std::string ret;
 		ret += '\'';
-		ret += bed;
+		static_assert(BedNeedle::Front == 'f' && BedNeedle::Back == 'b', "BedNeedle and our ad-hoc bed characters agree.");
+		if (bed == 'f' || bed == 'b') ret += bed;
+		else if (bed == BedNeedle::FrontSliders) ret += "fs";
+		else if (bed == BedNeedle::BackSliders) ret += "bs";
+		else assert(0 && "unhandled bed name");
 		ret += std::to_string(needle);
 		ret += '\'';
 		return ret;
@@ -1841,37 +1845,144 @@ int main(int argc, char **argv) {
 		}
 	};
 
+	auto make_xfers = [&loop_to_bn](std::vector< BedNeedle > const &from, std::vector< BedNeedle > const &to, Storage const &loops) {
+		assert(from.size() == loops.size());
+		assert(to.size() == loops.size());
+		for (uint32_t li = 0; li < loops.size(); ++li) {
+			auto f = loop_to_bn.find(loops[li]);
+			assert(f != loop_to_bn.end());
+			assert(f->second == from[li]);
+			loop_to_bn.erase(f);
+		}
+		//TODO: check that range used during xfer planning is actually empty
+		for (uint32_t li = 0; li < loops.size(); ++li) {
+			auto ret = loop_to_bn.insert(std::make_pair(loops[li], to[li]));
+			assert(ret.second);
+		}
+	};
+	auto make_xfer_cycle = [&make_xfers](std::vector< BedNeedle > const &from, std::vector< BedNeedle > const &to, Storage const &loops) {
+		//TODO: real xfer plan
+		make_xfers(from, to, loops);
+	};
+	auto make_roll_cycle = [&make_xfer_cycle](std::vector< BedNeedle > const &from, std::vector< BedNeedle > const &to, Storage const &loops) {
+		make_xfer_cycle(from, to, loops);
+	};
+
 
 	//helper: flop to one bed (returns bed flopped to, if no preference given)
-	auto stash = [&add_instr](Storage const *storage, char bed = '\0', int32_t offset = 0) -> char { //n.b. nonzero offset only makes sense when already stashed on *other* bed (maybe?)
-		//TODO
+	auto stash = [&add_instr,&loop_to_bn,&typeset_bed_needle,&make_xfers](Storage const &storage, char const bed = '\0', int32_t offset = 0) -> char { //n.b. nonzero offset only makes sense when already stashed on *other* bed (maybe?)
 
-		char target = (bed == '\0' ? 'b' : bed);
+		if (offset != 0) assert(bed != '\0');
 
-		std::string instr = "m.stash(";
-		instr += '\''; instr += target; instr += '\'';
-		instr += ", ";
-		instr += std::to_string(offset);
-		instr += ", [";
-		instr += "]);";
+		char target;
+		{
+			char stashed_to = '\0';
+			for (auto const &loop : storage) {
+				auto f = loop_to_bn.find(loop);
+				assert(f != loop_to_bn.end());
+				if (f->second.bed == BedNeedle::FrontSliders) {
+					if (stashed_to == '\0') stashed_to = 'f';
+					assert(stashed_to == 'f');
+				}
+				if (f->second.bed == BedNeedle::BackSliders) {
+					if (stashed_to == '\0') stashed_to = 'b';
+					assert(stashed_to == 'b');
+				}
+			}
+			if (bed == '\0') {
+				assert(offset == 0);
+				target = (stashed_to != '\0' ? stashed_to : 'b');
+			} else {
+				if (offset != 0) {
+					assert(stashed_to != '\0' && stashed_to != bed);
+				}
+				target = bed;
+			}
+		}
+		assert(target == 'f' || target == 'b');
 
-		add_instr(instr);
+		std::string from_str = "";
+		std::string to_str = "";
+		std::vector< BedNeedle > from_vec, to_vec;
+		Storage loops;
+		for (auto const &loop : storage) {
+			auto f = loop_to_bn.find(loop);
+			assert(f != loop_to_bn.end());
+
+			BedNeedle from = f->second;
+			BedNeedle to = f->second;
+
+			if (target == 'b' && from.bed == BedNeedle::FrontSliders) to.bed = BedNeedle::Back;
+			if (target == 'b' && from.bed == BedNeedle::Front) to.bed = BedNeedle::BackSliders;
+			if (target == 'f' && from.bed == BedNeedle::BackSliders) to.bed = BedNeedle::Front;
+			if (target == 'f' && from.bed == BedNeedle::Back) to.bed = BedNeedle::FrontSliders;
+
+			to.needle += offset;
+
+			if (from != to) {
+				from_vec.emplace_back(from);
+				to_vec.emplace_back(to);
+				loops.emplace_back(loop);
+
+				if (from_str != "") from_str += ", ";
+				from_str += '\'' + typeset_bed_needle(from.bed, from.needle) + '\'';
+				if (to_str != "") to_str += ", ";
+				to_str += '\'' + typeset_bed_needle(to.bed, to.needle) + '\'';
+			}
+		}
+		assert(from_vec.size() == to_vec.size());
+
+		if (!from_vec.empty()) {
+			std::string instr = "m.stash(";
+			instr += '\''; instr += target; instr += '\'';
+			instr += ", ";
+			instr += std::to_string(offset);
+			instr += ", [";
+			instr += from_str + "],\n [" + to_str;
+			instr += "]);";
+
+			add_instr(instr);
+
+			make_xfers(from_vec, to_vec, loops);
+		}
 		return target;
 	};
 
 	//helper: flop from one bed
-	auto unstash = [&add_instr](Storage const *storage) {
-		//TODO
+	auto unstash = [&add_instr,&loop_to_bn,&typeset_bed_needle,&make_xfers](Storage const &storage) {
+		std::string from_str = "";
+		std::string to_str = "";
+		std::vector< BedNeedle > from, to;
+		Storage loops;
+		for (auto const &loop : storage) {
+			auto f = loop_to_bn.find(loop);
+			assert(f != loop_to_bn.end());
+			if (f->second.bed == BedNeedle::FrontSliders || f->second.bed == BedNeedle::BackSliders) {
+				from.emplace_back(f->second);
+				to.emplace_back((f->second.bed == BedNeedle::FrontSliders ? BedNeedle::Back : BedNeedle::Front), f->second.needle);
+				loops.emplace_back(loop);
+				if (from_str != "") from_str += ", ";
+				from_str += '\'' + typeset_bed_needle(from.back().bed, from.back().needle) + '\'';
+				if (to_str != "") to_str += ", ";
+				to_str += '\'' + typeset_bed_needle(to.back().bed, to.back().needle) + '\'';
+			}
+		}
+		assert(from.size() == to.size());
 
-		std::string instr = "m.unstash([";
-		instr += "]);";
+		if (!from.empty()) {
+			std::string instr =
+			"m.unstash([" + from_str + "],\n"
+			"          [" + to_str + "]);";
 
-		add_instr(instr);
+			add_instr(instr);
+
+			make_xfers(from, to, loops);
+		}
 
 	};
 
 	//helper:
-	auto reshape = [&add_instr,&stash,&unstash,&typeset_bed_needle](std::unordered_map< Storage const *, std::pair< int32_t, Shape > > from_layout, 
+	auto reshape = [&add_instr,&stash,&unstash,&typeset_bed_needle,&make_roll_cycle](std::unordered_map< Storage const *, std::pair< int32_t, Shape > > from_layout, 
 	                            std::unordered_map< Storage const *, std::pair< int32_t, Shape > > const &to_layout) {
 		//move things between different shapes:
 		assert(from_layout.size() == to_layout.size()); //layouts should have the same elements
@@ -1957,7 +2068,7 @@ int main(int argc, char **argv) {
 								stash_bed = '\0';
 							}
 
-							prev_bed = stash(other, stash_bed);
+							prev_bed = stash(*other, stash_bed);
 							prev_front_min = other_front_min;
 							prev_back_min = other_back_min;
 						}
@@ -1996,23 +2107,27 @@ int main(int argc, char **argv) {
 								stash_bed = '\0';
 							}
 
-							prev_bed = stash(other, stash_bed);
+							prev_bed = stash(*other, stash_bed);
 							prev_front_max = other_front_max;
 							prev_back_max = other_back_max;
 						}
 					}
 				}
 
-				unstash(storage);
+				unstash(*storage);
 
 				std::string from_str = "";
 				std::string to_str = "";
+				std::vector< BedNeedle > from;
+				std::vector< BedNeedle > to;
 
 				for (uint32_t i = 0; i < storage->size(); ++i) {
 					char from_bed;
 					int32_t from_needle;
 					from_shape->size_index_to_bed_needle(storage->size(), i, &from_bed, &from_needle);
 					from_needle += *from_left;
+
+					from.emplace_back(from_bed == 'f' ? BedNeedle::Front : BedNeedle::Back, from_needle);
 
 					if (i != 0) from_str += ", ";
 					from_str += typeset_bed_needle(from_bed, from_needle);
@@ -2022,6 +2137,8 @@ int main(int argc, char **argv) {
 					to_shape->size_index_to_bed_needle(storage->size(), i, &to_bed, &to_needle);
 					to_needle += *to_left;
 
+					to.emplace_back(to_bed == 'f' ? BedNeedle::Front : BedNeedle::Back, to_needle);
+
 					if (i != 0) to_str += ", ";
 					to_str += typeset_bed_needle(to_bed, to_needle);
 				}
@@ -2030,6 +2147,8 @@ int main(int argc, char **argv) {
 					"m.roll_cycle([" + from_str + "]\n"
 					"             [" + to_str + "]);"
 				);
+
+				make_roll_cycle(from, to, *storage);
 
 				*from_shape = *to_shape;
 			}
@@ -2066,7 +2185,7 @@ int main(int argc, char **argv) {
 
 		if (need_shift) {
 			for (auto storage : active) {
-				stash(storage, from_bed);
+				stash(*storage, from_bed);
 			}
 		}
 
@@ -2098,7 +2217,7 @@ int main(int argc, char **argv) {
 				if (offset <-4) offset = -4;
 				if (offset > 4) offset =  4;
 
-				stash(storage, to_bed, offset);
+				stash(*storage, to_bed, offset);
 
 				*from_left += offset;
 	
@@ -2263,7 +2382,7 @@ int main(int argc, char **argv) {
 
 		//make sure ins are ready to knit:
 		for (auto in : step.in) {
-			unstash(&storages[in]);
+			unstash(storages[in]);
 		}
 
 		{ //reinterpret in[0..] as inter + outs[1...]:
@@ -2526,6 +2645,8 @@ int main(int argc, char **argv) {
 
 			//transform from inter_shape / inter_left to out_shape / out_left:
 			std::string from_str, to_str;
+			std::vector< BedNeedle > from, to;
+
 			bool need_xfer = false;
 			for (uint32_t i = 0; i < step.inter.size(); ++i) {
 				char from_bed;
@@ -2546,6 +2667,10 @@ int main(int argc, char **argv) {
 				if (!to_str.empty()) to_str += ", ";
 				to_str += typeset_bed_needle(to_bed, to_needle);
 
+				from.emplace_back(from_bed == 'f' ? BedNeedle::Front : BedNeedle::Back, from_needle);
+
+				to.emplace_back(to_bed == 'f' ? BedNeedle::Front : BedNeedle::Back, to_needle);
+
 				if (from_bed != to_bed || from_needle != to_needle) need_xfer = true;
 			}
 			if (need_xfer) {
@@ -2554,6 +2679,8 @@ int main(int argc, char **argv) {
 				"             [" + to_str + "]);";
 
 				add_instr(instr);
+
+				make_xfer_cycle(from, to, step.inter);
 			}
 
 			{ //perform stitches:
@@ -2688,7 +2815,7 @@ int main(int argc, char **argv) {
 						auto f0 = loop_inds.find(in0);
 						assert(f0 != loop_inds.end());
 
-						Loop in1(st.in[0], stitches[st.in[0]].find_out(s));
+						Loop in1(st.in[1], stitches[st.in[1]].find_out(s));
 						assert(in1.idx == 0 || in1.idx == 1);
 						auto f1 = loop_inds.find(in1);
 						assert(f1 != loop_inds.end());
@@ -2773,6 +2900,8 @@ int main(int argc, char **argv) {
 				char bed;
 				int32_t needle;
 				shape.size_index_to_bed_needle(storage.size(), li, &bed, &needle);
+				needle += left;
+
 				auto fl = loop_to_bn.find(loop);
 				assert(fl != loop_to_bn.end());
 				assert(fl->second.needle == needle);
