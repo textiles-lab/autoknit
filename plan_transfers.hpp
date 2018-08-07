@@ -16,6 +16,9 @@ struct BedNeedle {
 	bool operator==(BedNeedle const &o) const {
 		return bed == o.bed && needle == o.needle;
 	}
+	bool operator!=(BedNeedle const &o) const {
+		return !(*this == o);
+	}
 
 	BedNeedle(Bed bed_ = Front, int32_t needle_ = 0) : bed(bed_), needle(needle_) { }
 	std::string to_string() const {

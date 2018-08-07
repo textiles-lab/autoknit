@@ -3,6 +3,7 @@
 #include "typeset.hpp"
 #include "ScheduleCost.hpp"
 #include "embed_DAG.hpp"
+#include "plan_transfers.hpp"
 
 #include "TaggedArguments.hpp"
 
@@ -1743,6 +1744,104 @@ int main(int argc, char **argv) {
 		return ret;
 	};
 
+	//keep track of every created loop:
+	//std::unordered_multimap< BedNeedle, Loop > bn_to_loop; <-- someday, update this incrementally...
+	std::map< Loop, BedNeedle > loop_to_bn;
+
+	auto make_start = [&loop_to_bn](char bed0, int32_t needle0, Loop const &out0) {
+		BedNeedle bn0(bed0 == 'f' ? BedNeedle::Front : BedNeedle::Back, needle0);
+		for (auto const &lbn : loop_to_bn) {
+			assert(lbn.second != bn0); //needle should be vacant (NOTE: inefficient check!)
+		}
+		auto ret = loop_to_bn.insert(std::make_pair(out0, bn0));
+		assert(ret.second); //loop shouldn't be in map already!
+	};
+
+	auto make_stitch = [&loop_to_bn](char bed0, int32_t needle0, Loop const &in0, Loop const &out0) {
+		BedNeedle bn0(bed0 == 'f' ? BedNeedle::Front : BedNeedle::Back, needle0);
+
+		{ //remove input loop:
+			auto f = loop_to_bn.find(in0);
+			assert(f != loop_to_bn.end());
+			assert(f->second == bn0); //input to stitch should be on this needle
+			loop_to_bn.erase(f);
+		}
+
+		for (auto const &lbn : loop_to_bn) {
+			assert(lbn.second != bn0); //needle should be vacant now that input is removed (NOTE: inefficient check!)
+		}
+
+		auto ret = loop_to_bn.insert(std::make_pair(out0, bn0));
+		assert(ret.second); //output loop shouldn't be in map already!
+	};
+
+	auto make_increase = [&loop_to_bn](char bed0, int32_t needle0, char bed1, int32_t needle1, Loop const &in0, Loop const &out0, Loop const &out1) {
+		BedNeedle bn0(bed0 == 'f' ? BedNeedle::Front : BedNeedle::Back, needle0);
+		BedNeedle bn1(bed1 == 'f' ? BedNeedle::Front : BedNeedle::Back, needle1);
+
+		{ //remove input loop:
+			auto f = loop_to_bn.find(in0);
+			assert(f != loop_to_bn.end());
+			assert(f->second == bn0); //input to stitch should be on this needle
+			loop_to_bn.erase(f);
+		}
+
+		for (auto const &lbn : loop_to_bn) {
+			assert(lbn.second != bn0); //needle should be vacant now that input is removed (NOTE: inefficient check!)
+			assert(lbn.second != bn1); //other needle should also be vacant now
+		}
+
+		{
+			auto ret = loop_to_bn.insert(std::make_pair(out0, bn0));
+			assert(ret.second); //output loop shouldn't be in map already!
+		}
+
+		{
+			auto ret = loop_to_bn.insert(std::make_pair(out1, bn1));
+			assert(ret.second); //output loop shouldn't be in map already!
+		}
+	};
+
+	auto make_decrease = [&loop_to_bn](char bed0, int32_t needle0, Loop const &in0, Loop const &in1, Loop const &out0) {
+		BedNeedle bn0(bed0 == 'f' ? BedNeedle::Front : BedNeedle::Back, needle0);
+
+		{ //remove input loop 0:
+			auto f = loop_to_bn.find(in0);
+			assert(f != loop_to_bn.end());
+			assert(f->second == bn0); //input to stitch should be on this needle
+			loop_to_bn.erase(f);
+		}
+		{ //remove input loop 1:
+			auto f = loop_to_bn.find(in1);
+			assert(f != loop_to_bn.end());
+			assert(f->second == bn0); //input to stitch should be on this needle
+			loop_to_bn.erase(f);
+		}
+
+		for (auto const &lbn : loop_to_bn) {
+			assert(lbn.second != bn0); //needle should be vacant now that input is removed (NOTE: inefficient check!)
+		}
+
+		auto ret = loop_to_bn.insert(std::make_pair(out0, bn0));
+		assert(ret.second); //output loop shouldn't be in map already!
+	};
+
+	auto make_end = [&loop_to_bn](char bed0, int32_t needle0, Loop const &in0) {
+		BedNeedle bn0(bed0 == 'f' ? BedNeedle::Front : BedNeedle::Back, needle0);
+
+		{ //remove input loop:
+			auto f = loop_to_bn.find(in0);
+			assert(f != loop_to_bn.end());
+			assert(f->second == bn0); //input to stitch should be on this needle
+			loop_to_bn.erase(f);
+		}
+
+		for (auto const &lbn : loop_to_bn) {
+			assert(lbn.second != bn0); //needle should be vacant now that input is removed (NOTE: inefficient check!)
+		}
+	};
+
+
 	//helper: flop to one bed (returns bed flopped to, if no preference given)
 	auto stash = [&add_instr](Storage const *storage, char bed = '\0', int32_t offset = 0) -> char { //n.b. nonzero offset only makes sense when already stashed on *other* bed (maybe?)
 		//TODO
@@ -2331,6 +2430,8 @@ int main(int argc, char **argv) {
 
 					if (s != step.begin) instr += ", ";
 					instr += typeset_bed_needle(bed, needle);
+
+					make_start(bed, needle, Loop(s, 0));
 				}
 				instr += "]);";
 
@@ -2382,6 +2483,8 @@ int main(int argc, char **argv) {
 
 				if (s != step.begin) instr += ", ";
 				instr += typeset_bed_needle(bed, needle);
+				
+				make_end(bed, needle, in0);
 			}
 			instr += "]);";
 
@@ -2504,6 +2607,8 @@ int main(int argc, char **argv) {
 							instr += ", " + typeset_bed_needle(bed, needle) + ");";
 
 							add_instr(instr);
+
+							make_stitch(bed, needle, in0, Loop(s, 0));
 						}
 					} else if (st.type == Stitch::Increase) {
 						//should have one input:
@@ -2566,10 +2671,11 @@ int main(int argc, char **argv) {
 							}
 							instr += '\'';
 							instr += ", ";
-							instr += typeset_bed_needle(bed0, needle0);
+							instr += typeset_bed_needle(bed1, needle1);
 							instr += ");";
 
 							add_instr(instr);
+							make_increase(bed0, needle0, bed1, needle1, in0, Loop(s, 0), Loop(s, 1));
 						}
 
 					} else if (st.type == Stitch::Decrease) {
@@ -2615,6 +2721,7 @@ int main(int argc, char **argv) {
 							instr += ");";
 
 							add_instr(instr);
+							make_decrease(bed0, needle0, in0, in1, Loop(s, 0));
 						}
 
 					} else {
@@ -2643,6 +2750,45 @@ int main(int argc, char **argv) {
 
 			reshape(old_layouts, storage_layouts);
 		}
+
+		//Check that locations in loop-tracking arrays are as expected:
+		for (auto const &sl : step_storages[stepi]) {
+			Storage const &storage = storages[sl.storage];
+			auto f = storage_layouts.find(&storage);
+			assert(f != storage_layouts.end());
+
+			Shape shape = f->second.second;
+			int32_t left = f->second.first;
+
+			assert(shape.pack() == storage_shapes[sl.storage]);
+			assert(left == sl.left);
+
+			bool front_stashed = false;
+			bool front_unstashed = false;
+			bool back_stashed = false;
+			bool back_unstashed = false;
+
+			for (uint32_t li = 0; li < storage.size(); ++li) {
+				Loop const &loop = storage[li];
+				char bed;
+				int32_t needle;
+				shape.size_index_to_bed_needle(storage.size(), li, &bed, &needle);
+				auto fl = loop_to_bn.find(loop);
+				assert(fl != loop_to_bn.end());
+				assert(fl->second.needle == needle);
+				if (bed == 'f') {
+					assert(fl->second.bed == BedNeedle::Front || fl->second.bed == BedNeedle::BackSliders);
+					if (fl->second.bed == BedNeedle::Front) front_unstashed = true;
+					if (fl->second.bed == BedNeedle::BackSliders) front_stashed = true;
+				} else { assert(bed == 'b');
+					assert(fl->second.bed == BedNeedle::Back || fl->second.bed == BedNeedle::FrontSliders);
+					if (fl->second.bed == BedNeedle::Back) back_unstashed = true;
+					if (fl->second.bed == BedNeedle::FrontSliders) back_stashed = true;
+				}
+			}
+			assert(!(front_stashed && back_stashed));
+		}
+
 
 	}
 
