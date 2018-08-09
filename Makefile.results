@@ -1,9 +1,11 @@
 
 TESTS = tests
 
-all :
+all : \
 	misc-cactus.5.js \
 	misc-pipes.5.js \
+	misc-cactus.20.js \
+	misc-pipes.20.js \
 
 
 misc-cactus.5.st : $(TESTS)/models/misc-cactus.obj $(TESTS)/constraints/misc-cactus.cons
@@ -12,5 +14,14 @@ misc-cactus.5.st : $(TESTS)/models/misc-cactus.obj $(TESTS)/constraints/misc-cac
 misc-pipes.5.st : $(TESTS)/models/misc-pipes.obj $(TESTS)/constraints/misc-pipes.cons
 	./dist/interface obj:'$(TESTS)/models/misc-pipes.obj' load-constraints:'$(TESTS)/constraints/misc-pipes.cons' obj-scale:5 save-traced:'$@' peel-step:10000
 
+misc-pipes.10.st : $(TESTS)/models/misc-pipes.obj $(TESTS)/constraints/misc-pipes.cons
+	./dist/interface obj:'$(TESTS)/models/misc-pipes.obj' load-constraints:'$(TESTS)/constraints/misc-pipes.cons' obj-scale:10 save-traced:'$@' peel-step:10000
+
 %.js : %.st
 	./dist/schedule st:'$<' js:'$@'
+
+%.k : %.js
+	node '%<'
+
+%.dat : %.k
+	../knitout-backend-swg/knitout-to-dat.js '$<' '$@'
