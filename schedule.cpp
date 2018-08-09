@@ -2256,7 +2256,7 @@ int main(int argc, char **argv) {
 				uint32_t idx = sls.first - &storages[0];
 				assert(idx < storages.size()); //at this point, no inters should be in storages!
 				if (in_step.count(idx)) continue;
-				uint32_t pos = storage_positions[idx];
+				int32_t pos = storage_positions[idx];
 				if (pos < step_min) {
 					left_of_step.emplace_back(idx);
 				} else if (pos > step_max) {
@@ -2500,14 +2500,14 @@ int main(int argc, char **argv) {
 
 			{
 				Shape shape = Shape::unpack(option.out_shapes[0]);
-				int32_t left = -1U;
+				int32_t left = std::numeric_limits< int32_t >::max();
 				for (auto const &sl : step_storages[stepi]) {
 					if (sl.storage == step.out[0]) {
-						assert(left == -1U);
+						assert(left == std::numeric_limits< int32_t >::max());
 						left = sl.left;
 					}
 				}
-				assert(left != -1U);
+				assert(left != std::numeric_limits< int32_t >::max());
 
 				std::map< Loop, uint32_t > loop_inds;
 				for (uint32_t o = 0; o < storages[step.out[0]].size(); ++o) {
@@ -2618,14 +2618,14 @@ int main(int argc, char **argv) {
 			int32_t inter_left = left_from_step(inter_shape, step.inter);
 
 			Shape out_shape = Shape::unpack(option.out_shapes[0]);
-			int32_t out_left = -1U;
+			int32_t out_left = std::numeric_limits< int32_t >::max();
 			for (auto const &sl : step_storages[stepi]) {
 				if (sl.storage == step.out[0]) {
-					assert(out_left == -1U);
+					assert(out_left == std::numeric_limits< int32_t >::max());
 					out_left = sl.left;
 				}
 			}
-			assert(out_left != -1U);
+			assert(out_left != std::numeric_limits< int32_t >::max());
 
 			//transform from inter_shape / inter_left to out_shape / out_left:
 			std::string from_str, to_str;
@@ -3022,6 +3022,8 @@ int main(int argc, char **argv) {
 					if (fl->second.bed == BedNeedle::FrontSliders) back_stashed = true;
 				}
 			}
+			assert(!(front_stashed && front_unstashed));
+			assert(!(back_stashed && back_unstashed));
 			assert(!(front_stashed && back_stashed));
 		}
 	}
