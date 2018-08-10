@@ -1847,12 +1847,17 @@ int main(int argc, char **argv) {
 		}
 	};
 
-	auto make_xfers = [&loop_to_bn](std::vector< BedNeedle > const &from, std::vector< BedNeedle > const &to, Storage const &loops) {
+	auto make_xfers = [&loop_to_bn,&typeset_bed_needle](std::vector< BedNeedle > const &from, std::vector< BedNeedle > const &to, Storage const &loops) {
 		assert(from.size() == loops.size());
 		assert(to.size() == loops.size());
 		for (uint32_t li = 0; li < loops.size(); ++li) {
+			std::cout << "xfer " << loops[li].to_string() << " at " << typeset_bed_needle(from[li].bed, from[li].needle) << " to " << typeset_bed_needle(to[li].bed, to[li].needle) << std::endl; //DEBUG
+
 			auto f = loop_to_bn.find(loops[li]);
 			assert(f != loop_to_bn.end());
+			if (f->second != from[li]) {
+				std::cout << "  is at " << typeset_bed_needle(f->second.bed, f->second.needle) << " instead?!?" << std::endl;
+			}
 			assert(f->second == from[li]);
 			loop_to_bn.erase(f);
 		}
@@ -2228,6 +2233,56 @@ int main(int argc, char **argv) {
 
 	std::unordered_map< Storage const *, std::pair< int32_t, Shape > > storage_layouts; //<-- is this really needed?
 	for (uint32_t stepi = 0; stepi < steps.size(); ++stepi) {
+
+		auto check_storage_layout = [&loop_to_bn,&typeset_bed_needle](Storage const &storage, int32_t left, Shape const &shape) {
+			bool front_stashed = false;
+			bool front_unstashed = false;
+			bool back_stashed = false;
+			bool back_unstashed = false;
+
+			for (uint32_t li = 0; li < storage.size(); ++li) {
+				Loop const &loop = storage[li];
+				char bed;
+				int32_t needle;
+				shape.size_index_to_bed_needle(storage.size(), li, &bed, &needle);
+				needle += left;
+
+				std::cout << "Expecting " << loop.to_string() << " at " << typeset_bed_needle(bed, needle) << std::endl; //DEBUG
+
+				auto fl = loop_to_bn.find(loop);
+				assert(fl != loop_to_bn.end());
+				assert(fl->second.needle == needle);
+				if (bed == 'f') {
+					assert(fl->second.bed == BedNeedle::Front || fl->second.bed == BedNeedle::BackSliders);
+					if (fl->second.bed == BedNeedle::Front) front_unstashed = true;
+					if (fl->second.bed == BedNeedle::BackSliders) front_stashed = true;
+				} else { assert(bed == 'b');
+					assert(fl->second.bed == BedNeedle::Back || fl->second.bed == BedNeedle::FrontSliders);
+					if (fl->second.bed == BedNeedle::Back) back_unstashed = true;
+					if (fl->second.bed == BedNeedle::FrontSliders) back_stashed = true;
+				}
+			}
+			assert(!(front_stashed && front_unstashed));
+			assert(!(back_stashed && back_unstashed));
+			assert(!(front_stashed && back_stashed));
+		};
+		auto check_storage_layouts = [&step_storages,&storages,&storage_shapes,&storage_layouts,&check_storage_layout](uint32_t stepi) {
+			//Check that locations in loop-tracking arrays are as expected:
+			for (auto const &sl : step_storages[stepi]) {
+				Storage const &storage = storages[sl.storage];
+				auto f = storage_layouts.find(&storage);
+				assert(f != storage_layouts.end());
+
+				Shape shape = f->second.second;
+				int32_t left = f->second.first;
+
+				assert(shape.pack() == storage_shapes[sl.storage]);
+				assert(left == sl.left);
+
+				check_storage_layout(storage, left, shape);
+			}
+		};
+
 		std::cout << "Step[" << stepi << "]:" << std::endl; //DEBUG
 		add_instr("//steps[" + std::to_string(stepi) + "]:");
 		auto const &step = steps[stepi];
@@ -2320,7 +2375,7 @@ int main(int argc, char **argv) {
 				if (left == std::numeric_limits< int32_t >::max()) left = pos;
 				assert(left == pos);
 			}
-			return left;
+			return step_left + left;
 		};
 
 		{ //reshape to get ready for step -- shift everything to the correct offset and (maybe) also transform some things:
@@ -2418,6 +2473,10 @@ int main(int argc, char **argv) {
 			for (uint32_t i = 0; i < step.in.size(); ++i) {
 				auto f = storage_layouts.find(&storages[step.in[i]]);
 				assert(f != storage_layouts.end());
+
+				std::cout << "in[" << i << "] check" << std::endl; //DEBUG
+				check_storage_layout(storages[step.in[i]], f->second.first, f->second.second); //DEBUG
+
 				storage_layouts.erase(f);
 			}
 
@@ -2425,6 +2484,42 @@ int main(int argc, char **argv) {
 				int32_t left = left_from_step(Shape::unpack(option.inter_shape), step.inter);
 				auto ret = storage_layouts.insert(std::make_pair(&step.inter, std::make_pair(left, Shape::unpack(option.inter_shape))));
 				assert(ret.second);
+				
+				{ //DEBUG: dump inter, I guess?
+					std::vector< Loop > front, back;
+					Shape::unpack(option.inter_shape).append_to_beds(step.inter, INVALID_LOOP, &front, &back);
+					std::string front_string, back_string;
+					typeset_beds< Loop >(front, back, [](Loop const &l){
+						return l.to_string();
+					}, " ", &front_string, &back_string);
+					std::cout << " itr: " << back_string << " (left is " << left << ")" << std::endl;
+					std::cout << "      " << front_string << std::endl;
+
+					bool bad = false;
+					for (uint32_t li = 0; li < step.inter.size(); ++li) {
+						char bed;
+						int32_t needle;
+						Shape::unpack(option.inter_shape).size_index_to_bed_needle(step.inter.size(), li, &bed, &needle);
+						std::cout << li << " (" << step.inter[li].to_string() << ") maps to " << typeset_bed_needle(bed, needle) << " (without left)" << std::endl;
+						if (bed == 'f') {
+							assert(uint32_t(needle) < front.size());
+							if (front[needle] != step.inter[li]) bad = true;
+						} else {
+							assert(uint32_t(needle) < back.size());
+							if (back[needle] != step.inter[li]) bad = true;
+						}
+					}
+					assert(!bad);
+				}
+				for (auto const &loop : step.inter) {
+					auto f = loop_to_bn.find(loop);
+					assert(f != loop_to_bn.end());
+					std::cout << loop.to_string() << " is at " << typeset_bed_needle(f->second.bed, f->second.needle) << std::endl; //DEBUG
+				}
+
+
+				std::cout << "pre-step check" << std::endl; //DEBUG
+				check_storage_layout(step.inter, left, Shape::unpack(option.inter_shape)); //DEBUG
 			}
 			for (uint32_t o = 1; o < step.out.size(); ++o) {
 				int32_t left = left_from_step(Shape::unpack(option.out_shapes[o]), storages[step.out[o]]);
@@ -2617,6 +2712,9 @@ int main(int argc, char **argv) {
 			Shape inter_shape = Shape::unpack(option.inter_shape);
 			int32_t inter_left = left_from_step(inter_shape, step.inter);
 
+			std::cout << "knitting step check" << std::endl; //DEBUG
+			check_storage_layout(step.inter, inter_left, inter_shape); //DEBUG
+
 			Shape out_shape = Shape::unpack(option.out_shapes[0]);
 			int32_t out_left = std::numeric_limits< int32_t >::max();
 			for (auto const &sl : step_storages[stepi]) {
@@ -2739,6 +2837,8 @@ int main(int argc, char **argv) {
 					reshape(old_layouts, storage_layouts);
 				}
 
+				unstash_rec(step.inter);
+
 				//now do xfers:
 
 				Constraints constraints;
@@ -2780,8 +2880,6 @@ int main(int argc, char **argv) {
 
 			//make sure inter is ready to knit:
 			unstash_rec(step.inter); //this needs to recursively unstash neighbors
-
-	
 
 			{ //perform stitches:
 
@@ -2956,6 +3054,8 @@ int main(int argc, char **argv) {
 					}
 				}
 			}
+
+			check_storage_layout(storages[step.out[0]], out_left, out_shape); //DEBUG
 			
 			
 			{ //no longer need to track inter layout; will replace with out[0]:
@@ -2986,46 +3086,7 @@ int main(int argc, char **argv) {
 		}
 
 		//Check that locations in loop-tracking arrays are as expected:
-		for (auto const &sl : step_storages[stepi]) {
-			Storage const &storage = storages[sl.storage];
-			auto f = storage_layouts.find(&storage);
-			assert(f != storage_layouts.end());
-
-			Shape shape = f->second.second;
-			int32_t left = f->second.first;
-
-			assert(shape.pack() == storage_shapes[sl.storage]);
-			assert(left == sl.left);
-
-			bool front_stashed = false;
-			bool front_unstashed = false;
-			bool back_stashed = false;
-			bool back_unstashed = false;
-
-			for (uint32_t li = 0; li < storage.size(); ++li) {
-				Loop const &loop = storage[li];
-				char bed;
-				int32_t needle;
-				shape.size_index_to_bed_needle(storage.size(), li, &bed, &needle);
-				needle += left;
-
-				auto fl = loop_to_bn.find(loop);
-				assert(fl != loop_to_bn.end());
-				assert(fl->second.needle == needle);
-				if (bed == 'f') {
-					assert(fl->second.bed == BedNeedle::Front || fl->second.bed == BedNeedle::BackSliders);
-					if (fl->second.bed == BedNeedle::Front) front_unstashed = true;
-					if (fl->second.bed == BedNeedle::BackSliders) front_stashed = true;
-				} else { assert(bed == 'b');
-					assert(fl->second.bed == BedNeedle::Back || fl->second.bed == BedNeedle::FrontSliders);
-					if (fl->second.bed == BedNeedle::Back) back_unstashed = true;
-					if (fl->second.bed == BedNeedle::FrontSliders) back_stashed = true;
-				}
-			}
-			assert(!(front_stashed && front_unstashed));
-			assert(!(back_stashed && back_unstashed));
-			assert(!(front_stashed && back_stashed));
-		}
+		check_storage_layouts(stepi);
 	}
 	add_instr("h.write();");
 

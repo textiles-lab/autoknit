@@ -64,10 +64,12 @@ if $(OS) = MACOSX {
 ObjectC++Flags ak-peel_chains-libgeodesic.o : -Ilibgeodesic/include -I/usr/include/suitesparse ;
 
 LOCATE_TARGET = objs ; #put objects in 'objs' directory
-Objects $(NAMES:S=.cpp) test_plan_transfers.cpp test_flatten.cpp ;
+Objects $(NAMES:S=.cpp) test_plan_transfers.cpp test_flatten.cpp test_shape.cpp ;
 
 LOCATE_TARGET = dist ; #put main in 'dist' directory
 MainFromObjects schedule : $(NAMES:S=$(SUFOBJ)) ;
+
+MainFromObjects test_shape : test_shape$(SUFOBJ) ;
 
 MainFromObjects test_plan_transfers : test_plan_transfers$(SUFOBJ) $(PLAN_TRANSFERS_NAMES:S=$(SUFOBJ)) ;
 MyMainFromObjects test_flatten : test_flatten$(SUFOBJ) ak-link_chains$(SUFOBJ) ;
