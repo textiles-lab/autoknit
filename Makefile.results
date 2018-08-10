@@ -21,7 +21,7 @@ misc-pipes.10.st : $(TESTS)/models/misc-pipes.obj $(TESTS)/constraints/misc-pipe
 	./dist/schedule st:'$<' js:'$@'
 
 %.k : %.js
-	node '%<'
+	node '$<'
 
 %.dat : %.k
 	../knitout-backend-swg/knitout-to-dat.js '$<' '$@'

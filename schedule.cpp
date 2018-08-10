@@ -1851,13 +1851,13 @@ int main(int argc, char **argv) {
 		assert(from.size() == loops.size());
 		assert(to.size() == loops.size());
 		for (uint32_t li = 0; li < loops.size(); ++li) {
-			std::cout << "xfer " << loops[li].to_string() << " at " << typeset_bed_needle(from[li].bed, from[li].needle) << " to " << typeset_bed_needle(to[li].bed, to[li].needle) << std::endl; //DEBUG
+			//std::cout << "xfer " << loops[li].to_string() << " at " << typeset_bed_needle(from[li].bed, from[li].needle) << " to " << typeset_bed_needle(to[li].bed, to[li].needle) << std::endl; //DEBUG
 
 			auto f = loop_to_bn.find(loops[li]);
 			assert(f != loop_to_bn.end());
-			if (f->second != from[li]) {
+			/*if (f->second != from[li]) {
 				std::cout << "  is at " << typeset_bed_needle(f->second.bed, f->second.needle) << " instead?!?" << std::endl;
-			}
+			}*/
 			assert(f->second == from[li]);
 			loop_to_bn.erase(f);
 		}
@@ -2247,7 +2247,7 @@ int main(int argc, char **argv) {
 				shape.size_index_to_bed_needle(storage.size(), li, &bed, &needle);
 				needle += left;
 
-				std::cout << "Expecting " << loop.to_string() << " at " << typeset_bed_needle(bed, needle) << std::endl; //DEBUG
+				//std::cout << "Expecting " << loop.to_string() << " at " << typeset_bed_needle(bed, needle) << std::endl; //DEBUG
 
 				auto fl = loop_to_bn.find(loop);
 				assert(fl != loop_to_bn.end());
@@ -2473,10 +2473,6 @@ int main(int argc, char **argv) {
 			for (uint32_t i = 0; i < step.in.size(); ++i) {
 				auto f = storage_layouts.find(&storages[step.in[i]]);
 				assert(f != storage_layouts.end());
-
-				std::cout << "in[" << i << "] check" << std::endl; //DEBUG
-				check_storage_layout(storages[step.in[i]], f->second.first, f->second.second); //DEBUG
-
 				storage_layouts.erase(f);
 			}
 
@@ -2484,42 +2480,6 @@ int main(int argc, char **argv) {
 				int32_t left = left_from_step(Shape::unpack(option.inter_shape), step.inter);
 				auto ret = storage_layouts.insert(std::make_pair(&step.inter, std::make_pair(left, Shape::unpack(option.inter_shape))));
 				assert(ret.second);
-				
-				{ //DEBUG: dump inter, I guess?
-					std::vector< Loop > front, back;
-					Shape::unpack(option.inter_shape).append_to_beds(step.inter, INVALID_LOOP, &front, &back);
-					std::string front_string, back_string;
-					typeset_beds< Loop >(front, back, [](Loop const &l){
-						return l.to_string();
-					}, " ", &front_string, &back_string);
-					std::cout << " itr: " << back_string << " (left is " << left << ")" << std::endl;
-					std::cout << "      " << front_string << std::endl;
-
-					bool bad = false;
-					for (uint32_t li = 0; li < step.inter.size(); ++li) {
-						char bed;
-						int32_t needle;
-						Shape::unpack(option.inter_shape).size_index_to_bed_needle(step.inter.size(), li, &bed, &needle);
-						std::cout << li << " (" << step.inter[li].to_string() << ") maps to " << typeset_bed_needle(bed, needle) << " (without left)" << std::endl;
-						if (bed == 'f') {
-							assert(uint32_t(needle) < front.size());
-							if (front[needle] != step.inter[li]) bad = true;
-						} else {
-							assert(uint32_t(needle) < back.size());
-							if (back[needle] != step.inter[li]) bad = true;
-						}
-					}
-					assert(!bad);
-				}
-				for (auto const &loop : step.inter) {
-					auto f = loop_to_bn.find(loop);
-					assert(f != loop_to_bn.end());
-					std::cout << loop.to_string() << " is at " << typeset_bed_needle(f->second.bed, f->second.needle) << std::endl; //DEBUG
-				}
-
-
-				std::cout << "pre-step check" << std::endl; //DEBUG
-				check_storage_layout(step.inter, left, Shape::unpack(option.inter_shape)); //DEBUG
 			}
 			for (uint32_t o = 1; o < step.out.size(); ++o) {
 				int32_t left = left_from_step(Shape::unpack(option.out_shapes[o]), storages[step.out[o]]);
@@ -2712,9 +2672,6 @@ int main(int argc, char **argv) {
 			Shape inter_shape = Shape::unpack(option.inter_shape);
 			int32_t inter_left = left_from_step(inter_shape, step.inter);
 
-			std::cout << "knitting step check" << std::endl; //DEBUG
-			check_storage_layout(step.inter, inter_left, inter_shape); //DEBUG
-
 			Shape out_shape = Shape::unpack(option.out_shapes[0]);
 			int32_t out_left = std::numeric_limits< int32_t >::max();
 			for (auto const &sl : step_storages[stepi]) {
@@ -2783,7 +2740,7 @@ int main(int argc, char **argv) {
 						{ //make sure storage is the shape I expect:
 							auto f = storage_layouts.find(&storages[sl.storage]);
 							assert(f != storage_layouts.end());
-							assert(f->second.first == sl.left); //not sure this will always be the case
+							//assert(f->second.first == sl.left); //not sure this will always be the case
 							assert(f->second.second.pack() == storage_shapes[sl.storage]);
 						}
 						int32_t front_min, front_max, back_min, back_max;

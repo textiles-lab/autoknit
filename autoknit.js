@@ -52,6 +52,7 @@ function bnToHalf(bn_str) {
 function Helpers() {
 	this.knitout = [];
 	this.racking = 0;
+	this.needIn = true; //TODO: bring in carrier in a nice way when resuming another tube
 	this.out(";!knitout-2");
 	this.out(";;Carriers: 1 2 3 4 5 6 7 8 9 10");
 }
