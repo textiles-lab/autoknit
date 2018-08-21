@@ -56,4 +56,5 @@ This implementation is mostly complete, but is not fully working.
     - Need to add a greedy version (currently only optimal is used).
 - Knitting instructions -- mostly working.
     - Need a better yarn-in function for split tubes that tucks on front/back and then drops later.
-    - Should add the option to 
+    - Should add the option to use separate yarn for starting tubes
+	- Should add the option to tuck yarn in from the edge of the beds
