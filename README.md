@@ -1,37 +1,59 @@
-# Autoknit 2
+# Autoknit
 
-A re-implementation of autoknit; very much in-progress.
+A re-implementation of ["Automatic Machine Knitting of 3D Meshes"](https://textiles-lab.github.io/publications/2018-autoknit/).
+Does not match the code used in the paper exactly, but is close in most regards.
 
-## Status
+## License
 
-Unless otherwise marked, items are incomplete.
+This code is placed in the public domain.
 
-- Mesh peeling
- - 3D Model Loading
- - Constraint specification (probably involves [smoothed?] shortest-path computations)
- - Interpolation
- - Geodesic extraction + trimming
-- Mesh linking
-- Tracing
-- Scheduling
- - Partially re-implemented, but may have gone down the wrong path (in terms of scheduling tubes instead of connections).
- - Traced stitch format
-  - `Stitch.*pp`
- - DAG embedding
-  - `embed_DAG.*pp` -- untested
- - Transfer Planning
-  - `plan_transfers*pp` -- mostly complete, pending testing (and potential modification for ordered decreases)
+## Building
 
-## Data
+You will need Perforce's Jam/MR tool to build, along with the SDL2 library (opengl + mouse handling), the glm math headers library, and the Eigen linear algebra library.
 
-Models are vertices + triangles, and must be manifold.
-Probably stored in .obj format.
+MacOS setup:
+```
+#clone repository:
+git clone git@github.com:textiles-lab/autoknit
+cd autoknit
+git submodule init
+git submodule update
 
-Constraints are (connected) points on the surface of the model. Connections are (smoothed?) surface geodesics.
+#install prerequisite libraries and build tool:
+brew install ftjam sdl2 glm eigen
+```
 
+Linux setup: TBD
 
-## Thoughts
+Window setup: TBD
 
-It would be cool to figure out how to do the mesh extraction step on a signed distance field because that gives better feature size control (e.g. could pre-filter to avoid aliasing during stitch extraction).
+Linux/Windows/MacOS build:
+```
+cd autoknit
+jam -j8 #the optional argument '-j8' means build in parallel on 8 cores
+```
 
-Lots of alternate mesh extraction strategies probably exist. Anything that can chop a 3D model into connected oriented tubes provides a starting point.
+## Usage
+
+TODO
+
+## Status By Pipeline Step
+
+This implementation is mostly complete, but is not fully working.
+
+- Interface/wrapper - working.
+- Model (obj) loading - working.
+- Constraint specification - working.
+- Peeling - mostly working.
+ - Could be improved to handle ending with short rows.
+ - Could be improved to deal with orphaned chains.
+- Linking (including split/merge cases) - working.
+- Tracing - mostly working.
+ - Could be improved with more extensive ancestor traversal when tucking at the ends of short rows.
+ - Sometimes generates short yarns; next-stitch-picking heuristic could be improved.
+ - Might want to add a lazy vs eager switch for moving to the next row after splits. (Currently, the behavior is eager).
+- Scheduling - working for small cases only.
+ - Need to add a greedy version (currently only optimal is used).
+- Knitting instructions -- mostly working.
+ - Need a better yarn-in function for split tubes that tucks on front/back and then drops later.
+ - Should add the option to 
