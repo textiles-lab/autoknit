@@ -9,7 +9,7 @@ This code is placed in the public domain.
 
 ## Building
 
-You will need Perforce's Jam/MR tool to build, along with the SDL2 library (opengl + mouse handling), the glm math headers library, and the Eigen linear algebra library.
+You will need Perforce's Jam/MR tool to build, along with the SDL2 library (opengl + mouse handling), the glm math library, and the Eigen linear algebra library.
 
 MacOS setup:
 ```
@@ -45,15 +45,15 @@ This implementation is mostly complete, but is not fully working.
 - Model (obj) loading - working.
 - Constraint specification - working.
 - Peeling - mostly working.
- - Could be improved to handle ending with short rows.
- - Could be improved to deal with orphaned chains.
+    - Could be improved to handle ending with short rows.
+    - Could be improved to deal with orphaned chains.
 - Linking (including split/merge cases) - working.
 - Tracing - mostly working.
- - Could be improved with more extensive ancestor traversal when tucking at the ends of short rows.
- - Sometimes generates short yarns; next-stitch-picking heuristic could be improved.
- - Might want to add a lazy vs eager switch for moving to the next row after splits. (Currently, the behavior is eager).
+    - Could be improved with more extensive ancestor traversal when tucking at the ends of short rows.
+    - Sometimes generates short yarns; next-stitch-picking heuristic could be improved.
+    - Might want to add a lazy vs eager switch for moving to the next row after splits. (Currently, the behavior is eager).
 - Scheduling - working for small cases only.
- - Need to add a greedy version (currently only optimal is used).
+    - Need to add a greedy version (currently only optimal is used).
 - Knitting instructions -- mostly working.
- - Need a better yarn-in function for split tubes that tucks on front/back and then drops later.
- - Should add the option to 
+    - Need a better yarn-in function for split tubes that tucks on front/back and then drops later.
+    - Should add the option to 
