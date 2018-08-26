@@ -107,7 +107,10 @@ void best_collapse(
 			else if (type == RollRight) return "CRollRight to " + std::to_string(needle);
 			else if (type == Roll2Left) return "CRoll2Left to " + std::to_string(needle);
 			else if (type == Roll2Right) return "CRoll2Right to " + std::to_string(needle);
-			else assert(0 && "invalid move type");
+			else {
+				assert(0 && "invalid move type");
+				return "!"; //never reached
+			}
 		}
 	};
 

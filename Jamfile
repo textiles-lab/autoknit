@@ -2,7 +2,7 @@ KIT_RAW_SDL_EVENTS = 1 ;
 
 SubDir TOP ;
 SubInclude TOP kit ;
-SubInclude TOP libgeodesic src ;
+#SubInclude TOP libgeodesic src ;
 
 MySubDir TOP ;
 
@@ -57,11 +57,13 @@ AUTOKNIT_NAMES =
 
 if $(OS) = MACOSX {
 	ObjectC++Flags ak-interpolate_values.o : -I/usr/local/include/eigen3 ;
+} else if $(OS) = NT {
+	ObjectC++Flags ak-interpolate_values.o : /Ieigen ;
 } else {
 	ObjectC++Flags ak-interpolate_values.o : -I/usr/include/eigen3 ;
 }
 
-ObjectC++Flags ak-peel_chains-libgeodesic.o : -Ilibgeodesic/include -I/usr/include/suitesparse ;
+#ObjectC++Flags ak-peel_chains-libgeodesic.o : -Ilibgeodesic/include -I/usr/include/suitesparse ;
 
 LOCATE_TARGET = objs ; #put objects in 'objs' directory
 Objects $(NAMES:S=.cpp) test_plan_transfers.cpp test_flatten.cpp test_shape.cpp ;

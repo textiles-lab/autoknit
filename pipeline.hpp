@@ -4,6 +4,7 @@
 
 #include <vector>
 #include <string>
+#include <algorithm>
 
 // The autoknit pipeline in data formats and transformation functions.
 

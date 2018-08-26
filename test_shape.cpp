@@ -3,6 +3,8 @@
 #include <vector>
 #include <limits>
 #include <iostream>
+#include <string>
+#include <algorithm>
 
 int main() {
 	for (uint32_t count : {0,1,2,3,4,5,6,7,10,21,37,100,101}) {

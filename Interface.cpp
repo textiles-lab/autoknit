@@ -478,7 +478,7 @@ void Interface::draw() {
 	glBindFramebuffer(GL_FRAMEBUFFER, color_id_fb);
 
 	{
-		glClearColor(0.9, 0.9, 0.9, 0.0);
+		glClearColor(0.9f, 0.9f, 0.9f, 0.0f);
 		glClear(GL_DEPTH_BUFFER_BIT | GL_COLOR_BUFFER_BIT);
 
 		GLfloat zeros[4] = {0.0f, 0.0f, 0.0f, 0.0f};
@@ -1397,7 +1397,7 @@ static void make_sphere(
 	static glm::vec2 Ring[Slices];
 	static glm::vec2 Slice[Rings+1];
 
-	static bool inited = [](){
+	static bool inited = [Slices,Rings](){
 		for (uint32_t a = 0; a < Slices; ++a) {
 			float ang = a / float(Slices) * 2.0f * float(M_PI);
 			Ring[a] = glm::vec2(std::cos(ang), std::sin(ang));

@@ -67,7 +67,10 @@ void draw_beds(
 			else if (bed == BedNeedle::FrontSliders) return "fs:";
 			else if (bed == BedNeedle::BackSliders) return "bs:";
 			else if (bed == BedNeedle::Back) return "b :";
-			else assert(0 && "Doesn't work.");
+			else {
+				assert(0 && "Doesn't work.");
+				return "!"; //never executed
+			}
 		};
 		needle_str << "   ";
 		top_str << make_row_header(top_bed);

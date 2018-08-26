@@ -89,7 +89,10 @@ void best_expand(
 			else if (type == MoveLeft) return "EMoveLeft to " + std::to_string(needle);
 			else if (type == MoveRight) return "EMoveRight to " + std::to_string(needle);
 			else if (type == Finish) return "EFinish";
-			else assert(0 && "invalid move type");
+			else {
+				assert(0 && "invalid move type");
+				return "!"; //never reached
+			}
 		}
 	};
 

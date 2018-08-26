@@ -1,2 +1,5 @@
 objs
 dist/schedule
+dist/
+eigen/
+kit-libs-win/

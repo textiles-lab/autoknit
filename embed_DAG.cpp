@@ -7,6 +7,7 @@
 #include <unordered_set>
 #include <unordered_map>
 #include <functional>
+#include <string>
 
 bool embed_DAG(
 	std::vector< DAGNode > const &nodes,

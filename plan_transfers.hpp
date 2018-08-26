@@ -26,7 +26,10 @@ struct BedNeedle {
 		else if (bed == FrontSliders) return "fs" + std::to_string(needle);
 		else if (bed == BackSliders)  return "bs" + std::to_string(needle);
 		else if (bed == Back)         return "b"  + std::to_string(needle);
-		else assert(0 && "Should have handled all cases");
+		else {
+			assert(0 && "Should have handled all cases");
+			return "?" + std::to_string(needle); //never executed
+		}
 	}
 };
 

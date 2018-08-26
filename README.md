@@ -11,7 +11,7 @@ This code is placed in the public domain.
 
 You will need Perforce's Jam/MR tool to build, along with the SDL2 library (opengl + mouse handling), the glm math library, and the Eigen linear algebra library.
 
-MacOS setup:
+### MacOS setup
 ```
 #clone repository:
 git clone git@github.com:textiles-lab/autoknit
@@ -23,15 +23,34 @@ git submodule update
 brew install ftjam sdl2 glm eigen
 ```
 
-Linux setup: TBD
+### Linux setup
+TBD
 
-Window setup: TBD
+### Window setup
 
-Linux/Windows/MacOS build:
+First, install (ftjam)[https://www.freetype.org/jam/] somewhere in your ```%path%``` so you can run it from a command prompt. (Also make sure that git is installed in such a way that it can be run from a command prompt.)
+
+Then, from a ```Visual Studio 2017 > x64 Native Tools Command Prompt for VS 2017``` do:
+```
+#clone repository:
+git clone git@github.com:textiles-lab/autoknit
+cd autoknit
+git submodule init
+git submodule update
+
+#install pre-built versions of sdl2 and glm libraries:
+git clone git@github.com:ixchow/kit-libs-win
+#get a copy of the Eigen headers:
+git clone git@github.com:eigenteam/eigen-git-mirror eigen
+```
+
+### Linux/Windows/MacOS build
 ```
 cd autoknit
-jam -j8 #the optional argument '-j8' means build in parallel on 8 cores
+jam -j8
 ```
+
+The ```-j8``` parameter means to run up to 8 compilation jobs in parallel. You may wish to adjust this for your particular machine.
 
 ## Usage
 

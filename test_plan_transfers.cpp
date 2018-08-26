@@ -190,7 +190,10 @@ bool simulate_transfers(
 			else if (bed == BedNeedle::BackSliders) return back_sliders;
 			else if (bed == BedNeedle::FrontSliders) return front_sliders;
 			else if (bed == BedNeedle::Front) return front;
-			else assert(0);
+			else {
+				assert(0);
+				return back; //never reached
+			}
 		}
 	};
 
