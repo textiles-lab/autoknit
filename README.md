@@ -153,7 +153,7 @@ Running the javascript file created by ```schedule``` will create knitout instru
 NODE_PATH=.. node misc-cactus.js out:misc-cactus.k
 ```
 
-Note that the javascript file created by ```schedule``` uses some helper functions defined in the ```node_modules/autoknit.js``` file to do things like cast on tubes, bring in/out yarns, and perform transfers. You may want to customize ```autoknit.js``` for your machine.
+Note that the javascript file created by ```schedule``` uses some helper functions defined in the [```node_modules/autoknit.js```](node_modules/autoknit.js] file to do things like cast on tubes, bring in/out yarns, and perform transfers. You may want to customize ```autoknit.js``` for your machine.
 
 ## Status By Pipeline Step
 
