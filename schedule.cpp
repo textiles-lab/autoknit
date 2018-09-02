@@ -1733,7 +1733,7 @@ int main(int argc, char **argv) {
 		instructions.emplace_back(instr);
 		std::cout << instr << std::endl; //DEBUG
 	};
-	add_instr("const autoknit = require('./autoknit.js');");
+	add_instr("const autoknit = require('autoknit');");
 	add_instr("let h = new autoknit.Helpers;");
 
 	//helper:
