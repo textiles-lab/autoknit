@@ -123,9 +123,7 @@ During peeling, you can use the <kbd>g</kbd> key to show or hide the portions of
 
 Once the peeling has finished, you can press <kbd>t</kbd> to create and save the traced path:
 
-![](usage/peel-done.png)
-
-![](usage/traced.png)
+![](usage/peel-done.png) ![](usage/traced.png)
 
 #### Automatic method:
 
