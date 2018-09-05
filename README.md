@@ -20,7 +20,7 @@ git submodule init
 git submodule update
 
 #install prerequisite libraries and build tool:
-brew install ftjam sdl2 glm eigen
+brew install ftjam sdl2 glm eigen libpng
 ```
 
 ### Linux setup
