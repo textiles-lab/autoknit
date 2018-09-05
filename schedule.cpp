@@ -1847,7 +1847,7 @@ int main(int argc, char **argv) {
 		}
 	};
 
-	auto make_xfers = [&loop_to_bn,&typeset_bed_needle](std::vector< BedNeedle > const &from, std::vector< BedNeedle > const &to, Storage const &loops) {
+	auto make_xfers = [&loop_to_bn](std::vector< BedNeedle > const &from, std::vector< BedNeedle > const &to, Storage const &loops) {
 		assert(from.size() == loops.size());
 		assert(to.size() == loops.size());
 		for (uint32_t li = 0; li < loops.size(); ++li) {
@@ -2234,7 +2234,7 @@ int main(int argc, char **argv) {
 	std::unordered_map< Storage const *, std::pair< int32_t, Shape > > storage_layouts; //<-- is this really needed?
 	for (uint32_t stepi = 0; stepi < steps.size(); ++stepi) {
 
-		auto check_storage_layout = [&loop_to_bn,&typeset_bed_needle](Storage const &storage, int32_t left, Shape const &shape) {
+		auto check_storage_layout = [&loop_to_bn](Storage const &storage, int32_t left, Shape const &shape) {
 			bool front_stashed = false;
 			bool front_unstashed = false;
 			bool back_stashed = false;
