@@ -65,7 +65,7 @@ void ak::load_obj(
 			if (tri.y < 0) tri.y += model.vertices.size();
 			//turn face into a triangle fan:
 			for (uint32_t i = 3; i < tokens.size(); ++i) {
-				tri.z = std::stoul(tokens[3]);
+				tri.z = std::stoul(tokens[i]);
 				if (tri.z < 0) tri.z += model.vertices.size();
 				model.triangles.emplace_back(tri);
 				tri.y = tri.z;
