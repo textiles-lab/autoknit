@@ -2801,7 +2801,8 @@ int main(int argc, char **argv) {
 				Constraints constraints;
 				constraints.min_free = std::max(left_max + shift_left, used_min - 20);
 				constraints.max_free = std::min(right_min + shift_right, used_max + 20);
-				constraints.max_racking = 4;
+				// with half-gauging max racking 4 can cause a real racking of 9
+				constraints.max_racking = 3;
 
 				std::vector< Slack > slack;
 				slack.reserve(from.size());
