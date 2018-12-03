@@ -1133,7 +1133,7 @@ int main(int argc, char **argv) {
 					option.cost = ScheduleCost::shape_cost(in_shape);
 					option.cost += ScheduleCost::shape_cost(out_shape);
 					option.cost += ScheduleCost::transfer_cost(
-						step.inter.size(), in_shape,
+						step.inter.size(), inter_shape,
 						storages[step.out[0]].size(), out_shape,
 						step.inter_to_out
 					);
