@@ -257,19 +257,19 @@ int main(int argc, char **argv) {
 				std::reverse(out_chain.begin(), out_chain.end());
 			}
 
-			/*{ //DEBUG
-				std::cout << "  in:";
+			{ //DEBUG
+				std::cout << "  in-chain:";
 				for (auto const &l : in_chain) {
 					std::cout << " " << l.to_string();
 				}
 				std::cout << '\n';
-				std::cout << "  out:";
+				std::cout << "  out-chain:";
 				for (auto const &l : out_chain) {
 					std::cout << " " << l.to_string();
 				}
 				std::cout << '\n';
 				std::cout.flush();
-			}*/
+			}
 
 			YarnInfo &yarn = active_yarns[stitches[step.begin].yarn];
 
@@ -297,7 +297,7 @@ int main(int argc, char **argv) {
 
 				//flip and re-jigger yarn storages:
 				auto link_ccw = [&outs](Loop const &a, Loop const &b) {
-					//std::cout << "Linking " << a.to_string() << " -> " << b.to_string() << std::endl; //DEBUG
+					std::cout << "Linking " << a.to_string() << " -> " << b.to_string() << std::endl; //DEBUG
 					std::list< Storage >::iterator sa = outs.end();
 					uint32_t la = -1U;
 					std::list< Storage >::iterator sb = outs.end();
@@ -321,12 +321,14 @@ int main(int argc, char **argv) {
 					}
 					assert(sa != outs.end() && la < sa->size());
 					assert(sb != outs.end() && lb < sb->size());
-
+					std::cout <<"la = " << la << " lb " << lb << std::endl;
 					if (sa == sb) {
 						if ((la + 1) % sa->size() == lb) {
+							//std::cout << "already ccw." << std::endl;
 							//already ccw! great.
 						} else {
 							//must split loop.
+							//std::cout << "split case." << std::endl;
 							Storage non_ab;
 							Storage ab;
 							if (la < lb) {
@@ -363,6 +365,7 @@ int main(int argc, char **argv) {
 						}
 					} else {
 						//must merge loops
+						//std::cout << "merge case." << std::endl;
 						std::rotate(sa->begin(), sa->begin() + (la + 1), sa->end());
 						assert(sa->back() == a);
 						std::rotate(sb->begin(), sb->begin() + lb, sb->end());
@@ -1033,10 +1036,13 @@ int main(int argc, char **argv) {
 	//Figure out possible shapes for storages near *boring* steps:
 	std::cout << "Figuring out shapes for boring steps:" << std::endl; //DEBUG
 	for (auto &step : steps) {
+		std::cout <<"step = " << &step - &steps[0] << std::endl;
 		if (!(step.in.size() <= 1 && step.out.size() <= 1)) continue; //skip exciting steps
-
+		std::cout<<"boring case."<<std::endl;
 		uint32_t inter_roll = 0; //such that: storages[step.in[0]][i] == step.inter[i + inter_roll]
 		//used to fix up inter_shape relative to in_shape so the stitches are in the same places.
+		//
+		//Proboably wrong assumptions here... TODO
 		if (step.in.size() == 1) {
 			assert(step.inter.size() == storages[step.in[0]].size());
 			inter_roll = -1U;
@@ -1047,9 +1053,19 @@ int main(int argc, char **argv) {
 				}
 			}
 			assert(inter_roll != -1U);
+			bool okay  = true;
 			for (uint32_t i = 0; i < step.inter.size(); ++i) {
-				assert(storages[step.in[0]][i] == step.inter[(i + inter_roll) % step.inter.size()]);
+				//auto a = storages[ step.in[0]][i];
+				//auto b = step.inter[(i+inter_roll)%step.inter.size()];
+				//std::cout << "i = " << i << " inter roll = " << inter_roll << " lhs = " << a.to_string() 
+				//	<< " rhs = " << b.to_string() << std::endl;
+				//std::cout <<"stitch a = " << stitches[a.stitch].type << " b = " << stitches[b.stitch].type <<std::endl;
+				if(storages[step.in[0]][i] != step.inter[(i + inter_roll) % step.inter.size()]){
+					okay = false;
+				}
+				
 			}
+			assert(okay);
 		} else {
 			assert(step.inter.empty());
 		}
@@ -2375,7 +2391,9 @@ int main(int argc, char **argv) {
 				if (left == std::numeric_limits< int32_t >::max()) left = pos;
 				assert(left == pos);
 			}
-			return step_left + left;
+		//	return step_left + left;
+		//  step needle already included step left, don't double count
+			return left;
 		};
 
 		{ //reshape to get ready for step -- shift everything to the correct offset and (maybe) also transform some things:
