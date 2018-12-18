@@ -20,8 +20,8 @@ std::shared_ptr< kit::Mode > kit_mode() {
 	std::string save_constraints_file = "";
 	std::string constraints_file = "";
 	std::string save_traced_file = "";
-	uint32_t peel_test = 0;
-	uint32_t peel_step = 0;
+	int32_t peel_test = 0;
+	int32_t peel_step = 0;
 	int32_t test_constraints = 0;
 	ak::Parameters parameters;
 	{
@@ -35,8 +35,8 @@ std::shared_ptr< kit::Mode > kit_mode() {
 		args.emplace_back("save-traced", &save_traced_file, "save traced stitches to this file");
 		args.emplace_back("stitch-width", &parameters.stitch_width_mm, "stitch width (mm)");
 		args.emplace_back("stitch-height", &parameters.stitch_height_mm, "stitch height (mm)");
-		args.emplace_back("peel-test", &peel_test, "run N rounds of peeling then quit");
-		args.emplace_back("peel-step", &peel_step, "run N rounds of peeling then show interface");
+		args.emplace_back("peel-test", &peel_test, "run N rounds of peeling then quit (-1 to run until done)");
+		args.emplace_back("peel-step", &peel_step, "run N rounds of peeling then show interface (-1 to run until done)");
 		bool usage = !args.parse(kit::args);
 		if (!usage && obj_file == "") {
 			std::cerr << "ERROR: 'obj:' argument is required." << std::endl;
@@ -89,7 +89,7 @@ std::shared_ptr< kit::Mode > kit_mode() {
 	}
 
 	if (peel_test != 0 || peel_step != 0) {
-		uint32_t target = (peel_test != 0 ? peel_test : peel_step);
+		uint32_t target = (peel_test != 0 ? uint32_t(peel_test) : uint32_t(peel_step));
 		interface->clear_peeling();
 		while (interface->peel_step <= target) {
 			if (!interface->step_peeling()) {
