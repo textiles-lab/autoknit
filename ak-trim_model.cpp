@@ -1,4 +1,4 @@
-#include "pipeline.hpp"
+#include "ak-pipeline.hpp"
 
 #include "EmbeddedPlanarMap.hpp"
 
@@ -543,7 +543,7 @@ void ak::trim_model(
 			assert(v != -1U);
 			assert(v < split_vert_to_clipped_vertex.size());
 			v = split_vert_to_clipped_vertex[v];
-			assert(v != -1U);
+			//assert(v != -1U); //<-- sometimes chains don't include the edge loops (like when they cross)
 			split_chain.emplace_back(v);
 		}
 		assert(!split_chain.empty());
