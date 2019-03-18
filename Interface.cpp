@@ -1397,7 +1397,7 @@ static void make_sphere(
 	static glm::vec2 Ring[Slices];
 	static glm::vec2 Slice[Rings+1];
 
-	static bool inited = [](){
+	static bool inited = [&](){
 		for (uint32_t a = 0; a < Slices; ++a) {
 			float ang = a / float(Slices) * 2.0f * float(M_PI);
 			Ring[a] = glm::vec2(std::cos(ang), std::sin(ang));
