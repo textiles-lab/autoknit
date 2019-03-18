@@ -1,4 +1,4 @@
-#include "ak-pipeline.hpp"
+#include "pipeline.hpp"
 
 #include "EmbeddedPlanarMap.hpp"
 
