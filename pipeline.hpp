@@ -366,7 +366,7 @@ struct TracedStitch {
 void trace_graph(
 	RowColGraph const &graph, //in: row-column graph
 	std::vector< TracedStitch > *traced, //out:traced list of stitches
-	Model *DEBUG_model = nullptr //in (optional): model; stitches' .at will be set using its vertices
+	Model const *DEBUG_model = nullptr //in (optional): model; stitches' .at will be set using its vertices
 );
 
 void schedule_stitches(

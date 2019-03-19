@@ -5,7 +5,7 @@
 void ak::trace_graph(
 	ak::RowColGraph const &graph, //in: row-column graph
 	std::vector< ak::TracedStitch > *traced_, //out:traced list of stitches
-	ak::Model *DEBUG_model_ //in (optional): model
+	ak::Model const *DEBUG_model_ //in (optional): model
 ) {
 	std::vector< ak::RowColGraph::Vertex > const &vertices = graph.vertices;
 
@@ -115,7 +115,7 @@ void ak::trace_graph(
 		auto make_stitch = [&](uint32_t next, ak::TracedStitch::Type type) {
 
 			//DEBUG:
-			std::cout << "Make " << char(type) << " at " << next; std::cout.flush(); //DEBUG
+			//std::cout << "Make " << char(type) << " at " << next; std::cout.flush(); //DEBUG
 
 			at = next;
 
@@ -158,7 +158,7 @@ void ak::trace_graph(
 				}
 				fancy_type = type;
 			}
-			std::cout << " (became " << char(fancy_type) << ")" << std::endl; //DEBUG
+			//std::cout << " (became " << char(fancy_type) << ")" << std::endl; //DEBUG
 
 			//build stitch:
 			TracedStitch ts;
@@ -311,6 +311,11 @@ void ak::trace_graph(
 			{ //if 'up' has a next neighbor, just knit over to it:
 				uint32_t up_next = get_next(up);
 				if (up_next != -1U) {
+					if (vertices[up].col_in[0] != -1U && vertices[up].col_in[1] != -1U) {
+						if (get_prev_parent(up) == at && get_next_parent(up) != at) {
+							miss(get_next_parent(up));
+						}
+					}
 					knit(up_next);
 					return true;
 				}
@@ -504,13 +509,13 @@ void ak::trace_graph(
 			uint32_t sum = 0;
 			for (uint32_t i = 0; i < 2; ++i) {
 				if (v.col_in[i] != -1U) {
-					acc += glm::normalize(v_at - at[v.col_in[i]]);
+					acc += (v_at - at[v.col_in[i]]);
 					sum += 1;
 				}
 			}
 			for (uint32_t i = 0; i < 2; ++i) {
 				if (v.col_out[i] != -1U) {
-					acc += glm::normalize(at[v.col_out[i]] - v_at);
+					acc += (at[v.col_out[i]] - v_at);
 					sum += 1;
 				}
 			}
@@ -532,7 +537,7 @@ void ak::trace_graph(
 		for (auto &ts : traced) {
 			uint32_t i = index[&ts - &traced[0]];
 			float amt = float(i + 0.5f) / float(count[ts.vertex]);
-			amt = 0.1f * (2.0f * (amt - 0.5f));
+			amt = 0.5f * (2.0f * (amt - 0.5f));
 			ts.at = at[ts.vertex] + amt * up[ts.vertex];
 		}
 	}
