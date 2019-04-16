@@ -263,6 +263,19 @@ void find_first_active_chains(
 	RowColGraph *graph = nullptr //in/out: graph to update [optional]
 );
 
+
+//helper: make optimal 1-1, 1-2, 2-1 links between source and target locations given target distance.
+// will throw a runtime_error if no valid linking exists.
+void optimal_link(
+	float target_distance, //in: target distance for links
+	bool do_roll, //in: if false, source[0] must match target[0]
+	std::vector< glm::vec3 > const &source, //in: location for sources
+	std::vector< bool > const &source_linkone, //in: if true, should link source 1-1
+	std::vector< glm::vec3 > const &target, //in: location for targets
+	std::vector< bool > const &target_linkone, //in: if true, should link target 1-1
+	std::vector< std::pair< uint32_t, uint32_t > > *links_ //out: links as (source, target) index pairs
+);
+
 void peel_slice(
 	Parameters const &parameters,
 	Model const &model, //in: model

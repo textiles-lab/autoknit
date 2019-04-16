@@ -1377,7 +1377,16 @@ void ak::link_chains(
 
 			std::vector< std::pair< uint32_t, uint32_t > > best_links;
 			float best_cost = std::numeric_limits< float >::infinity();
-
+#define USE_OPTIMAL
+#ifdef USE_OPTIMAL
+			ak::optimal_link(2.0f * parameters.stitch_height_mm / parameters.model_units_mm,
+				true, //allow roll
+				active_stitch_locations, active_stitch_linkones,
+				next_stitch_locations, next_stitch_linkones,
+				&best_links);
+			(void)best_cost; //unused!
+#endif
+#ifdef USE_EVEN
 			auto try_links_even = [&](uint32_t roll_active, uint32_t roll_new) {
 				std::vector< std::pair< uint32_t, uint32_t > > possible_links;
 
@@ -1468,7 +1477,7 @@ void ak::link_chains(
 					try_links_even(0,roll_new);
 				}
 			}
-
+#endif //USE_EVEN
 
 			for (auto const &p : best_links) {
 				Link link;
@@ -1655,7 +1664,9 @@ void flatten(std::vector< uint32_t > &closest, std::vector< float > const &weigh
 			return *reinterpret_cast< Packed const * >(this);
 		}
 		static State unpack(Packed packed) {
-			return *reinterpret_cast< State const * >(&packed);
+			State ret;
+			memcpy(reinterpret_cast< char * >(&ret), &packed, sizeof(State));
+			return ret;
 		}
 
 		std::string to_string(uint32_t bits = 16) const {

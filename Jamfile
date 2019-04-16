@@ -40,6 +40,7 @@ AUTOKNIT_NAMES =
 	ak-embedded_path
 	ak-build_next_active_chains
 	ak-link_chains
+	ak-optimal_link
 	ak-extract_level_chains
 	ak-find_first_active_chains
 	ak-sample_chain
@@ -74,7 +75,7 @@ MainFromObjects schedule : $(NAMES:S=$(SUFOBJ)) ;
 MainFromObjects test_shape : test_shape$(SUFOBJ) ;
 
 MainFromObjects test_plan_transfers : test_plan_transfers$(SUFOBJ) $(PLAN_TRANSFERS_NAMES:S=$(SUFOBJ)) ;
-MyMainFromObjects test_flatten : test_flatten$(SUFOBJ) ak-link_chains$(SUFOBJ) ;
+MyMainFromObjects test_flatten : test_flatten$(SUFOBJ) ak-link_chains$(SUFOBJ) ak-optimal_link$(SUFOBJ) ;
 
 LINKLIBS on interface = $(LINKLIBS) ;
 LINKLIBS on interface += $(LIBGEODESIC_LIBS) ;
