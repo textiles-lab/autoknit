@@ -24,7 +24,16 @@ brew install ftjam sdl2 glm eigen libpng
 ```
 
 ### Linux setup
-TBD
+```
+#clone repository:
+git clone git@github.com:textiles-lab/autoknit
+cd autoknit
+git submodule init
+git submodule update
+
+#install prerequisite libraries and build tool:
+sudo apt-get install ftjam libglm-dev libpng-dev libsdl2-dev libeigen3-dev
+```
 
 ### Window setup
 
