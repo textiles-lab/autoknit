@@ -473,6 +473,8 @@ void Interface::update(float elapsed) {
 void Interface::draw() {
 	if (fb_size != kit::display.size) alloc_fbs();
 
+	float scale_factor = model.avg_edge() * 2.f;
+
 	glViewport(0, 0, kit::display.size.x, kit::display.size.y);
 
 	glBindFramebuffer(GL_FRAMEBUFFER, color_id_fb);
@@ -567,6 +569,7 @@ void Interface::draw() {
 		glBindVertexArray(sphere_tristrip_for_marker_draw->array);
 
 		auto sphere = [&](glm::vec3 const &at, float r, glm::vec3 const &color, glm::u8vec4 const &id) {
+			r = r * scale_factor;
 			//Position-to-light matrix:
 			glm::mat4x3 p2l = glm::mat4x3(
 				glm::vec3(r, 0.0f, 0.0f),
@@ -1479,6 +1482,7 @@ void Interface::update_constraints_tristrip() {
 
 	std::vector< GLAttribBuffer< glm::vec3, glm::vec3, glm::u8vec4 >::Vertex > attribs;
 
+	float scale_factor = model.avg_edge() * 2.f;
 	float min_time = -1.0f;
 	float max_time = 1.0f;
 	for (auto const &c : constraints) {
@@ -1494,7 +1498,7 @@ void Interface::update_constraints_tristrip() {
 			glm::vec3 a = path[pi];
 			glm::vec3 b = path[pi+1];
 			constexpr const float r = 0.02f;
-			make_tube(&attribs, a, b, r, color8);
+			make_tube(&attribs, a, b, r * scale_factor, color8);
 		}
 	}
 
@@ -1506,7 +1510,7 @@ void Interface::update_constraints_tristrip() {
 			glm::vec3 a = path[pi];
 			glm::vec3 b = path[pi+1];
 			constexpr const float r = 0.01f;
-			make_tube(&attribs, a, b, r, color8);
+			make_tube(&attribs, a, b, r*scale_factor, color8);
 		}
 	}
 
@@ -1758,16 +1762,17 @@ void Interface::update_rowcol_graph_tristrip() {
 void Interface::update_active_chains_tristrip() {
 	active_chains_tristrip_dirty = false;
 
+	float scale_factor = model.avg_edge() * 2.f;
 	std::vector< GLAttribBuffer< glm::vec3, glm::vec3, glm::u8vec4 >::Vertex > attribs;
 
 	std::vector< std::vector< glm::vec3 > > active_locations = interpolate_locations(constrained_model, active_chains);
 	make_chains_tristrip(&attribs,
 		active_locations, active_stitches,
 		glm::u8vec4(0x00, 0xff, 0x88, 0xff),
-		0.01f);
+		0.01f * scale_factor);
 	make_stitches_tristrip(&attribs,
 		active_locations, active_stitches,
-		0.01f);
+		0.01f * scale_factor);
 	active_chains_tristrip.set(attribs, GL_STATIC_DRAW);
 }
 
@@ -1798,21 +1803,23 @@ void Interface::update_slice_triangles() {
 void Interface::update_slice_chains_tristrip() {
 	slice_chains_tristrip_dirty = false;
 
+	float scale_factor = model.avg_edge() * 2.f;
+	
 	std::vector< GLAttribBuffer< glm::vec3, glm::vec3, glm::u8vec4 >::Vertex > attribs;
 	std::vector< std::vector< glm::vec3 > > active_locations = copy_locations(slice, slice_active_chains);
 	make_chains_tristrip(&attribs,
 		active_locations, active_stitches,
 		glm::u8vec4(0x22, 0x22, 0xff, 0xff),
-		0.01f);
+		0.01f * scale_factor);
 	make_stitches_tristrip(&attribs,
 		active_locations, active_stitches,
-		0.01f);
+		0.01f * scale_factor);
 
 
 	{ //handle chains separately for extra coloring:
 		glm::u8vec4 regular = glm::u8vec4(0xff, 0x22, 0x22, 0xff);
 		glm::u8vec4 boundary = glm::u8vec4(0xff, 0x55, 0x55, 0xff);
-		float r = 0.01f;
+		float r = 0.01f * scale_factor;
 
 		std::vector< std::vector< glm::vec3 > > chains = copy_locations(slice, slice_next_chains);
 	
@@ -1844,6 +1851,8 @@ void Interface::update_links_tristrip() {
 	std::vector< std::vector< glm::vec3 > > from = interpolate_stitch_locations(copy_locations(slice, slice_active_chains), active_stitches);
 	std::vector< std::vector< glm::vec3 > > to = interpolate_stitch_locations(copy_locations(slice, slice_next_chains), next_stitches);
 
+	float scale_factor = model.avg_edge() * 2.f;
+	
 	for (auto const &link : links) {
 		assert(link.from_chain < from.size());
 		assert(link.from_stitch < from[link.from_chain].size());
@@ -1853,12 +1862,12 @@ void Interface::update_links_tristrip() {
 		glm::vec3 const &a = from[link.from_chain][link.from_stitch];
 		glm::vec3 const &b = to[link.to_chain][link.to_stitch];
 
-		make_tube(&attribs, a, b, 0.02f, glm::u8vec4(0x00, 0xff, 0x00, 0xff));
+		make_tube(&attribs, a, b, 0.02f * scale_factor, glm::u8vec4(0x00, 0xff, 0x00, 0xff));
 	}
 
 	make_stitches_tristrip(&attribs,
 		copy_locations(slice, slice_next_chains), next_stitches,
-		0.01f);
+		0.01f * scale_factor);
 
 	links_tristrip.set(attribs, GL_STATIC_DRAW);
 }
@@ -1868,14 +1877,16 @@ void Interface::update_next_active_chains_tristrip() {
 
 	std::vector< GLAttribBuffer< glm::vec3, glm::vec3, glm::u8vec4 >::Vertex > attribs;
 
+	float scale_factor = model.avg_edge() * 2.f;
+	
 	std::vector< std::vector< glm::vec3 > > next_active_locations = interpolate_locations(constrained_model, next_active_chains);
 	make_chains_tristrip(&attribs,
 		next_active_locations, next_active_stitches,
 		glm::u8vec4(0x00, 0xff, 0x88, 0xff),
-		0.01f);
+		0.01f * scale_factor);
 	make_stitches_tristrip(&attribs,
 		next_active_locations, next_active_stitches,
-		0.01f);
+		0.01f * scale_factor);
 	next_active_chains_tristrip.set(attribs, GL_STATIC_DRAW);
 }
 

@@ -12,9 +12,22 @@ namespace ak {
 
 // Input model: vertices and triangles, loaded from an .obj file:
 struct Model {
+	float edge_len = -1.f;
 	std::vector< glm::vec3 > vertices;
 	std::vector< glm::uvec3 > triangles;
 	void clear() { triangles.clear(); vertices.clear(); }
+	inline float  avg_edge(){
+		if(edge_len > 0.f) return edge_len;
+		float avg_len = 0;
+		for(auto f : triangles){
+			avg_len += glm::distance(vertices[f.x], vertices[f.y]);
+			avg_len += glm::distance(vertices[f.z], vertices[f.y]);
+			avg_len += glm::distance(vertices[f.x], vertices[f.z]);
+		}
+		avg_len /= (triangles.size()*3.f);
+		edge_len  = avg_len;
+		return avg_len;
+	}
 };
 
 //Load an object file into a Model structure.
