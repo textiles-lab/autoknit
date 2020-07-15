@@ -49,3 +49,9 @@ Fixed some bugs in shape assignment to options; running into the 'embed_DAG is s
 
 Instruction generation would be a lot cleaner with some map<>s to track loop locations and storage stash statuses.
 (actually, could avoid tracking stash statuses by reading tracked loop locations, which imply de-facto stash status)
+
+---------------------------------
+
+(from preshack fork)
+hack: ak-trim_model.cpp:265: void ak::trim_model(const ak::Model&, const std::vector<std::vector<ak::EmbeddedVertex> >&, const std::vector<std::vector<ak::EmbeddedVertex> >&, ak::Model*, std::vector<ak::EmbeddedVertex>*, std::vector<std::vector<unsigned int> >*, std::vector<std::vector<unsigned int> >*): Assertion `subedges[i].b == subedges[i+1].a' failed.
+
