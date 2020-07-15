@@ -7,8 +7,8 @@ SubInclude TOP kit ;
 MySubDir TOP ;
 
 if $(OS) = LINUX {
-	C++ += -pg ;
-	LINK += -pg ;
+	#C++ += -pg ;
+	#LINK += -pg ;
 }
 
 

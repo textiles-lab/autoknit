@@ -1339,7 +1339,7 @@ void Interface::update_traced() {
 
 void Interface::save_traced() {
 	if (save_traced_file == "") return;
-	std::cout << "Saving traced stitches to '" << save_traced_file << "'." << std::endl;
+	std::cout << "Saving " << traced.size() << " traced stitches to '" << save_traced_file << "'." << std::endl;
 	std::vector< Stitch > stitches;
 	stitches.reserve(traced.size());
 	for (auto const &ts : traced) {

@@ -124,8 +124,8 @@ void ak::optimal_link(
 		// 1-2
 		if ( state.target_remain >= 2
 			&& !source_linkone[state.source_idx]
-			&& !source_linkone[state.target_idx]
-			&& !source_linkone[(state.target_idx+1) % target.size()] ) {
+			&& !target_linkone[state.target_idx]
+			&& !target_linkone[(state.target_idx+1) % target.size()] ) {
 			float next_distance = distance
 				+ penalty(state.source_idx, state.target_idx)
 				+ penalty(state.source_idx, (state.target_idx+1) % target.size());
@@ -140,7 +140,7 @@ void ak::optimal_link(
 		if ( state.source_remain >= 2
 			&& !source_linkone[state.source_idx]
 			&& !source_linkone[(state.source_idx+1) % source.size()]
-			&& !source_linkone[state.target_idx] ) {
+			&& !target_linkone[state.target_idx] ) {
 			float next_distance = distance
 				+ penalty(state.source_idx, state.target_idx)
 				+ penalty((state.source_idx+1)%source.size(), state.target_idx);
