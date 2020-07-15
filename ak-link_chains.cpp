@@ -10,6 +10,7 @@
 #include <algorithm>
 #include <unordered_set>
 #include <unordered_map>
+#include <cstring>
 
 //fill in any -1U segments in closest with nearby indices (or return false if closest is entirely -1U):
 bool fill_unassigned(std::vector< uint32_t > &closest, std::vector< float > const &weights, bool is_loop);

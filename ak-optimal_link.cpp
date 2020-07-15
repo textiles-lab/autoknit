@@ -2,6 +2,7 @@
 
 #include <unordered_map>
 #include <stdexcept>
+#include <cstring>
 
 void ak::optimal_link(
 	float target_distance, bool do_roll,
