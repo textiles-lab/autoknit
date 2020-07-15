@@ -20,6 +20,7 @@ std::shared_ptr< kit::Mode > kit_mode() {
 	std::string save_constraints_file = "";
 	std::string constraints_file = "";
 	std::string save_traced_file = "";
+	float constraint_tolerance = 0.01f;
 	int32_t peel_test = 0;
 	int32_t peel_step = 0;
 	int32_t test_constraints = 0;
@@ -32,6 +33,7 @@ std::shared_ptr< kit::Mode > kit_mode() {
 		args.emplace_back("load-constraints", &load_constraints_file, "file to load time constraints from");
 		args.emplace_back("save-constraints", &save_constraints_file, "file to save time constraints to");
 		args.emplace_back("constraints", &constraints_file, "try to load constraints from the named file, and definitely save them to it (load_constraints_file or save_constraints_file will override)");
+		args.emplace_back("constraint-tolerance", &constraint_tolerance, "maximum distance away from a model vertex that a loaded constraint vertex can be before it is considered missing");
 		args.emplace_back("save-traced", &save_traced_file, "save traced stitches to this file");
 		args.emplace_back("stitch-width", &parameters.stitch_width_mm, "stitch width (mm)");
 		args.emplace_back("stitch-height", &parameters.stitch_height_mm, "stitch height (mm)");
@@ -62,10 +64,10 @@ std::shared_ptr< kit::Mode > kit_mode() {
 
 	std::vector< ak::Constraint > constraints;
 	if (load_constraints_file != "") {
-		ak::load_constraints(model, load_constraints_file, &constraints);
+		ak::load_constraints(model, load_constraints_file, constraint_tolerance, &constraints);
 	} else if (constraints_file != "") {
 		try {
-			ak::load_constraints(model, constraints_file, &constraints);
+			ak::load_constraints(model, constraints_file, constraint_tolerance, &constraints);
 		} catch (std::exception const &e) {
 			std::cerr << "WARNING: failed to load from '" << constraints_file << "' (" << e.what() << ")>" << std::endl;
 		}

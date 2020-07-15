@@ -74,6 +74,7 @@ struct Parameters {
 void load_constraints(
 	Model const &model, //in: model for vertex lookup
 	std::string const &file, //in: file to load
+	float max_distance, //in: maximum distance, in model units, to use when looking up vertices for constraints
 	std::vector< Constraint > *constraints //out: list of constraints
 );
 

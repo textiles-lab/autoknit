@@ -58,6 +58,7 @@ struct StoredConstraint {
 void ak::load_constraints(
 	ak::Model const &model, //in: model for vertex lookup
 	std::string const &filename, //in: file to load
+	float max_distance, //in: maximum distance, in model units, to use when looking up vertices for constraints
 	std::vector< ak::Constraint > *_constraints //out: list of constraints
 ) {
 	assert(_constraints);
@@ -90,7 +91,7 @@ void ak::load_constraints(
 			for (uint32_t vi = begin_vert; vi < end_vert; ++vi) {
 				glm::vec3 const &v = verts[vi];
 				uint32_t closest = -1U;
-				float closest_dis = 0.01f * 0.01f;
+				float closest_dis = max_distance * max_distance;
 				for (auto const &mv : model.vertices) {
 					float dis = glm::length2(mv - v);
 					if (dis < closest_dis) {
