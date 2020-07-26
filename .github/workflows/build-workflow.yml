@@ -87,7 +87,6 @@ jobs:
       - name: Build Code
         shell: bash
         run: |
-          cp README.md dist
           brew install ftjam sdl2 glm eigen libpng
           git clone https://github.com/ixchow/kit
           mkdir dist
@@ -95,6 +94,7 @@ jobs:
       - name: Package
         shell: bash
         run: |
+          cp README.md dist
           mv dist "autoknit-macos-$TAG_NAME"
           tar cfz "autoknit-macos-$TAG_NAME"".tar.gz" "autoknit-macos-$TAG_NAME"
           ls
