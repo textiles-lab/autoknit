@@ -21,7 +21,7 @@ jobs:
           git clone git@github.com:eigenteam/eigen-git-mirror eigen
           git submodule init
           git submodule update
-		  python .github/workflows/download-jam.py
+          python .github/workflows/download-jam.py
           jam -q
         env:
           TAG_NAME: ${{ github.event.release.tag_name }}
