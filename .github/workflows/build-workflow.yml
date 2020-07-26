@@ -15,7 +15,7 @@ jobs:
       - name: Build Code A
         shell: cmd
         run: |
-          dir/w
+          echo "hello"
      - name: Build Code B
         env:
           TAG_NAME: ${{ github.event.release.tag_name }}
