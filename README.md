@@ -70,8 +70,10 @@ Step-by-step instructions for creating knitting machine instructions for the [mi
 Launch the interface, telling it to load from ```misc-cactus.obj``` and to save constraints to ```misc-cactus.cons```:
 
 ```
+cd dist
 ./interface obj:misc-cactus.obj constraints:misc-cactus.cons
 ```
+(Note that the `interface` executable is built in the `dist/` subdirectory, so you will need to change to that directory before running it.)
 
 You will see a 3D view of the loaded model:
 
