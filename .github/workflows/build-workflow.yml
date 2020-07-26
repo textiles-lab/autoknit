@@ -19,7 +19,10 @@ jobs:
           call "C:\Program Files (x86)\Microsoft Visual Studio\2019\Enterprise\VC\Auxiliary\Build\vcvars64.bat"
           git clone git@github.com:ixchow/kit-libs-win
           git clone git@github.com:eigenteam/eigen-git-mirror eigen
-          jam
+          git submodule init
+          git submodule update
+		  python .github/workflows/download-jam.py
+          jam -q
         env:
           TAG_NAME: ${{ github.event.release.tag_name }}
       - name: Upload Result
@@ -42,7 +45,9 @@ jobs:
         shell: bash
         run: |
           sudo apt install ftjam libglm-dev libpng-dev libsdl2-dev libeigen3-dev
-          jam
+          git submodule init
+          git submodule update
+          jam -q
         env:
           TAG_NAME: ${{ github.event.release.tag_name }}
       - name: Upload Result
@@ -65,7 +70,9 @@ jobs:
         shell: bash
         run: |
           brew install ftjam sdl2 glm eigen libpng
-          jam
+          git submodule init
+          git submodule update
+          jam -q
         env:
           TAG_NAME: ${{ github.event.release.tag_name }}
       - name: Upload Result
