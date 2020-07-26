@@ -24,6 +24,7 @@ jobs:
           git clone https://github.com/ixchow/kit
           python .github/workflows/download-jam.py
           work\jam.exe JAM_TOOLSET=VISUALC -q
+          dir/w
      - name: Package
         shell: cmd
         run: |
