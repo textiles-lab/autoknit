@@ -22,7 +22,7 @@ jobs:
           git clone https://github.com/ixchow/kit
           python .github/workflows/download-jam.py
           mkdir dist
-          "work\jam.exe" JAM_TOOLSET=VISUALC -q
+          "work\jam.exe" JAM_TOOLSET=VISUALC -j3 -q
         env:
           TAG_NAME: ${{ github.event.release.tag_name }}
       - name: Package
@@ -54,7 +54,7 @@ jobs:
         run: |
           sudo apt install ftjam libglm-dev libpng-dev libsdl2-dev libeigen3-dev
           git clone https://github.com/ixchow/kit
-          jam -q
+          jam -j3 -q
         env:
           TAG_NAME: ${{ github.event.release.tag_name }}
       - name: Package
@@ -86,7 +86,7 @@ jobs:
         run: |
           brew install ftjam sdl2 glm eigen libpng
           git clone https://github.com/ixchow/kit
-          jam -q
+          jam -j3 -q
       - name: Package
         shell: bash
         run: |
