@@ -59,7 +59,7 @@ AUTOKNIT_NAMES =
 if $(OS) = MACOSX {
 	ObjectC++Flags ak-interpolate_values.o : -I/usr/local/include/eigen3 ;
 } else if $(OS) = NT {
-	ObjectC++Flags ak-interpolate_values.o : /Ieigen ;
+	ObjectC++Flags ak-interpolate_values.o : /Ieigen /D_SILENCE_CXX17_RESULT_OF_DEPRECATION_WARNING ;
 } else {
 	ObjectC++Flags ak-interpolate_values.o : -I/usr/include/eigen3 ;
 }
