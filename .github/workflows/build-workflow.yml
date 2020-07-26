@@ -1,0 +1,80 @@
+name: Build Libraries
+on:
+  push:
+  release:
+    types: [created]
+
+
+jobs:
+  build-windows:
+    name: Build (Windows)
+    runs-on: windows-latest
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v2
+      - name: Build Code
+        shell: cmd
+        run: |
+          dir/w
+          call "C:\Program Files (x86)\Microsoft Visual Studio\2019\Enterprise\VC\Auxiliary\Build\vcvars64.bat"
+		  git clone git@github.com:ixchow/kit-libs-win
+		  git clone git@github.com:eigenteam/eigen-git-mirror eigen
+		  jam
+        env:
+          TAG_NAME: ${{ github.event.release.tag_name }}
+      - name: Upload Result
+        if: github.event_name == 'release'
+        uses: actions/upload-release-asset@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          upload_url: ${{ github.event.release.upload_url }}
+          asset_path: nest-libs-windows-${{ github.event.release.tag_name }}.zip
+          asset_name: nest-libs-windows-${{ github.event.release.tag_name }}.zip
+          asset_content_type: application/zip
+  build-linux:
+    name: Build (Linux)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v2
+      - name: Build Code
+        shell: bash
+        run: |
+		  sudo apt install ftjam libglm-dev libpng-dev libsdl2-dev libeigen3-dev
+		  jam
+        env:
+          TAG_NAME: ${{ github.event.release.tag_name }}
+      - name: Upload Result
+        if: github.event_name == 'release'
+        uses: actions/upload-release-asset@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          upload_url: ${{ github.event.release.upload_url }}
+          asset_path: nest-libs-linux-${{ github.event.release.tag_name }}.tar.gz
+          asset_name: nest-libs-linux-${{ github.event.release.tag_name }}.tar.gz
+          asset_content_type: application/gzip
+  build-macos:
+    name: Build (MacOS)
+    runs-on: macos-latest
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v2
+      - name: Build Code
+        shell: bash
+        run: |
+		  brew install ftjam sdl2 glm eigen libpng
+		  jam
+        env:
+          TAG_NAME: ${{ github.event.release.tag_name }}
+      - name: Upload Result
+        if: github.event_name == 'release'
+        uses: actions/upload-release-asset@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          upload_url: ${{ github.event.release.upload_url }}
+          asset_path: nest-libs-macos-${{ github.event.release.tag_name }}.tar.gz
+          asset_name: nest-libs-macos-${{ github.event.release.tag_name }}.tar.gz
+          asset_content_type: application/gzip
