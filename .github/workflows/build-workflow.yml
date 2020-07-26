@@ -21,10 +21,9 @@ jobs:
           git clone git@github.com:eigenteam/eigen-git-mirror eigen
           git clone https://github.com/ixchow/kit
           python .github/workflows/download-jam.py
-          work\jam.exe -q
+          work\jam.exe JAM_TOOLSET=VISUALC -q
         env:
           TAG_NAME: ${{ github.event.release.tag_name }}
-          JAM_TOOLSET: VISUALC
      - name: Package
         shell: cmd
         run: |
