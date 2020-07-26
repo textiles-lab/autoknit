@@ -35,7 +35,7 @@ git submodule update
 sudo apt-get install ftjam libglm-dev libpng-dev libsdl2-dev libeigen3-dev
 ```
 
-### Window setup
+### Windows setup
 
 First, install [ftjam](https://www.freetype.org/jam/) somewhere in your ```%path%``` so you can run it from a command prompt. (Also make sure that git is installed in such a way that it can be run from a command prompt.)
 
