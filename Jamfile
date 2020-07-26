@@ -77,6 +77,8 @@ MainFromObjects test_shape : test_shape$(SUFOBJ) ;
 MainFromObjects test_plan_transfers : test_plan_transfers$(SUFOBJ) $(PLAN_TRANSFERS_NAMES:S=$(SUFOBJ)) ;
 MyMainFromObjects test_flatten : test_flatten$(SUFOBJ) ak-link_chains$(SUFOBJ) ak-optimal_link$(SUFOBJ) ;
 
+LOCATE_TARGET = objs ; #re-setting this down here makes build stop putting objects into dist/ (I wonder how long that error has been happening?)
+
 LINKLIBS on interface = $(LINKLIBS) ;
 LINKLIBS on interface += $(LIBGEODESIC_LIBS) ;
 

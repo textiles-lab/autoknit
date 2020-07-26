@@ -3,9 +3,15 @@
 A re-implementation of ["Automatic Machine Knitting of 3D Meshes"](https://textiles-lab.github.io/publications/2018-autoknit/).
 Does not match the code used in the paper exactly, but is close in most regards.
 
+The latest version of this code is available at https://github.com/textiles-lab/autoknit .
+
 ## License
 
 This code is placed in the public domain.
+
+## Pre-Build Releases
+
+This code is automatically build using Github Actions
 
 ## Building
 

@@ -28,6 +28,7 @@ jobs:
       - name: Package
         shell: cmd
         run: |
+          copy README.md dist
           rename dist "autoknit-windows-%TAG_NAME%"
           "C:\Program Files\7-Zip\7z.exe" a -r "autoknit-windows-%TAG_NAME%.zip" "autoknit-windows-%TAG_NAME%"
           dir/w
@@ -60,6 +61,7 @@ jobs:
       - name: Package
         shell: bash
         run: |
+          cp README.md dist
           mv dist "autoknit-linux-$TAG_NAME"
           tar cfz "autoknit-linux-$TAG_NAME"".tar.gz" "autoknit-linux-$TAG_NAME"
           ls
@@ -84,6 +86,7 @@ jobs:
       - name: Build Code
         shell: bash
         run: |
+          cp README.md dist
           brew install ftjam sdl2 glm eigen libpng
           git clone https://github.com/ixchow/kit
           jam -j3 -q
