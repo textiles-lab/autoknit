@@ -9,7 +9,7 @@ The latest version of this code is available at https://github.com/textiles-lab/
 
 This code is placed in the public domain.
 
-## Pre-Build Releases
+## Pre-Built Releases
 
 This code is automatically built using Github Actions; check for releases at https://github.com/textiles-lab/autoknit/releases .
 However, it is also reasonably straightforward to build on your own using the steps below.
