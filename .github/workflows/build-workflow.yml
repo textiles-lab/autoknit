@@ -12,7 +12,7 @@ jobs:
     steps:
       - name: Checkout Code
         uses: actions/checkout@v2
-      - name: Build Code
+      - name: Build Code A
         env:
           TAG_NAME: ${{ github.event.release.tag_name }}
         shell: cmd
@@ -23,6 +23,11 @@ jobs:
           git clone git@github.com:eigenteam/eigen-git-mirror eigen
           git clone https://github.com/ixchow/kit
           python .github/workflows/download-jam.py
+     - name: Build Code B
+        env:
+          TAG_NAME: ${{ github.event.release.tag_name }}
+        shell: cmd
+        run: |
           "work\jam.exe" JAM_TOOLSET=VISUALC -q
           dir/w
      - name: Package
