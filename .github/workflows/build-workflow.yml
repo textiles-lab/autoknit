@@ -21,7 +21,7 @@ jobs:
           git clone https://github.com/eigenteam/eigen-git-mirror eigen
           git clone https://github.com/ixchow/kit
           python .github/workflows/download-jam.py
-		  mkdir dist
+          mkdir dist
           "work\jam.exe" JAM_TOOLSET=VISUALC -q
         env:
           TAG_NAME: ${{ github.event.release.tag_name }}
