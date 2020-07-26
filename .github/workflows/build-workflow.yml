@@ -21,7 +21,16 @@ jobs:
           git clone git@github.com:eigenteam/eigen-git-mirror eigen
           git clone https://github.com/ixchow/kit
           python .github/workflows/download-jam.py
-          set JAM_TOOLSET=VISUALC && jam -q
+          work\jam.exe -q
+        env:
+          TAG_NAME: ${{ github.event.release.tag_name }}
+          JAM_TOOLSET: VISUALC
+     - name: Package
+        shell: cmd
+        run: |
+          rename dist "autoknit-windows-%TAG_NAME%"
+          "C:\Program Files\7-Zip\7z.exe" a -r "autoknit-windows-%TAG_NAME%.zip" "autoknit-windows-%TAG_NAME%"
+          dir/w
         env:
           TAG_NAME: ${{ github.event.release.tag_name }}
       - name: Upload Result
@@ -31,8 +40,8 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
           upload_url: ${{ github.event.release.upload_url }}
-          asset_path: nest-libs-windows-${{ github.event.release.tag_name }}.zip
-          asset_name: nest-libs-windows-${{ github.event.release.tag_name }}.zip
+          asset_path: autoknit-windows-${{ github.event.release.tag_name }}.zip
+          asset_name: autoknit-windows-${{ github.event.release.tag_name }}.zip
           asset_content_type: application/zip
   build-linux:
     name: Build (Linux)
@@ -48,6 +57,14 @@ jobs:
           jam -q
         env:
           TAG_NAME: ${{ github.event.release.tag_name }}
+      - name: Package
+        shell: bash
+        run: |
+          mv dist "autoknit-linux-$(TAG_NAME)"
+          tar cfz "autoknit-linux-$(TAG_NAME).tar.gz" "autoknit-linux-$(TAG_NAME).tar.gz"
+          ls
+        env:
+          TAG_NAME: ${{ github.event.release.tag_name }}
       - name: Upload Result
         if: github.event_name == 'release'
         uses: actions/upload-release-asset@v1
@@ -55,8 +72,8 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
           upload_url: ${{ github.event.release.upload_url }}
-          asset_path: nest-libs-linux-${{ github.event.release.tag_name }}.tar.gz
-          asset_name: nest-libs-linux-${{ github.event.release.tag_name }}.tar.gz
+          asset_path: autoknit-linux-${{ github.event.release.tag_name }}.tar.gz
+          asset_name: autoknit-linux-${{ github.event.release.tag_name }}.tar.gz
           asset_content_type: application/gzip
   build-macos:
     name: Build (MacOS)
@@ -70,6 +87,12 @@ jobs:
           brew install ftjam sdl2 glm eigen libpng
           git clone https://github.com/ixchow/kit
           jam -q
+      - name: Package
+        shell: bash
+        run: |
+          mv dist "autoknit-macos-$(TAG_NAME)"
+          tar cfz "autoknit-macos-$(TAG_NAME).tar.gz" "autoknit-macos-$(TAG_NAME).tar.gz"
+          ls
         env:
           TAG_NAME: ${{ github.event.release.tag_name }}
       - name: Upload Result
@@ -79,6 +102,6 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
           upload_url: ${{ github.event.release.upload_url }}
-          asset_path: nest-libs-macos-${{ github.event.release.tag_name }}.tar.gz
-          asset_name: nest-libs-macos-${{ github.event.release.tag_name }}.tar.gz
+          asset_path: autoknit-macos-${{ github.event.release.tag_name }}.tar.gz
+          asset_name: autoknit-macos-${{ github.event.release.tag_name }}.tar.gz
           asset_content_type: application/gzip

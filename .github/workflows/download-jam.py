@@ -43,6 +43,5 @@ jam_url = 'https://sourceforge.net/projects/freetype/files/ftjam/2.5.2/' + jam_f
 def fetch_jam():
 	fetch_file(jam_url, work_folder + "/" + jam_file)
 	unzip_file(work_folder + "/" + jam_file, work_folder)
-	shutil.copy(work_folder + "/jam.exe", "jam.exe")
 
 fetch_jam()
