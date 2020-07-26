@@ -13,6 +13,8 @@ jobs:
       - name: Checkout Code
         uses: actions/checkout@v2
       - name: Build Code
+        env:
+          TAG_NAME: ${{ github.event.release.tag_name }}
         shell: cmd
         run: |
           dir/w
@@ -22,8 +24,6 @@ jobs:
           git clone https://github.com/ixchow/kit
           python .github/workflows/download-jam.py
           work\jam.exe JAM_TOOLSET=VISUALC -q
-        env:
-          TAG_NAME: ${{ github.event.release.tag_name }}
      - name: Package
         shell: cmd
         run: |
