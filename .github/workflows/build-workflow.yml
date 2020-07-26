@@ -16,12 +16,12 @@ jobs:
         shell: cmd
         run: |
           dir/w
-          call "C:\Program Files (x86)\Microsoft Visual Studio\2019\Enterprise\VC\Auxiliary\Build\vcvars64.bat"
      - name: Build Code B
         env:
           TAG_NAME: ${{ github.event.release.tag_name }}
         shell: cmd
         run: |
+          call "C:\Program Files (x86)\Microsoft Visual Studio\2019\Enterprise\VC\Auxiliary\Build\vcvars64.bat"
           git clone git@github.com:ixchow/kit-libs-win
           git clone git@github.com:eigenteam/eigen-git-mirror eigen
           git clone https://github.com/ixchow/kit
