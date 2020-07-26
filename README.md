@@ -11,7 +11,8 @@ This code is placed in the public domain.
 
 ## Pre-Build Releases
 
-This code is automatically build using Github Actions
+This code is automatically built using Github Actions; check for releases at https://github.com/textiles-lab/autoknit/releases .
+However, it is also reasonably straightforward to build on your own using the steps below.
 
 ## Building
 
