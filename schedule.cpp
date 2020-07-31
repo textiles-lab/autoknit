@@ -74,10 +74,12 @@ struct CycleIndex {
 int main(int argc, char **argv) {
 	std::string in_st = "";
 	std::string out_js = "";
+	std::string out_st = "";
 	{ //parse arguments:
 		TaggedArguments args;
 		args.emplace_back("st", &in_st, "input stitches file (required)");
 		args.emplace_back("js", &out_js, "output knitting file");
+		args.emplace_back("out-st", &out_st, "output stitches file");
 		bool usage = !args.parse(argc, argv);
 		if (!usage && in_st == "") {
 			std::cerr << "ERROR: 'st:' argument is required." << std::endl;
@@ -92,12 +94,13 @@ int main(int argc, char **argv) {
 	//------------------------------
 
 	std::vector< Stitch > stitches;
+	std::vector< std::pair<BedNeedle, BedNeedle>> stitch_locations;
 	if (!load_stitches(in_st, &stitches)) {
 		std::cerr << "ERROR: failed to load stitches from '" << in_st << "'." << std::endl;
 		return 1;
 	}
 	std::cout << "Read " << stitches.size() << " stitches from '" << in_st << "'." << std::endl;
-
+	stitch_locations.assign(stitches.size(), std::make_pair(BedNeedle(BedNeedle::FrontSliders,-1),BedNeedle(BedNeedle::FrontSliders,-1)));
 	//------------------------------
 
 	//New scheduling workflow:
@@ -2604,6 +2607,9 @@ int main(int argc, char **argv) {
 					instr += typeset_bed_needle(bed, needle);
 
 					make_start(bed, needle, Loop(s, 0));
+
+					stitch_locations[&st - &stitches[0]].first = BedNeedle(bed == 'f' ? BedNeedle::Front : BedNeedle::Back, needle);
+;
 				}
 				instr += "]);";
 
@@ -2657,6 +2663,7 @@ int main(int argc, char **argv) {
 				instr += typeset_bed_needle(bed, needle);
 				
 				make_end(bed, needle, in0);
+				stitch_locations[&st - &stitches[0]].first = BedNeedle(bed == 'f' ? BedNeedle::Front : BedNeedle::Back, needle);
 			}
 			instr += "]);";
 
@@ -2895,6 +2902,7 @@ int main(int argc, char **argv) {
 							add_instr(instr);
 
 							make_stitch(bed, needle, in0, Loop(s, 0));
+							stitch_locations[&st - &stitches[0]].first = BedNeedle(bed == 'f' ? BedNeedle::Front : BedNeedle::Back, needle);
 						}
 					} else if (st.type == Stitch::Increase) {
 						//should have one input:
@@ -2962,6 +2970,8 @@ int main(int argc, char **argv) {
 
 							add_instr(instr);
 							make_increase(bed0, needle0, bed1, needle1, in0, Loop(s, 0), Loop(s, 1));
+							stitch_locations[&st - &stitches[0]].first = BedNeedle(bed0 == 'f' ? BedNeedle::Front : BedNeedle::Back, needle0);
+							stitch_locations[&st - &stitches[0]].second = BedNeedle(bed1 == 'f' ? BedNeedle::Front : BedNeedle::Back, needle1);
 						}
 
 					} else if (st.type == Stitch::Decrease) {
@@ -3008,6 +3018,7 @@ int main(int argc, char **argv) {
 
 							add_instr(instr);
 							make_decrease(bed0, needle0, in0, in1, Loop(s, 0));
+							stitch_locations[&st - &stitches[0]].first = BedNeedle(bed0 == 'f' ? BedNeedle::Front : BedNeedle::Back, needle0);
 						}
 
 					} else {
@@ -3060,6 +3071,30 @@ int main(int argc, char **argv) {
 		js.close();
 		std::cout << "Wrote '" << out_js << "'." << std::endl;
 	}
-
+	//scheduled st file
+	if (out_st != ""){
+		std::ofstream out(out_st, std::ios::binary);
+		for(auto const &s : stitches){
+			auto loc = stitch_locations[&s - &stitches[0]];
+			assert(loc.first.bed != BedNeedle::FrontSliders && "stitch location produced");
+			if(s.type == Stitch::Increase)
+				assert(loc.second.bed != BedNeedle::FrontSliders && "stitch location produced (increase)");
+			out << s.yarn
+				<< ' ' << s.type
+				<< ' ' << s.direction
+				<< ' ' << (int32_t)s.in[0]
+				<< ' ' << (int32_t)s.in[1]
+				<< ' ' << (int32_t)s.out[0]
+				<< ' ' << (int32_t)s.out[1]
+				<< ' ' << s.at.x << ' ' << s.at.y << ' ' << s.at.z ;
+			out << ' ' << (char)loc.first.bed << loc.first.needle; 
+				if( s.type == Stitch::Increase)
+			out << ' ' << (char)loc.second.bed << loc.second.needle;
+			out << '\n';
+				
+		}
+		out.close();
+		std::cout << "Wrote '" << out_st << "'." << std::endl;
+	}
 	return 0;
 }
