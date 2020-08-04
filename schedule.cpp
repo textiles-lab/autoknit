@@ -94,13 +94,14 @@ int main(int argc, char **argv) {
 	//------------------------------
 
 	std::vector< Stitch > stitches;
-	std::vector< std::pair<BedNeedle, BedNeedle>> stitch_locations;
+	std::vector< std::pair<BedNeedle, BedNeedle>> stitch_locations, input_locations;
 	if (!load_stitches(in_st, &stitches)) {
 		std::cerr << "ERROR: failed to load stitches from '" << in_st << "'." << std::endl;
 		return 1;
 	}
 	std::cout << "Read " << stitches.size() << " stitches from '" << in_st << "'." << std::endl;
 	stitch_locations.assign(stitches.size(), std::make_pair(BedNeedle(BedNeedle::FrontSliders,-1),BedNeedle(BedNeedle::FrontSliders,-1)));
+	input_locations.assign(stitches.size(), std::make_pair(BedNeedle(BedNeedle::FrontSliders,-1),BedNeedle(BedNeedle::FrontSliders,-1)));
 	//------------------------------
 
 	//New scheduling workflow:
@@ -1735,7 +1736,7 @@ int main(int argc, char **argv) {
 	std::vector< std::string > instructions;
 	auto add_instr = [&instructions](std::string const &instr) {
 		instructions.emplace_back(instr);
-		std::cout << instr << std::endl; //DEBUG
+		//std::cout << instr << std::endl; //DEBUG
 	};
 	add_instr("const autoknit = require('autoknit');");
 	add_instr("let h = new autoknit.Helpers;");
@@ -2609,6 +2610,8 @@ int main(int argc, char **argv) {
 					make_start(bed, needle, Loop(s, 0));
 
 					stitch_locations[&st - &stitches[0]].first = BedNeedle(bed == 'f' ? BedNeedle::Front : BedNeedle::Back, needle);
+					input_locations[&st - &stitches[0]].first = BedNeedle(bed == 'f' ? BedNeedle::Front : BedNeedle::Back, needle);
+
 ;
 				}
 				instr += "]);";
@@ -2662,9 +2665,11 @@ int main(int argc, char **argv) {
 				if (s != step.begin) instr += ", ";
 				instr += typeset_bed_needle(bed, needle);
 				
+				assert(loop_to_bn.find(in0) != loop_to_bn.end());
+				input_locations[ &st - &stitches[0]].first = loop_to_bn.find(in0)->second;
 				make_end(bed, needle, in0);
 				stitch_locations[&st - &stitches[0]].first = BedNeedle(bed == 'f' ? BedNeedle::Front : BedNeedle::Back, needle);
-			}
+							}
 			instr += "]);";
 
 			add_instr(instr);
@@ -2900,9 +2905,13 @@ int main(int argc, char **argv) {
 							instr += ", " + typeset_bed_needle(bed, needle) + ");";
 
 							add_instr(instr);
-
+							
+							assert(loop_to_bn.find(in0) != loop_to_bn.end());
+							// set this before make_stitch clears the old loop:
+							input_locations[ &st - &stitches[0]].first = loop_to_bn.find(in0)->second; 
 							make_stitch(bed, needle, in0, Loop(s, 0));
 							stitch_locations[&st - &stitches[0]].first = BedNeedle(bed == 'f' ? BedNeedle::Front : BedNeedle::Back, needle);
+							
 						}
 					} else if (st.type == Stitch::Increase) {
 						//should have one input:
@@ -2969,10 +2978,13 @@ int main(int argc, char **argv) {
 							instr += ");";
 
 							add_instr(instr);
+
+							assert(loop_to_bn.find(in0) != loop_to_bn.end());
+							input_locations[ &st - &stitches[0]].first = loop_to_bn.find(in0)->second;
 							make_increase(bed0, needle0, bed1, needle1, in0, Loop(s, 0), Loop(s, 1));
 							stitch_locations[&st - &stitches[0]].first = BedNeedle(bed0 == 'f' ? BedNeedle::Front : BedNeedle::Back, needle0);
 							stitch_locations[&st - &stitches[0]].second = BedNeedle(bed1 == 'f' ? BedNeedle::Front : BedNeedle::Back, needle1);
-						}
+													}
 
 					} else if (st.type == Stitch::Decrease) {
 						//should have two inputs:
@@ -3017,8 +3029,15 @@ int main(int argc, char **argv) {
 							instr += ");";
 
 							add_instr(instr);
+							// awkward to use loop_to_bn.find()..,since already xferred...
+							
+							input_locations[ &st - &stitches[0]].first = stitch_locations[st.in[0]].first;
+							input_locations[ &st - &stitches[0]].second = stitch_locations[st.in[1]].first;
+							
+							
 							make_decrease(bed0, needle0, in0, in1, Loop(s, 0));
 							stitch_locations[&st - &stitches[0]].first = BedNeedle(bed0 == 'f' ? BedNeedle::Front : BedNeedle::Back, needle0);
+							
 						}
 
 					} else {
@@ -3075,10 +3094,11 @@ int main(int argc, char **argv) {
 	if (out_st != ""){
 		std::ofstream out(out_st, std::ios::binary);
 		for(auto const &s : stitches){
-			auto loc = stitch_locations[&s - &stitches[0]];
-			assert(loc.first.bed != BedNeedle::FrontSliders && "stitch location produced");
+			auto loc_out = stitch_locations[&s - &stitches[0]];
+			auto loc_in = input_locations[&s - &stitches[0]];
+			assert(loc_out.first.bed != BedNeedle::FrontSliders && "stitch location produced");
 			if(s.type == Stitch::Increase)
-				assert(loc.second.bed != BedNeedle::FrontSliders && "stitch location produced (increase)");
+				assert(loc_out.second.bed != BedNeedle::FrontSliders && "stitch location produced (increase)");
 			out << s.yarn
 				<< ' ' << s.type
 				<< ' ' << s.direction
@@ -3087,9 +3107,12 @@ int main(int argc, char **argv) {
 				<< ' ' << (int32_t)s.out[0]
 				<< ' ' << (int32_t)s.out[1]
 				<< ' ' << s.at.x << ' ' << s.at.y << ' ' << s.at.z ;
-			out << ' ' << (char)loc.first.bed << loc.first.needle; 
+			out << ' ' << (char)loc_in.first.bed << loc_in.first.needle; 
+				if( s.type == Stitch::Decrease)
+			out << ' ' << (char)loc_in.second.bed << loc_in.second.needle;
+			out << ' ' << (char)loc_out.first.bed << loc_out.first.needle; 
 				if( s.type == Stitch::Increase)
-			out << ' ' << (char)loc.second.bed << loc.second.needle;
+			out << ' ' << (char)loc_out.second.bed << loc_out.second.needle;
 			out << '\n';
 				
 		}
