@@ -59,13 +59,13 @@ void ak::load_obj(
 			}
 
 			glm::ivec3 tri;
-			tri.x = std::stoul(tokens[1]);
+			tri.x = std::stoi(tokens[1]);
 			if (tri.x < 0) tri.x += model.vertices.size();
-			tri.y = std::stoul(tokens[2]);
+			tri.y = std::stoi(tokens[2]);
 			if (tri.y < 0) tri.y += model.vertices.size();
 			//turn face into a triangle fan:
 			for (uint32_t i = 3; i < tokens.size(); ++i) {
-				tri.z = std::stoul(tokens[i]);
+				tri.z = std::stoi(tokens[i]);
 				if (tri.z < 0) tri.z += model.vertices.size();
 				model.triangles.emplace_back(tri);
 				tri.y = tri.z;
