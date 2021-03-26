@@ -14,11 +14,11 @@ This code is placed in the public domain.
 This code is automatically built using Github Actions; check for releases at https://github.com/textiles-lab/autoknit/releases .
 However, it is also reasonably straightforward to build on your own using the steps below.
 
-## Building
+## <a name="building"></a>Building
 
 You will need Perforce's Jam/MR tool to build, along with the SDL2 library (opengl + mouse handling), the glm math library, and the Eigen linear algebra library.
 
-### MacOS setup
+### <a name="mac"></a>MacOS setup
 ```
 #clone repository:
 git clone git@github.com:textiles-lab/autoknit
@@ -30,7 +30,7 @@ git submodule update
 brew install ftjam sdl2 glm eigen libpng
 ```
 
-### Linux setup
+### <a name="linux"></a>Linux setup
 ```
 #clone repository:
 git clone git@github.com:textiles-lab/autoknit
@@ -42,7 +42,7 @@ git submodule update
 sudo apt-get install ftjam libglm-dev libpng-dev libsdl2-dev libeigen3-dev
 ```
 
-### Windows setup
+### <a name="windows"></a>Windows setup
 
 First, install [ftjam](https://www.freetype.org/jam/) somewhere in your ```%path%``` so you can run it from a command prompt. (Also make sure that git is installed in such a way that it can be run from a command prompt.)
 
@@ -68,11 +68,11 @@ jam -j8
 
 The ```-j8``` parameter means to run up to 8 compilation jobs in parallel. You may wish to adjust this for your particular machine.
 
-## Usage
+## <a name="usage"></a>Usage
 
 Step-by-step instructions for creating knitting machine instructions for the [misc-cactus.obj](https://github.com/textiles-lab/autoknit-tests/raw/master/models/misc-cactus.obj) model from the [autoknit-tests](https://github.com/textiles-lab/autoknit-tests) repository.
 
-### Step 1: Constraints
+### <a name="constraints"></a>Step 1: Constraints
 
 Launch the interface, telling it to load from ```misc-cactus.obj``` and to save constraints to ```misc-cactus.cons```:
 
@@ -86,13 +86,13 @@ You will see a 3D view of the loaded model:
 
 ![](usage/constraints-01.png)
 
-You can rotate this model with the right mouse button, zoom with the mouse wheel, and pan with <kbd>shift</kbd> + right mouse button.
+You can <a name="rotate"></a>rotate this model with the right mouse button, zoom with the mouse wheel, and <a name="pan"></a>pan with <kbd>shift</kbd> + right mouse button.
 
 The point on the surface your mouse is over will be highlighted with a grey sphere (the red, green, and blue spheres show the location of the corners of the triangle:
 
 ![](usage/constraints-02.png)
 
-Pressing the <kbd>c</kbd> key will add a constraint:
+Pressing the <a name="constraint-keybinding"></a><kbd>c</kbd> key will add a constraint:
 
 ![](usage/constraints-03.png)
 
@@ -104,11 +104,11 @@ You can click and drag constraint points to move them:
 
 ![](usage/constraints-05.png)
 
-Pressing the <kbd>+</kbd> key while hovering over a constraint will move it later in time (redder) while pressing the <kbd>-</kbd> key will move it earlier in time (bluer):
+Pressing the <a name="red-cons-keybinding"></a><kbd>+</kbd> key while hovering over a constraint will move it later in time (redder) while pressing the <a name="blue-cons-keybinding"></a><kbd>-</kbd> key will move it earlier in time (bluer):
 
 ![](usage/constraints-06.png)
 
-Pressing the <kbd>X</kbd> key while hovering over a constraint will delete it:
+Pressing the <a name="delete-keybinding"></a><kbd>X</kbd> key while hovering over a constraint will delete it:
 
 ![](usage/constraints-07.png)
 
@@ -116,34 +116,34 @@ Before you can proceed to the next step, you will need to create constraints for
 
 ![](usage/constraints-08.png)
 
-You can also place constraints elsewhere on the model to control the knitting direction, and use the <kbd>R</kbd> key to cut out a region around a constraint (useful for starting/ending on meshes without boundaries).
+You can also place constraints elsewhere on the model to control the knitting direction, and use the <a name="cut-keybinding"></a><kbd>R</kbd> key to cut out a region around a constraint (useful for starting/ending on meshes without boundaries).
 
-### Step 2: Peeling/Linking
+### Step 2: <a name="peeling"></a>Peeling/Linking
 
 Now that constraints are specified, the rest of the steps proceed automatically. However, the interface can provide visualization tools to show you what is happening.
 
 #### Manual method:
 
-Load the cactus object and the constraints into the interface. The ```obj-scale``` parameter tells the interface how much to scale the object, while the ```stitch-width``` and ```stitch-height``` parameters give the stitch size relative to the scaled object. The ```save-traced:``` parameter tells the interface where to save its traced stitches.
+Load the cactus object and the constraints into the interface. The <a name="obj-scale"></a>```obj-scale``` parameter tells the interface how much to scale the object, while the <a name="stitch-width"></a>```stitch-width``` and <a name="stitch-height"></a>```stitch-height``` parameters give the stitch size relative to the scaled object. The <a name="save-traced"></a>```save-traced:``` parameter tells the interface where to save its traced stitches.
 
 ```
 ./interface obj:misc-cactus.obj load-constraints:misc-cactus.cons obj-scale:10.0 stitch-width:3.66 stitch-height:1.73 save-traced:misc-cactus.st
 ```
 
-Press the <kbd>p</kbd> key to step through peeling:
+Press the <a name="peel-keybinding"></a><kbd>p</kbd> key to step through peeling:
 
 ![](usage/peel-anim.gif)
 
-During peeling, you can use the <kbd>g</kbd> key to show or hide the portions of the row-column graph created so far, and the <kbd>s</kbd> key to toggle whether the original model, interpolated value, or current slice model are being shown:
+During peeling, you can use the <a name="graph-keybinding"></a><kbd>g</kbd> key to show or hide the portions of the row-column graph created so far, and the <a name="toggleview-keybinding"></a><kbd>s</kbd> key to toggle whether the original model, interpolated value, or current slice model are being shown:
 
 ![](usage/peel-model.png) ![](usage/peel-times.png) ![](usage/peel-slice.png)
 ![](usage/peel-model-graph.png) ![](usage/peel-times-graph.png) ![](usage/peel-slice-graph.png)
 
-Once the peeling has finished, you can press <kbd>t</kbd> to create and save the traced path:
+Once the peeling has finished, you can press <a name="traced-keybinding"></a><kbd>t</kbd> to create and save the traced path:
 
 ![](usage/peel-done.png) ![](usage/traced.png)
 
-#### Automatic method:
+#### <a name="peel-step"></a>Automatic method:
 
 If you don't want to press <kbd>p</kbd> a whole lot, you can just pass the ```peel-step:N``` option to do ```N``` steps of peeling. ```peel-step:-1``` will peel until the mesh is finished.
 
@@ -151,7 +151,7 @@ If you don't want to press <kbd>p</kbd> a whole lot, you can just pass the ```pe
 ./interface obj:misc-cactus.obj load-constraints:misc-cactus.cons obj-scale:10.0 stitch-width:3.66 stitch-height:1.73 save-traced:misc-cactus.st peel-step:-1
 ```
 
-### Step 3: Scheduling
+### <a name="scheduling"></a>Step 3: Scheduling
 
 Now that the traced stitches have been created, they need to be assigned knitting machine needles. We call this step scheduling, and it has its own executable, called ```schedule```.
 The only parameters used by schedule are ```st:``` which gives an input stitches file and ```js:``` which gives an output javascript file:
@@ -162,7 +162,7 @@ The only parameters used by schedule are ```st:``` which gives an input stitches
 
 Schedule doesn't have an UI; it just does a relatively large combinatorial search and then dumps its output into a javascript file.
 
-### Step 4: Knitout
+### <a name="knitout"></a>Step 4: Knitout
 
 Running the javascript file created by ```schedule``` will create knitout instructions, ready for use on your machine:
 ```
