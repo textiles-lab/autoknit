@@ -75,11 +75,14 @@ int main(int argc, char **argv) {
 	std::string in_st = "";
 	std::string out_js = "";
 	std::string out_st = "";
+	uint32_t max_racking = 3;
 	{ //parse arguments:
 		TaggedArguments args;
 		args.emplace_back("st", &in_st, "input stitches file (required)");
 		args.emplace_back("js", &out_js, "output knitting file");
+		args.emplace_back("rack", &max_racking, "maximum racking");
 		args.emplace_back("out-st", &out_st, "output stitches file");
+		
 		bool usage = !args.parse(argc, argv);
 		if (!usage && in_st == "") {
 			std::cerr << "ERROR: 'st:' argument is required." << std::endl;
@@ -1986,7 +1989,7 @@ int main(int argc, char **argv) {
 	};
 
 	//helper:
-	auto reshape = [&add_instr,&stash,&unstash,&typeset_bed_needle,&make_xfers](std::unordered_map< Storage const *, std::pair< int32_t, Shape > > from_layout, 
+	auto reshape = [&max_racking, &add_instr,&stash,&unstash,&typeset_bed_needle,&make_xfers](std::unordered_map< Storage const *, std::pair< int32_t, Shape > > from_layout, 
 	                            std::unordered_map< Storage const *, std::pair< int32_t, Shape > > const &to_layout) {
 		//move things between different shapes:
 		assert(from_layout.size() == to_layout.size()); //layouts should have the same elements
@@ -2218,8 +2221,9 @@ int main(int argc, char **argv) {
 
 				int32_t offset = *to_left - *from_left;
 				//racking limit (attempt!)
-				if (offset <-4) offset = -4;
-				if (offset > 4) offset =  4;
+				
+				if (offset <-(int32_t)max_racking) offset = -(int32_t)max_racking;
+				if (offset > (int32_t)max_racking) offset =  (int32_t)max_racking;
 
 				stash(*storage, to_bed, offset);
 
@@ -2817,7 +2821,7 @@ int main(int argc, char **argv) {
 				constraints.min_free = std::max(left_max + shift_left, used_min - 20);
 				constraints.max_free = std::min(right_min + shift_right, used_max + 20);
 				// with half-gauging max racking 4 can cause a real racking of 9
-				constraints.max_racking = 3;
+				constraints.max_racking = max_racking;
 
 				std::vector< Slack > slack;
 				slack.reserve(from.size());
