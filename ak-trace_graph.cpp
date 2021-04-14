@@ -340,15 +340,21 @@ void ak::trace_graph(
 			}
 
 
-			if (next != -1U) {
-				std::cout << "  TUCKING[2] at " << next << " which has " << info[next].knits << " knits." << std::endl;
+		
+			if (next != -1U && info[next].knits)
+			{
+				//tuck 'next', turn, knit 'up':
+				if (next != -1U) tuck(next);
+				dir = (dir == Forward ? Backward : Forward);
+				if (next != -1U) miss(next);
+				knit(up);
 			}
-
-			//tuck 'next', turn, knit 'up':
-			if (next != -1U) tuck(next);
-			dir = (dir == Forward ? Backward : Forward);
-			if (next != -1U) miss(next);
-			knit(up);
+			else {
+				// don't tuck on an empty location
+				next = -1U;
+				dir = (dir == Forward ? Backward : Forward);
+				knit(up);
+			}
 			return true;
 		};
 
