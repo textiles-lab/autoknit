@@ -219,9 +219,9 @@ void ak::peel_slice(
 			for (uint32_t c = 0; c < level_chains.size(); /* later */) {
 				if (append[c] == -1U) {
 					assert(level_chains[c].empty());
-					std::swap(used_boundary[c], used_boundary.back());
+					used_boundary[c] = used_boundary.back();
 					used_boundary.pop_back();
-					std::swap(level_chains[c], level_chains.back());
+					level_chains[c] = level_chains.back();
 					level_chains.pop_back();
 				} else {
 					assert(!level_chains[c].empty());
