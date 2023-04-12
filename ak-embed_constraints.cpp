@@ -419,7 +419,7 @@ void ak::embed_constraints(
 
 					//PARANOIA:
 					float dis3 = glm::length(verts[root] - verts[ci]);
-					if (dis3 > dis + 1e-6) {
+					if (dis3 > dis * (1.0f + 1e-6f) + 1e-6f) {
 						std::cerr << "dis3: " << dis3 << " vs flat dis " << dis << " seems bad!" << std::endl;
 						std::cerr << "  ra3: " << glm::length(verts[root] - verts[ai]) << " vs ra: " << glm::length(flat_root - flat_a) << std::endl;
 						std::cerr << "  rb3: " << glm::length(verts[root] - verts[bi]) << " vs rb: " << glm::length(flat_root - flat_b) << std::endl;
