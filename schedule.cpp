@@ -548,7 +548,7 @@ int main(int argc, char **argv) {
 			}
 
 			{
-				if (step.end >= stitches.size() || stitches[step.end].yarn != stitches[step.end-1].yarn) {
+				if (step.end >= stitches.size() || stitches[step.end].yarn != stitches[step.end-1].yarn || stitches[step.end-1].type == Stitch::End) {
 					auto f = active_yarns.find(stitches[step.begin].yarn);
 					assert(f != active_yarns.end());
 					active_yarns.erase(f);

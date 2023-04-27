@@ -69,5 +69,22 @@ struct Stitch {
 
 };
 
+inline std::string to_string(Stitch const &s) {
+	std::string ret;
+	ret += "(";
+	ret += std::to_string(int32_t(s.in[0]));
+	ret += ",";
+	ret += std::to_string(int32_t(s.in[1]));
+	ret += ")-";
+	ret += s.type;
+	ret += s.direction;
+	ret += "->(";
+	ret += std::to_string(int32_t(s.out[0]));
+	ret += ",";
+	ret += std::to_string(int32_t(s.out[1]));
+	ret += ")";
+	return ret;
+}
+
 bool load_stitches(std::string const &filename, std::vector< Stitch > *into);
 void save_stitches(std::string const &filename, std::vector< Stitch > const &from);
