@@ -1,6 +1,7 @@
 #include <iostream>
 #include <cassert>
 #include <vector>
+#include <cstdint>
 
 //'flatten' is defined in ak-link_chains.cpp
 void flatten(std::vector< uint32_t > &closest, std::vector< float > const &lengths, bool is_loop);

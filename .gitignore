@@ -3,3 +3,5 @@ dist/schedule
 dist/
 eigen/
 kit-libs-win/
+kit-libs-linux/
+maek-cache.json
