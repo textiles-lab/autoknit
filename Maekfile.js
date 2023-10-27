@@ -31,9 +31,6 @@ if (maek.OS === "windows") {
 		`/I${NEST_LIBS}/SDL2/include`,
 		`/I${NEST_LIBS}/glm/include`,
 		`/I${NEST_LIBS}/libpng/include`,
-		`/I${NEST_LIBS}/opusfile/include`,
-		`/I${NEST_LIBS}/libopus/include`,
-		`/I${NEST_LIBS}/libogg/include`,
 		`/I${NEST_LIBS}/harfbuzz/include`,
 		`/I${NEST_LIBS}/freetype/include`,
 		//#disable a few warnings:
@@ -47,11 +44,8 @@ if (maek.OS === "windows") {
 		`/LIBPATH:${NEST_LIBS}/SDL2/lib`, `SDL2main.lib`, `SDL2.lib`, `OpenGL32.lib`, `Shell32.lib`,
 		`/LIBPATH:${NEST_LIBS}/libpng/lib`, `libpng.lib`,
 		`/LIBPATH:${NEST_LIBS}/zlib/lib`, `zlib.lib`,
-		`/LIBPATH:${NEST_LIBS}/opusfile/lib`, `opusfile.lib`,
-		`/LIBPATH:${NEST_LIBS}/libopus/lib`, `opus.lib`,
-		`/LIBPATH:${NEST_LIBS}/libogg/lib`, `libogg.lib`,
-		`/LIBPATH:${NEST_LIBS}/harfbuzz/lib`, `harfbuzz.lib`,
-		`/LIBPATH:${NEST_LIBS}/freetype/lib`, `freetype.lib`,
+		//`/LIBPATH:${NEST_LIBS}/harfbuzz/lib`, `harfbuzz.lib`,
+		//`/LIBPATH:${NEST_LIBS}/freetype/lib`, `freetype.lib`,
 		`/MANIFEST:EMBED`, `/MANIFESTINPUT:set-utf8-code-page.manifest`
 	);
 } else if (maek.OS === "linux") {
@@ -62,22 +56,16 @@ if (maek.OS === "windows") {
 		`-I${NEST_LIBS}/SDL2/include/SDL2`, `-D_THREAD_SAFE`, //the output of sdl-config --cflags
 		`-I${NEST_LIBS}/glm/include`,
 		`-I${NEST_LIBS}/libpng/include`,
-		`-I${NEST_LIBS}/opusfile/include`,
-		`-I${NEST_LIBS}/libopus/include`,
-		`-I${NEST_LIBS}/libogg/include`,
-		`-I${NEST_LIBS}/harfbuzz/include`,
-		`-I${NEST_LIBS}/freetype/include`
+		//`-I${NEST_LIBS}/harfbuzz/include`,
+		//`-I${NEST_LIBS}/freetype/include`
 	);
 	maek.options.LINKLibs.push(
 		//linker flags for nest libraries:
 		`-L${NEST_LIBS}/SDL2/lib`, `-lSDL2`, `-lm`, `-ldl`, `-lasound`, `-lpthread`, `-lX11`, `-lXext`, `-lpthread`, `-lrt`, `-lGL`, //the output of sdl-config --static-libs
 		`-L${NEST_LIBS}/libpng/lib`, `-lpng`,
 		`-L${NEST_LIBS}/zlib/lib`, `-lz`,
-		`-L${NEST_LIBS}/opusfile/lib`, `-lopusfile`,
-		`-L${NEST_LIBS}/libopus/lib`, `-lopus`,
-		`-L${NEST_LIBS}/libogg/lib`, `-logg`,
-		`-L${NEST_LIBS}/harfbuzz/lib`, `-lharfbuzz`,
-		`-L${NEST_LIBS}/freetype/lib`, `-lfreetype`
+		//`-L${NEST_LIBS}/harfbuzz/lib`, `-lharfbuzz`,
+		//`-L${NEST_LIBS}/freetype/lib`, `-lfreetype`
 	);
 } else if (maek.OS === "macos") {
 	maek.options.CPPFlags.push(
@@ -88,11 +76,8 @@ if (maek.OS === "windows") {
 		`-I${NEST_LIBS}/SDL2/include/SDL2`, `-D_THREAD_SAFE`, //the output of sdl-config --cflags
 		`-I${NEST_LIBS}/glm/include`,
 		`-I${NEST_LIBS}/libpng/include`,
-		`-I${NEST_LIBS}/opusfile/include`,
-		`-I${NEST_LIBS}/libopus/include`,
-		`-I${NEST_LIBS}/libogg/include`,
-		`-I${NEST_LIBS}/harfbuzz/include`,
-		`-I${NEST_LIBS}/freetype/include`
+		//`-I${NEST_LIBS}/harfbuzz/include`,
+		//`-I${NEST_LIBS}/freetype/include`
 	);
 	maek.options.LINKLibs.push(
 		'-I.', //for kit
@@ -100,11 +85,8 @@ if (maek.OS === "windows") {
 		`-L${NEST_LIBS}/SDL2/lib`, `-lSDL2`, `-lm`,`-liconv`, `-framework`, `CoreAudio`, `-framework`, `AudioToolbox`, `-weak_framework`, `CoreHaptics`, `-weak_framework`, `GameController`, `-framework`, `ForceFeedback`, `-lobjc`, `-framework`, `CoreVideo`, `-framework`, `Cocoa`, `-framework`, `Carbon`, `-framework`, `IOKit`, `-framework`, `OpenGL`, //the output of sdl-config --static-libs
 		`-L${NEST_LIBS}/libpng/lib`, `-lpng`,
 		`-L${NEST_LIBS}/zlib/lib`, `-lz`,
-		`-L${NEST_LIBS}/opusfile/lib`, `-lopusfile`,
-		`-L${NEST_LIBS}/libopus/lib`, `-lopus`,
-		`-L${NEST_LIBS}/libogg/lib`, `-logg`,
-		`-L${NEST_LIBS}/harfbuzz/lib`, `-lharfbuzz`,
-		`-L${NEST_LIBS}/freetype/lib`, `-lfreetype`
+		//`-L${NEST_LIBS}/harfbuzz/lib`, `-lharfbuzz`,
+		//`-L${NEST_LIBS}/freetype/lib`, `-lfreetype`
 	);
 }
 //use COPY to copy a file
@@ -112,14 +94,12 @@ if (maek.OS === "windows") {
 // from: file to copy from
 // to: file to copy to
 let copies = [
+	maek.COPY(`README.md`, `dist/README.md`),
 	maek.COPY(`${NEST_LIBS}/SDL2/dist/README-SDL.txt`, `dist/README-SDL.txt`),
 	maek.COPY(`${NEST_LIBS}/libpng/dist/README-libpng.txt`, `dist/README-libpng.txt`),
 	maek.COPY(`${NEST_LIBS}/glm/dist/README-glm.txt`, `dist/README-glm.txt`),
-	maek.COPY(`${NEST_LIBS}/libopus/dist/README-libopus.txt`, `dist/README-libopus.txt`),
-	maek.COPY(`${NEST_LIBS}/opusfile/dist/README-opusfile.txt`, `dist/README-opusfile.txt`),
-	maek.COPY(`${NEST_LIBS}/libogg/dist/README-libogg.txt`, `dist/README-libogg.txt`),
-	maek.COPY(`${NEST_LIBS}/harfbuzz/dist/README-harfbuzz.txt`, `dist/README-harfbuzz.txt`),
-	maek.COPY(`${NEST_LIBS}/freetype/dist/README-freetype.txt`, `dist/README-freetype.txt`)
+	//maek.COPY(`${NEST_LIBS}/harfbuzz/dist/README-harfbuzz.txt`, `dist/README-harfbuzz.txt`),
+	//maek.COPY(`${NEST_LIBS}/freetype/dist/README-freetype.txt`, `dist/README-freetype.txt`)
 ];
 if (maek.OS === 'windows') {
 	copies.push( maek.COPY(`${NEST_LIBS}/SDL2/dist/SDL2.dll`, `dist/SDL2.dll`) );

@@ -5,33 +5,45 @@ on:
     types: [created]
 
 
+env:
+  BASE_NAME: autoknit
+  NEST_LIBS_VERSION: v0.13
+
+
 jobs:
   build-windows:
     name: Build (Windows)
     runs-on: windows-latest
     steps:
+      - uses: ilammy/msvc-dev-cmd@v1.4.1
       - name: Checkout Code
         uses: actions/checkout@v2
+        with:
+          submodules: true
+      - name: Fetch Libraries
+        shell: cmd
+        run: |
+          python .github/workflows/download-file.py https://github.com/15-466/nest-libs/releases/download/%NEST_LIBS_VERSION%/nest-libs-windows-%NEST_LIBS_VERSION%.zip ../nest-libs.zip
+          cd ..
+          "C:\Program Files\7-Zip\7z.exe" x -o. nest-libs.zip
       - name: Build Code
         shell: cmd
         run: |
           dir/w
-          call "C:\Program Files (x86)\Microsoft Visual Studio\2019\Enterprise\VC\Auxiliary\Build\vcvars64.bat"
-          git clone https://github.com/ixchow/kit-libs-win
+          #call "C:\Program Files (x86)\Microsoft Visual Studio\2022\Enterprise\VC\Auxiliary\Build\vcvars64.bat"
           git clone https://github.com/eigenteam/eigen-git-mirror eigen
-          git clone https://github.com/ixchow/kit
-          python .github/workflows/download-jam.py
-          mkdir dist
-          "work\jam.exe" JAM_TOOLSET=VISUALC -j3 -q
-        env:
-          TAG_NAME: ${{ github.event.release.tag_name }}
-      - name: Package
+          node Maekfile.js -q
+      - name: Upload Artifact
+        uses: actions/upload-artifact@v2
+        with:
+          name: ${{ env.BASE_NAME }}-windows
+          path: dist
+      - name: Package (Release)
+        if: github.event_name == 'release'
         shell: cmd
         run: |
-          copy README.md dist
-          rename dist "autoknit-windows-%TAG_NAME%"
-          "C:\Program Files\7-Zip\7z.exe" a -r "autoknit-windows-%TAG_NAME%.zip" "autoknit-windows-%TAG_NAME%"
-          dir/w
+          rename dist "%BASE_NAME%-windows-%TAG_NAME%"
+          "C:\Program Files\7-Zip\7z.exe" a -r "%BASE_NAME%-windows-%TAG_NAME%.zip" "%BASE_NAME%-windows-%TAG_NAME%"
         env:
           TAG_NAME: ${{ github.event.release.tag_name }}
       - name: Upload Result
@@ -41,8 +53,8 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
           upload_url: ${{ github.event.release.upload_url }}
-          asset_path: autoknit-windows-${{ github.event.release.tag_name }}.zip
-          asset_name: autoknit-windows-${{ github.event.release.tag_name }}.zip
+          asset_path: ${{ env.BASE_NAME }}-windows-${{ github.event.release.tag_name }}.zip
+          asset_name: ${{ env.BASE_NAME }}-windows-${{ github.event.release.tag_name }}.zip
           asset_content_type: application/zip
   build-linux:
     name: Build (Linux)
@@ -50,22 +62,32 @@ jobs:
     steps:
       - name: Checkout Code
         uses: actions/checkout@v2
+        with:
+          submodules: true
+      - name: Fetch Libraries
+        shell: bash
+        run: |
+          cd ..
+          wget https://github.com/15-466/nest-libs/releases/download/${NEST_LIBS_VERSION}/nest-libs-linux-${NEST_LIBS_VERSION}.tar.gz -Onest-libs.tar.gz
+          tar xfz nest-libs.tar.gz
       - name: Build Code
         shell: bash
         run: |
-          sudo apt install ftjam libglm-dev libpng-dev libsdl2-dev libeigen3-dev
-          git clone https://github.com/ixchow/kit
-          mkdir dist
-          jam -j3 -q
-        env:
-          TAG_NAME: ${{ github.event.release.tag_name }}
+          sudo apt-get update
+          sudo apt-get install libgl-dev libasound2-dev libeigen3-dev
+          ls
+          node Maekfile.js -q
+      - name: Upload Artifact
+        uses: actions/upload-artifact@v2
+        with:
+          name: ${{ env.BASE_NAME }}-linux
+          path: dist
       - name: Package
+        if: github.event_name == 'release'
         shell: bash
         run: |
-          cp README.md dist
-          mv dist "autoknit-linux-$TAG_NAME"
-          tar cfz "autoknit-linux-$TAG_NAME"".tar.gz" "autoknit-linux-$TAG_NAME"
-          ls
+          mv dist "$BASE_NAME""-linux-""$TAG_NAME"
+          tar cvfz "$BASE_NAME""-linux-""$TAG_NAME"".tar.gz" "$BASE_NAME""-linux-""$TAG_NAME"
         env:
           TAG_NAME: ${{ github.event.release.tag_name }}
       - name: Upload Result
@@ -75,8 +97,8 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
           upload_url: ${{ github.event.release.upload_url }}
-          asset_path: autoknit-linux-${{ github.event.release.tag_name }}.tar.gz
-          asset_name: autoknit-linux-${{ github.event.release.tag_name }}.tar.gz
+          asset_path: ${{ env.BASE_NAME }}-linux-${{ github.event.release.tag_name }}.tar.gz
+          asset_name: ${{ env.BASE_NAME }}-linux-${{ github.event.release.tag_name }}.tar.gz
           asset_content_type: application/gzip
   build-macos:
     name: Build (MacOS)
@@ -84,20 +106,31 @@ jobs:
     steps:
       - name: Checkout Code
         uses: actions/checkout@v2
+        with:
+          submodules: true
+      - name: Fetch Libraries
+        shell: bash
+        run: |
+          cd ..
+          wget https://github.com/15-466/nest-libs/releases/download/${NEST_LIBS_VERSION}/nest-libs-macos-${NEST_LIBS_VERSION}.tar.gz -Onest-libs.tar.gz
+          tar xfz nest-libs.tar.gz
+          brew install eigen
       - name: Build Code
         shell: bash
         run: |
-          brew install ftjam sdl2 glm eigen libpng
-          git clone https://github.com/ixchow/kit
-          mkdir dist
-          jam -j3 -q
+          ls
+          node Maekfile.js -q
+      - name: Upload Artifact
+        uses: actions/upload-artifact@v2
+        with:
+          name: ${{ env.BASE_NAME }}-macos
+          path: dist
       - name: Package
+        if: github.event_name == 'release'
         shell: bash
         run: |
-          cp README.md dist
-          mv dist "autoknit-macos-$TAG_NAME"
-          tar cfz "autoknit-macos-$TAG_NAME"".tar.gz" "autoknit-macos-$TAG_NAME"
-          ls
+          mv dist "$BASE_NAME""-macos-""$TAG_NAME"
+          tar cvfz "$BASE_NAME""-macos-""$TAG_NAME"".tar.gz" "$BASE_NAME""-macos-""$TAG_NAME"
         env:
           TAG_NAME: ${{ github.event.release.tag_name }}
       - name: Upload Result
@@ -107,6 +140,6 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
           upload_url: ${{ github.event.release.upload_url }}
-          asset_path: autoknit-macos-${{ github.event.release.tag_name }}.tar.gz
-          asset_name: autoknit-macos-${{ github.event.release.tag_name }}.tar.gz
+          asset_path: ${{ env.BASE_NAME }}-macos-${{ github.event.release.tag_name }}.tar.gz
+          asset_name: ${{ env.BASE_NAME }}-macos-${{ github.event.release.tag_name }}.tar.gz
           asset_content_type: application/gzip
