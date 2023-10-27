@@ -78,8 +78,8 @@ bool simulate_transfers(
 		uint32_t back_right = 0;
 		uint32_t back_front = 0;
 		uint32_t front_left = 0;
-		uint32_t front_right = 0;
-		uint32_t front_back = 0;
+		[[maybe_unused]] uint32_t front_right = 0;
+		[[maybe_unused]] uint32_t front_back = 0;
 
 		auto is_front = [&ccw](uint32_t i) {
 			if (ccw[i].bed == BedNeedle::Front) {
