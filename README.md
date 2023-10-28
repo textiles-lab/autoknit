@@ -21,10 +21,10 @@ Building autoknit is handled with the single-file build tool [maek](https://gith
 ### <a name="mac"></a>MacOS setup
 ```
 #install eigen library and nodejs (used for build script and to post-process scheduled output):
-brew eigen node
+brew install eigen node
 
 #extract nest-libs package as a sibling of autoknit folder:
-curl 'https://github.com/15-466/nest-libs/releases/download/v0.13/nest-libs-macos-v0.13.tar.gz'
+curl 'https://github.com/15-466/nest-libs/releases/download/v0.13/nest-libs-macos-v0.13.tar.gz' -L -O
 tar xvfz nest-libs-macos-v0.13.tar.gz
 
 #clone repository:
@@ -41,7 +41,7 @@ git submodule update
 sudo apt-get install libeigen3-dev nodejs
 
 #extract nest-libs package as a sibling of autoknit folder:
-curl 'https://github.com/15-466/nest-libs/releases/download/v0.13/nest-libs-linux-v0.13.tar.gz'
+curl 'https://github.com/15-466/nest-libs/releases/download/v0.13/nest-libs-linux-v0.13.tar.gz' -L -O
 tar xvfz nest-libs-macos-v0.13.tar.gz
 
 #clone repository:
@@ -81,6 +81,7 @@ node Maekfile.js
 Command line flags for maek include:
 - `-j8` run with 8 compilation jobs in parallel. Adjust the number to suit your machine. Defaults to number of cores + 1.
 - `-q` quit on first error
+- Specifically, `node Maekfile.js -j1 -q` is useful when you want to work on one error at a time during development!
 
 Note that maek is a small build system, entirely contained in [Maekfile.js](Maekfile.js). You can read the file to see more about command line options or to see how the build is structured.
 

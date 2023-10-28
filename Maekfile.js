@@ -153,7 +153,7 @@ const schedule_names = [
 //extra flags for finding Eigen:
 const interpolate_values_CPPFlags = [...maek.options.CPPFlags];
 if (maek.OS === "macos") {
-	interpolate_values_CPPFlags.push('-I/usr/local/include/eigen3');
+	interpolate_values_CPPFlags.push('-I/opt/homebrew/include/eigen3', '-Wno-unused-but-set-variable');
 } else if (maek.OS === "windows") {
 	interpolate_values_CPPFlags.push('/Ieigen', '/D_SILENCE_CXX17_RESULT_OF_DEPRECATION_WARNING',
 		`/wd4459` //local definition hides global

@@ -466,10 +466,13 @@ void ak::embed_constraints(
 		}
 
 		//clear adj + re-create from min_dis:
+
+		/* //DEBUG:
 		uint32_t old_adj = 0;
 		for (auto const &a : adj) {
 			old_adj += a.size();
 		}
+		*/
 
 		adj.assign(verts.size(), std::vector< std::pair< uint32_t, float > >());
 
@@ -479,12 +482,14 @@ void ak::embed_constraints(
 			adj[xyd.first.y].emplace_back(xyd.first.x, xyd.second);
 		}
 
+		/* //DEBUG:
 		uint32_t new_adj = 0;
 		for (auto const &a : adj) {
 			new_adj += a.size();
 		}
+		*/
 
-		//std::cout << "Went from " << old_adj << " to " << new_adj << " by unfolding triangles." << std::endl;
+		//std::cout << "Went from " << old_adj << " to " << new_adj << " by unfolding triangles." << std::endl; //DEBUG
 
 		//for consistency:
 		for (auto &a : adj) {
