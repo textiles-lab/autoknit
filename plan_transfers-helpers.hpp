@@ -22,13 +22,13 @@ struct NeedleRollGoal {
 	bool can_stack_left = false;
 	bool can_stack_right = false;
 
-	NeedleRollGoal after_offset_and_roll(int32_t offset, int32_t roll) const {
+	NeedleRollGoal after_offset_and_roll(int32_t offset, int32_t more_roll) const {
 		NeedleRollGoal ret = *this;
 		ret.needle += offset;
 		//adjust target roll based on transfer's roll:
-		ret.roll = ret.roll - roll;
+		ret.roll = ret.roll - more_roll;
 		//adjust roll/slack if on the other bed:
-		if (roll % 2) {
+		if (more_roll % 2) {
 			ret.roll = -ret.roll;
 			std::swap(ret.left_slack, ret.right_slack);
 			std::swap(ret.can_stack_left, ret.can_stack_right);

@@ -66,8 +66,8 @@ void ak::optimal_link(
 			State s;
 			s.source_idx = 0;
 			s.target_idx = t;
-			s.source_remain = source.size();
-			s.target_remain = target.size();
+			s.source_remain = uint32_t(source.size());
+			s.target_remain = uint32_t(target.size());
 			visit(s.pack(), 0.0f, Action());
 
 			s.source_idx = 1;
@@ -77,8 +77,8 @@ void ak::optimal_link(
 		State s;
 		s.source_idx = 0;
 		s.target_idx = 0;
-		s.source_remain = source.size();
-		s.target_remain = target.size();
+		s.source_remain = uint32_t(source.size());
+		s.target_remain = uint32_t(target.size());
 		visit(s.pack(), 0.0f, Action());
 	}
 
@@ -166,20 +166,20 @@ void ak::optimal_link(
 		Action action = f->second.second;
 		if (action.take_source == 0 && action.take_target == 0) break;
 		if (action.take_source == 1) {
-			at.source_idx = (at.source_idx + source.size() - 1) % source.size();
+			at.source_idx = (at.source_idx + uint32_t(source.size()) - 1) % uint32_t(source.size());
 			at.source_remain += 1;
 			while (action.take_target > 0) {
 				--action.take_target;
-				at.target_idx = (at.target_idx + target.size() - 1) % target.size();
+				at.target_idx = (at.target_idx + uint32_t(target.size()) - 1) % uint32_t(target.size());
 				at.target_remain += 1;
 				links.emplace_back(at.source_idx, at.target_idx);
 			}
 		} else if (action.take_target == 1) {
-			at.target_idx = (at.target_idx + target.size() - 1) % target.size();
+			at.target_idx = (at.target_idx + uint32_t(target.size()) - 1) % uint32_t(target.size());
 			at.target_remain += 1;
 			while (action.take_source > 0) {
 				--action.take_source;
-				at.source_idx = (at.source_idx + source.size() - 1) % source.size();
+				at.source_idx = (at.source_idx + uint32_t(source.size()) - 1) % uint32_t(source.size());
 				at.source_remain += 1;
 				links.emplace_back(at.source_idx, at.target_idx);
 			}

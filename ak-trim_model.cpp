@@ -68,28 +68,28 @@ void ak::trim_model(
 	clipped_vertices.clear();
 
 	{ //PARANOIA: make sure all chains are loops or edge-to-edge:
-		std::unordered_set< glm::uvec2 > edges;
+		std::unordered_set< glm::uvec2 > edges_;
 		for (auto const &tri : model.triangles) {
-			auto do_edge = [&edges](uint32_t a, uint32_t b) {
+			auto do_edge = [&edges_](uint32_t a, uint32_t b) {
 				if (a > b) std::swap(a,b);
-				auto ret = edges.insert(glm::uvec2(a,b));
-				if (!ret.second) edges.erase(ret.first);
+				auto ret = edges_.insert(glm::uvec2(a,b));
+				if (!ret.second) edges_.erase(ret.first);
 			};
 			do_edge(tri.x, tri.y);
 			do_edge(tri.y, tri.z);
 			do_edge(tri.z, tri.x);
 		}
 		std::unordered_set< uint32_t > edge_verts;
-		for (auto const &e : edges) {
+		for (auto const &e : edges_) {
 			edge_verts.insert(e.x);
 			edge_verts.insert(e.y);
 		}
 
-		auto on_edge = [&edges, &edge_verts](ak::EmbeddedVertex const &ev) -> bool {
+		auto on_edge = [&edges_, &edge_verts](ak::EmbeddedVertex const &ev) -> bool {
 			if (ev.simplex.z != -1U) {
 				return false;
 			} else if (ev.simplex.y != -1U) {
-				return edges.count(glm::uvec2(ev.simplex.x, ev.simplex.y)) != 0;
+				return edges_.count(glm::uvec2(ev.simplex.x, ev.simplex.y)) != 0;
 			} else {
 				return edge_verts.count(ev.simplex.x) != 0;
 			}
@@ -115,57 +115,60 @@ void ak::trim_model(
 	edges.clear(); //global list used for edge tracking in epm; awkward but should work.
 	EmbeddedPlanarMap< Value, Value::Reverse, Value::Combine, Value::Split > epm;
 	std::unordered_set< glm::uvec2 > empty_edges; //when it's the same vertex after rounding
-	uint32_t total_chain_edges = 0;
-	uint32_t fresh_id = 0;
-	for (auto const &chain : left_of) {
-		uint32_t prev = epm.add_vertex(chain[0]);
-		uint32_t prev_id = fresh_id++;
-		for (uint32_t i = 1; i < chain.size(); ++i) {
-			uint32_t cur = epm.add_vertex(chain[i]);
-			uint32_t cur_id = fresh_id++;
-			if (prev == cur) {
-				std::cout << "NOTE: vertex " << chain[i-1] << " and " << chain[i] << " (in a left_of chain) round to the same value." << std::endl; //DEBUG
-				empty_edges.insert(glm::uvec2(prev_id, cur_id));
+	{
+		uint32_t total_chain_edges = 0;
+		uint32_t fresh_id = 0;
+		for (auto const &chain : left_of) {
+			uint32_t prev = epm.add_vertex(chain[0]);
+			uint32_t prev_id = fresh_id++;
+			for (uint32_t i = 1; i < chain.size(); ++i) {
+				uint32_t cur = epm.add_vertex(chain[i]);
+				uint32_t cur_id = fresh_id++;
+				if (prev == cur) {
+					std::cout << "NOTE: vertex " << chain[i-1] << " and " << chain[i] << " (in a left_of chain) round to the same value." << std::endl; //DEBUG
+					empty_edges.insert(glm::uvec2(prev_id, cur_id));
+				}
+				Value value;
+				value.sum = 1;
+				edges.emplace_back(Edge::Initial, prev_id, cur_id);
+				value.edge = edges.size() - 1;
+				epm.add_edge(prev, cur, value);
+				prev = cur;
+				prev_id = cur_id;
+				++total_chain_edges;
 			}
-			Value value;
-			value.sum = 1;
-			edges.emplace_back(Edge::Initial, prev_id, cur_id);
-			value.edge = edges.size() - 1;
-			epm.add_edge(prev, cur, value);
-			prev = cur;
-			prev_id = cur_id;
-			++total_chain_edges;
 		}
-	}
 
-	for (auto const &chain : right_of) {
-		uint32_t prev = epm.add_vertex(chain[0]);
-		uint32_t prev_id = fresh_id++;
-		for (uint32_t i = 1; i < chain.size(); ++i) {
-			uint32_t cur = epm.add_vertex(chain[i]);
-			uint32_t cur_id = fresh_id++;
-			if (prev == cur) {
-				std::cout << "NOTE: vertex " << chain[i-1] << " and " << chain[i] << " (in a right_of chain) round to the same value." << std::endl; //DEBUG
-				empty_edges.insert(glm::uvec2(prev_id, cur_id));
+		for (auto const &chain : right_of) {
+			uint32_t prev = epm.add_vertex(chain[0]);
+			uint32_t prev_id = fresh_id++;
+			for (uint32_t i = 1; i < chain.size(); ++i) {
+				uint32_t cur = epm.add_vertex(chain[i]);
+				uint32_t cur_id = fresh_id++;
+				if (prev == cur) {
+					std::cout << "NOTE: vertex " << chain[i-1] << " and " << chain[i] << " (in a right_of chain) round to the same value." << std::endl; //DEBUG
+					empty_edges.insert(glm::uvec2(prev_id, cur_id));
+				}
+				Value value;
+				value.sum = (1 << 8);
+				edges.emplace_back(Edge::Initial, cur_id, prev_id);
+				value.edge = edges.size() - 1;
+				epm.add_edge(cur, prev, value);
+				prev = cur;
+				prev_id = cur_id;
+				++total_chain_edges;
 			}
-			Value value;
-			value.sum = (1 << 8);
-			edges.emplace_back(Edge::Initial, cur_id, prev_id);
-			value.edge = edges.size() - 1;
-			epm.add_edge(cur, prev, value);
-			prev = cur;
-			prev_id = cur_id;
-			++total_chain_edges;
 		}
-	}
 
-	uint32_t total_simplex_edges = 0;
-	for (const auto &edges : epm.simplex_edges) {
-		total_simplex_edges += edges.second.size();
+		uint32_t total_simplex_edges = 0;
+		for (const auto &sedges : epm.simplex_edges) {
+			total_simplex_edges += sedges.second.size();
+		}
+		std::cout << "EPM has " << epm.vertices.size() << " vertices." << std::endl;
+		std::cout << "EPM has " << epm.simplex_vertices.size() << " simplices with vertices." << std::endl;
+		std::cout << "EPM has " << epm.simplex_edges.size() << " simplices with edges (" << total_simplex_edges << " edges from " << total_chain_edges << " chain edges)." << std::endl;
+
 	}
-	std::cout << "EPM has " << epm.vertices.size() << " vertices." << std::endl;
-	std::cout << "EPM has " << epm.simplex_vertices.size() << " simplices with vertices." << std::endl;
-	std::cout << "EPM has " << epm.simplex_edges.size() << " simplices with edges (" << total_simplex_edges << " edges from " << total_chain_edges << " chain edges)." << std::endl;
 
 
 	//clean up any small loops that may exist in chains:

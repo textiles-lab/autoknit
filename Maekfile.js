@@ -38,7 +38,10 @@ if (maek.OS === "windows") {
 		`/wd4297`, //unfortunately SDLmain is nothrow
 		`/wd4100`, //unreferenced formal parameter
 		`/wd4201`, //nameless struct/union
-		`/wd4611`  //interaction between setjmp and C++ object destruction
+		`/wd4611`, //interaction between setjmp and C++ object destruction
+		`/wd4127`, //"consider using if constexpr"
+		`/wd4244`, //integer width change -- NOTE: should consider fixing these
+		`/wd4267`, //integer width change (size_t -> uint32_t) -- NOTE: should probably actually fix these
 	);
 	maek.options.LINKLibs.push(
 		`/LIBPATH:${NEST_LIBS}/SDL2/lib`, `SDL2main.lib`, `SDL2.lib`, `OpenGL32.lib`, `Shell32.lib`,
@@ -152,7 +155,9 @@ const interpolate_values_CPPFlags = [...maek.options.CPPFlags];
 if (maek.OS === "macos") {
 	interpolate_values_CPPFlags.push('-I/usr/local/include/eigen3');
 } else if (maek.OS === "windows") {
-	interpolate_values_CPPFlags.push('/Ieigen', '/D_SILENCE_CXX17_RESULT_OF_DEPRECATION_WARNING');
+	interpolate_values_CPPFlags.push('/Ieigen', '/D_SILENCE_CXX17_RESULT_OF_DEPRECATION_WARNING',
+		`/wd4459` //local definition hides global
+	);
 } else {
 	interpolate_values_CPPFlags.push('-I/usr/include/eigen3');
 }

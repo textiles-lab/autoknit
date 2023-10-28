@@ -480,7 +480,7 @@ void best_collapse(
 		init.l = 0;
 		init.l_prev_needle = (bottom.empty() ? top[0].needle : bottom[0].needle);
 		init.l_prev_roll = (bottom.empty() ? State::LRollInvalid : State::LRoll1);
-		init.r = top.size()-1;
+		init.r = int32_t(top.size())-1;
 		init.r_next_needle = (bottom.empty() ? top.back().needle : bottom.back().needle);
 		init.r_next_roll = (bottom.empty() ? State::RRollInvalid : State::RRoll1);
 		Cost cost;

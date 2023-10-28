@@ -665,7 +665,7 @@ void ak::link_chains(
 			old_back += pad(std::to_string(segments[0]->stitches.size()));
 			old_front += pad("");
 			for (uint32_t i = 1; i < segments.size()/2; ++i) {
-				uint32_t io = segments.size()-i;
+				uint32_t io = uint32_t(segments.size())-i;
 				assert(segments[i]->next == segments[io]->next);
 				old_back += pad(std::to_string(segments[i]->stitches.size()));
 				old_front += pad(std::to_string(segments[io]->stitches.size()));
@@ -686,10 +686,10 @@ void ak::link_chains(
 			}
 
 			//now push extra stitches from the center outward:
-			uint32_t m = (segments.size()/2)/2; //so a b c b -> m = 1 ; a b c d e d c b -> m = 2;
-			assert(0 < m && m < segments.size()/2);
+			uint32_t m = (uint32_t(segments.size())/2)/2; //so a b c b -> m = 1 ; a b c d e d c b -> m = 2;
+			assert(0 < m && m < uint32_t(segments.size())/2);
 			{ //push from the middle segment outward (alternating sides):
-				uint32_t mo = segments.size()-m;
+				uint32_t mo = uint32_t(segments.size())-m;
 				assert(segments.size()/2 < mo && mo < segments.size());
 				uint32_t mo_p = mo-1; assert(mo_p < segments.size());
 				uint32_t mo_n = (mo+1 < segments.size() ? mo+1 : 0); assert(mo_n < segments.size());
@@ -717,7 +717,7 @@ void ak::link_chains(
 			}
 			//push from left-side segments leftward:
 			for (uint32_t l = m-1; l > 0; --l) {
-				uint32_t lo = segments.size()-l;
+				uint32_t lo = uint32_t(segments.size())-l;
 				uint32_t lo_n = (lo+1 < segments.size() ? lo+1 : 0); assert(lo_n < segments.size());
 				assert(segments[lo]->next == segments[l]->next);
 				while (segments[l]->stitches.size() > segments[lo]->stitches.size()) {
@@ -731,7 +731,7 @@ void ak::link_chains(
 			}
 			//push from right-side segments leftward:
 			for (uint32_t r = m+1; r < segments.size()/2; ++r) {
-				uint32_t ro = segments.size()-r;
+				uint32_t ro = uint32_t(segments.size())-r;
 				uint32_t ro_p = ro-1; assert(ro_p < segments.size());
 				assert(segments[ro]->next == segments[r]->next);
 				while (segments[r]->stitches.size() > segments[ro]->stitches.size()) {
@@ -746,7 +746,7 @@ void ak::link_chains(
 
 			//check for balance:
 			for (uint32_t i = 1; i < segments.size()/2; ++i) {
-				uint32_t io = segments.size()-i;
+				uint32_t io = uint32_t(segments.size())-i;
 				assert(segments[i]->stitches.size() == segments[io]->stitches.size());
 			}
 
@@ -756,7 +756,7 @@ void ak::link_chains(
 			new_back += pad(std::to_string(segments[0]->stitches.size()));
 			new_front += pad("");
 			for (uint32_t i = 1; i < segments.size()/2; ++i) {
-				uint32_t io = segments.size()-i;
+				uint32_t io = uint32_t(segments.size())-i;
 				assert(segments[i]->next == segments[io]->next);
 				new_back += pad(std::to_string(segments[i]->stitches.size()));
 				new_front += pad(std::to_string(segments[io]->stitches.size()));
@@ -1108,7 +1108,7 @@ void ak::link_chains(
 			old_back += pad(std::to_string(segments[0]->stitches));
 			old_front += pad("");
 			for (uint32_t i = 1; i < segments.size()/2; ++i) {
-				uint32_t io = segments.size()-i;
+				uint32_t io = uint32_t(segments.size())-i;
 				assert(segments[i]->active == segments[io]->active);
 				old_back += pad(std::to_string(segments[i]->stitches));
 				old_front += pad(std::to_string(segments[io]->stitches));
@@ -1121,7 +1121,7 @@ void ak::link_chains(
 			uint32_t sum = 0;
 			uint32_t sumo = 0;
 			for (uint32_t i = 1; i < segments.size()/2; ++i) {
-				uint32_t io = segments.size()-i;
+				uint32_t io = uint32_t(segments.size())-i;
 				assert(segments[i]->active == segments[io]->active);
 				uint32_t total = segments[i]->stitches + segments[io]->stitches;
 				segments[i]->stitches = total / 2;
@@ -1136,7 +1136,7 @@ void ak::link_chains(
 			//REMEMBER: as per Appendix A, this algorithm isn't perfect (can fail in very large merge/split chains).
 
 			//Now delete the existing stitches for this chain and re-allocate!
-			uint32_t old_count = next_stitches[ni].size();
+			uint32_t old_count = uint32_t(next_stitches[ni].size());
 
 			next_stitches[ni].clear();
 			for (auto seg : segments) {
@@ -1164,7 +1164,7 @@ void ak::link_chains(
 			new_back += pad(std::to_string(segments[0]->stitches));
 			new_front += pad("");
 			for (uint32_t i = 1; i < segments.size()/2; ++i) {
-				uint32_t io = segments.size()-i;
+				uint32_t io = uint32_t(segments.size())-i;
 				assert(segments[i]->active == segments[io]->active);
 				new_back += pad(std::to_string(segments[i]->stitches));
 				new_front += pad(std::to_string(segments[io]->stitches));
@@ -1591,7 +1591,7 @@ bool fill_unassigned(std::vector< uint32_t > &closest, std::vector< float > cons
 		if (closest[seed] != -1U) continue;
 		uint32_t first = seed;
 		while ((first > 0 || is_loop) && closest[first > 0 ? first - 1 : closest.size()-1] == -1U) {
-			first = (first > 0 ? first - 1 : closest.size()-1);
+			first = (first > 0 ? first - 1 : uint32_t(closest.size())-1);
 		}
 		uint32_t last = seed;
 		while ((last + 1 < closest.size() || is_loop) && closest[last + 1 < closest.size() ? last + 1 : 0] == -1U) {
@@ -1650,7 +1650,7 @@ void flatten(std::vector< uint32_t > &closest, std::vector< float > const &weigh
 			bit_symbols.emplace_back(ret.first->second, sw.second);
 		}
 		assert(bit_symbols.size() == symbols.size());
-		bits = symbol_bit.size();
+		bits = uint32_t(symbol_bit.size());
 	}
 
 	struct State {
@@ -1732,13 +1732,14 @@ void flatten(std::vector< uint32_t > &closest, std::vector< float > const &weigh
 		auto const max = state.max;
 		auto const current = state.current;
 		assert(state.padding == 0);
+		assert(bit_symbols.size() < 256);
 
 		//*_next_symbol is the symbol that is advanced over when moving min/max,
 		// leading to some asymmetry in indexing:
 		// a(bc)d -> (abc)d <-- min_next_symbol is 'a' (at index of min_next)
 		// a(bc)d -> a(bcd) <-- max_next_symbol is 'd' (at index of max)
 
-		auto min_next = (min == 0 ? bit_symbols.size() - 1 : min - 1);
+		auto min_next = (min == 0 ? uint8_t(bit_symbols.size()) - 1 : min - 1);
 		auto min_next_symbol = bit_symbols[min_next];
 		auto max_next = (max + 1U < bit_symbols.size() ? max + 1 : 0);
 		auto max_next_symbol = bit_symbols[max];
@@ -1972,7 +1973,7 @@ void flatten(std::vector< uint32_t > &closest, std::vector< float > const &weigh
 			if (!relabel[seed]) continue;
 			uint32_t first = seed;
 			while (relabel[first > 0 ? first - 1 : closest.size()-1]) {
-				first = (first > 0 ? first - 1 : closest.size()-1);
+				first = (first > 0 ? first - 1 : uint32_t(closest.size())-1);
 			}
 			uint32_t last = seed;
 			while (relabel[last + 1 < closest.size() ? last + 1 : 0]) {

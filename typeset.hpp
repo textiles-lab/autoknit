@@ -34,7 +34,7 @@ void typeset_beds(
 	for (auto &column : columns) {
 		uint32_t len = 0;
 		for (auto const &elt : column) {
-			len = std::max< uint32_t >(len, elt.size());
+			len = std::max(len, uint32_t(elt.size()));
 		}
 		for (auto &elt : column) {
 			while (elt.size() < len) {

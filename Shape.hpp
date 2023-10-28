@@ -188,7 +188,7 @@ struct Shape {
 		auto &back = *back_;
 
 		//figure out how many items go on the back and how many on the front:
-		uint32_t width = data.size()
+		uint32_t width = uint32_t(data.size())
 			+ ((nibbles & BackLeft) ? 1 : 0)
 			+ ((nibbles & FrontLeft) ? 1 : 0)
 			+ ((nibbles & BackRight) ? 1 : 0)
@@ -257,11 +257,11 @@ struct Shape {
 		} else if (count % 2 == 0) {
 			ret.reserve(5 * count);
 			for (uint32_t i = 0; i < count; ++i) {
-				ret.emplace_back(i, 0);
-				ret.emplace_back(i, BackLeft | BackRight);
-				ret.emplace_back(i, BackLeft | FrontRight);
-				ret.emplace_back(i, FrontLeft | BackRight);
-				ret.emplace_back(i, FrontLeft | FrontRight);
+				ret.emplace_back(i, uint8_t(0));
+				ret.emplace_back(i, uint8_t(BackLeft | BackRight));
+				ret.emplace_back(i, uint8_t(BackLeft | FrontRight));
+				ret.emplace_back(i, uint8_t(FrontLeft | BackRight));
+				ret.emplace_back(i, uint8_t(FrontLeft | FrontRight));
 			}
 			assert(ret.size() == count * 5);
 		} else {

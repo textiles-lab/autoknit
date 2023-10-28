@@ -449,7 +449,7 @@ int main(int argc, char **argv) {
 						//TODO: special flag for steps whose inter doesn't actually turn into outs[0] ?
 					}
 				}
-				uint32_t base = storages.size();
+				uint32_t base = uint32_t(storages.size());
 				storages.insert(storages.end(), outs.begin(), outs.end());
 				for (uint32_t i = base; i < storages.size(); ++i) {
 					step.out.push_back(i);
@@ -908,13 +908,13 @@ int main(int argc, char **argv) {
 
 			{ //new method: no baked-in transfers (will bake into edges instead):
 				//so just penalize for the intermediate shapes (might be double-charging?):
-				ScheduleCost cost;
-				for (auto const &inter_shape : inter_shapes) {
-					cost += ScheduleCost::shape_cost(Shape::unpack(inter_shape));
-				}
 
 				ScheduleOption option;
-				option.cost = cost;
+
+				option.cost = ScheduleCost();
+				for (auto const &inter_shape : inter_shapes) {
+					option.cost += ScheduleCost::shape_cost(Shape::unpack(inter_shape));
+				}
 
 				option.in_order = in_order;
 				option.in_shapes = in_shapes;
@@ -925,13 +925,13 @@ int main(int argc, char **argv) {
 				option.out_shapes = inter_shapes;
 
 				//out0 needs to be assigned a shape, so pick the cheapest one:
-				std::vector< Shape > out0_shapes = Shape::make_shapes_for(outs[0].size());
+				std::vector< Shape > out0_shapes = Shape::make_shapes_for(uint32_t(outs[0].size()));
 				ScheduleCost best_cost = ScheduleCost::max();
 				for (auto const &out0_shape : out0_shapes) {
 					ScheduleCost cost = ScheduleCost::shape_cost(out0_shape);
 					cost += ScheduleCost::transfer_cost(
-						intermediates[0].size(), Shape::unpack(inter_shapes[0]),
-						outs[0].size(), out0_shape,
+						uint32_t(intermediates[0].size()), Shape::unpack(inter_shapes[0]),
+						uint32_t(outs[0].size()), out0_shape,
 						step.inter_to_out);
 					if (cost < best_cost) {
 						best_cost = cost;
@@ -1004,12 +1004,12 @@ int main(int argc, char **argv) {
 				remaining.pop_back();
 				in_order.emplace_back(idx);
 
-				std::vector< Shape > shapes = Shape::make_shapes_for(ins[idx].size());
+				std::vector< Shape > shapes = Shape::make_shapes_for(uint32_t(ins[idx].size()));
 				for (auto const &shape : shapes) {
 					in_shapes[idx] = shape.pack();
 
-					uint32_t front_size_before = front.size();
-					uint32_t back_size_before = back.size();
+					uint32_t front_size_before = uint32_t(front.size());
+					uint32_t back_size_before = uint32_t(back.size());
 
 					shape.append_to_beds(in_to_inter[idx], CycleIndex(-1U, -1U), &front, &back);
 
@@ -1174,12 +1174,12 @@ int main(int argc, char **argv) {
 			step_out_edges.emplace_back();
 			if (step.in.size() == 1 && step.out.size() == 1) {
 				//1-1 step; accumulate DAGEdge cost matrix:
-				auto f = active_edges.find(step.in[0]);
-				assert(f != active_edges.end());
-				assert(f->second < edges.size());
-				DAGEdge &edge = edges[f->second];
+				auto found = active_edges.find(step.in[0]);
+				assert(found != active_edges.end());
+				assert(found->second < edges.size());
+				DAGEdge &edge = edges[found->second];
 				assert(edge.to == step.in[0]);
-				active_edges.erase(f);
+				active_edges.erase(found);
 
 				std::vector< DAGCost > old_costs = std::move(edge.costs);
 				uint32_t old_to_shapes = edge.to_shapes;
@@ -1238,9 +1238,9 @@ int main(int argc, char **argv) {
 
 				//create out edges:
 				for (uint32_t i = 0; i < step.out.size(); ++i) {
-					auto ret = active_edges.insert(std::make_pair(step.out[i], edges.size()));
+					auto ret = active_edges.insert(std::make_pair(step.out[i], uint32_t(edges.size())));
 					assert(ret.second);
-					out_edges.emplace_back(edges.size());
+					out_edges.emplace_back(uint32_t(edges.size()));
 
 					edges.emplace_back();
 					DAGEdge &edge = edges.back();
@@ -1413,10 +1413,10 @@ int main(int argc, char **argv) {
 			}
 		}
 		for (auto const &step : steps) {
-			uint32_t si = &step - &steps[0];
-			if (step_options[si] != -1U) {
+			uint32_t stepi = &step - &steps[0];
+			if (step_options[stepi] != -1U) {
 				//already-assigned option:
-				auto const &option = step.options[step_options[si]];
+				auto const &option = step.options[step_options[stepi]];
 				//chase back storage_costs chains from ins:
 				for (uint32_t in = 0; in < step.in.size(); ++in) {
 					uint32_t storage = step.in[in];
@@ -1447,7 +1447,7 @@ int main(int argc, char **argv) {
 					uint32_t idx = Shape::unpack(option.out_shapes[out]).index_for(storages[step.out[out]].size());
 					assert(idx < storage_costs[step.out[out]].size());
 					storage_costs[step.out[out]][idx].cost = ScheduleCost::zero();
-					storage_costs[step.out[out]][idx].option = step_options[si];
+					storage_costs[step.out[out]][idx].option = step_options[stepi];
 				}
 			} else {
 				//was part of an edge, need to propagate:
@@ -1599,10 +1599,10 @@ int main(int argc, char **argv) {
 		storage_widths.reserve(storages.size());
 		for (auto const &storage : storages) {
 			Shape shape = Shape::unpack(storage_shapes[&storage-&storages[0]]);
-			std::vector< char > stitches(storage.size(), '.');
+			std::vector< char > stitches_(storage.size(), '.');
 			std::vector< char > front, back;
-			shape.append_to_beds(stitches, ' ', &front, &back);
-			storage_widths.emplace_back(std::max(front.size(), back.size()));
+			shape.append_to_beds(stitches_, ' ', &front, &back);
+			storage_widths.emplace_back(std::max(uint32_t(front.size()), uint32_t(back.size())));
 		}
 
 		//Now, for each stitch, record:
@@ -2750,6 +2750,7 @@ int main(int argc, char **argv) {
 				//Figure out which other needles are occupied:
 				int32_t left_max = std::numeric_limits< int32_t >::min();
 				int32_t right_min = std::numeric_limits< int32_t >::max();
+				{
 				bool on_right = false;
 				for (auto const &sl : step_storages[stepi]) {
 					if (sl.storage == step.out[0]) {
@@ -2770,6 +2771,7 @@ int main(int argc, char **argv) {
 							right_min = std::min(right_min, std::min(front_min, back_min));
 						}
 					}
+				}
 				}
 
 				int32_t shift_left = 0;

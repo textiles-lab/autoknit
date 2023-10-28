@@ -329,7 +329,7 @@ void dump_layout(std::vector< BedNeedle > const &ccw, std::vector< Slack > *slac
 	if (slack) {
 		for (auto s : *slack) {
 			if (s == SlackForNoYarn) continue;
-			edge_size = std::max< uint32_t >(edge_size, std::to_string(s).size());
+			edge_size = std::max< uint32_t >(edge_size, uint32_t(std::to_string(s).size()));
 		}
 	}
 	edge_size += 2;
@@ -504,7 +504,7 @@ void dump_stats() {
 		uint32_t label_max = 1;
 		for (auto cc : moves_histogram) {
 			max = std::max(max, cc.second);
-			label_max = std::max< uint32_t >(label_max, cc.first.size());
+			label_max = std::max< uint32_t >(label_max, uint32_t(cc.first.size()));
 		}
 		uint32_t scale = std::min(max, 60U);
 		for (auto cc : moves_histogram) {
@@ -835,12 +835,12 @@ bool test_plan_transfers(std::string label) {
 
 		//------ stats ------
 
-		uint32_t t = (transfers.size() + from_ccw.size() - 1) / from_ccw.size();
+		uint32_t t = (uint32_t(transfers.size()) + uint32_t(from_ccw.size()) - 1) / uint32_t(from_ccw.size());
 		transfers_histogram.insert(std::make_pair(t, 0)).first->second += 1;
 
-		for (auto t : transfers) {
+		for (auto tx : transfers) {
 			for (auto &cc : moves_histogram) {
-				if (t.why.find(cc.first) != std::string::npos) {
+				if (tx.why.find(cc.first) != std::string::npos) {
 					cc.second += 1;
 				}
 			}

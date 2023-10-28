@@ -228,7 +228,7 @@ struct EmbeddedPlanarMap {
 		IntegerEmbeddedVertex v = IntegerEmbeddedVertex::simplify(v_);
 
 		auto &verts = simplex_vertices[v.simplex];
-		auto &edges = simplex_edges[v.simplex];
+		auto &sedges = simplex_edges[v.simplex];
 
 		for (auto i : verts) {
 			if (vertices[i] == v) return i;
@@ -245,14 +245,14 @@ struct EmbeddedPlanarMap {
 		vertices.emplace_back(v);
 		verts.emplace_back(idx);
 
-		uint32_t old_size = edges.size();
+		uint32_t old_size = sedges.size();
 
 		for (uint32_t e = 0; e < old_size; ++e) {
-			if (point_in_segment(v, vertices[edges[e].first], vertices[edges[e].second])) {
-				auto second_half = edges[e];
+			if (point_in_segment(v, vertices[sedges[e].first], vertices[sedges[e].second])) {
+				auto second_half = sedges[e];
 				second_half.first = idx;
-				edges[e].second = idx;
-				edges.emplace_back(second_half);
+				sedges[e].second = idx;
+				sedges.emplace_back(second_half);
 			}
 		}
 		return idx;
@@ -285,39 +285,39 @@ struct EmbeddedPlanarMap {
 		}
 
 		//split edge (and add new vertex) if there is an intersection:
-		auto &edges = simplex_edges[common];
-		for (uint32_t e = 0; e < edges.size(); ++e) {
+		auto &sedges = simplex_edges[common];
+		for (uint32_t e = 0; e < sedges.size(); ++e) {
 
 			//if it matches the edge, over-write value & done!
-			if (edges[e].first == ai && edges[e].second == bi) {
-				combine_values(&edges[e].value, value);
+			if (sedges[e].first == ai && sedges[e].second == bi) {
+				combine_values(&sedges[e].value, value);
 				return;
 			}
-			if (edges[e].first == bi && edges[e].second == ai) {
+			if (sedges[e].first == bi && sedges[e].second == ai) {
 				VALUE temp = value;
 				reverse_value(&temp);
-				combine_values(&edges[e].value, temp);
+				combine_values(&sedges[e].value, temp);
 				return;
 			}
 
-			glm::ivec2 a2 = glm::ivec2(vertices[edges[e].first].weights_on(common));
-			glm::ivec2 b2 = glm::ivec2(vertices[edges[e].second].weights_on(common));
+			glm::ivec2 a2 = glm::ivec2(vertices[sedges[e].first].weights_on(common));
+			glm::ivec2 b2 = glm::ivec2(vertices[sedges[e].second].weights_on(common));
 
 			//if endpoints are interior to an existing edge, split existing edge:
 			if (point_in_segment(a, a2, b2)) {
 				assert(false); //THIS SHOULD NEVER HAPPEN (should have been avoided by vertex insertion?)
-				auto second_half = edges[e];
+				auto second_half = sedges[e];
 				second_half.first = ai;
-				edges.emplace_back(second_half);
-				edges[e].second = ai;
+				sedges.emplace_back(second_half);
+				sedges[e].second = ai;
 				b2 = a;
 			}
 			if (point_in_segment(b, a2, b2)) {
 				assert(false); //THIS SHOULD NEVER HAPPEN (should have been avoided by vertex insertion?)
-				auto second_half = edges[e];
+				auto second_half = sedges[e];
 				second_half.first = bi;
-				edges.emplace_back(second_half);
-				edges[e].second = bi;
+				sedges.emplace_back(second_half);
+				sedges[e].second = bi;
 				b2 = b;
 			}
 
@@ -327,10 +327,10 @@ struct EmbeddedPlanarMap {
 				pt.z = WEIGHT_SUM - pt.x - pt.y;
 				uint32_t pti = add_vertex(IntegerEmbeddedVertex(common, pt));
 
-				float ai2 = edges[e].first;
-				float bi2 = edges[e].second;
-				VALUE value2 = edges[e].value;
-				edges.erase(edges.begin() + e);
+				float ai2 = sedges[e].first;
+				float bi2 = sedges[e].second;
+				VALUE value2 = sedges[e].value;
+				sedges.erase(sedges.begin() + e);
 
 				VALUE value2_first, value2_second;
 				split_value(value2, &value2_first, &value2_second);
@@ -348,7 +348,7 @@ struct EmbeddedPlanarMap {
 		}
 
 		//if got to this point, no intersections:
-		edges.emplace_back(ai, bi, value);
+		sedges.emplace_back(ai, bi, value);
 	}
 	void add_edge(const ak::EmbeddedVertex &a, const ak::EmbeddedVertex &b, VALUE const &value) {
 		uint32_t ai = add_vertex(a);
@@ -546,6 +546,7 @@ struct EmbeddedPlanarMap {
 							quad = 3;
 						} else {
 							assert(false);
+							quad = 0; //"potentially unused local variable" warning on cl.exe
 						}
 
 						//std::cout << "  " << ri->first << " -> " << ri->second << " quad " << quad << " y/x " << d.y << "/" << d.x << std::endl; //DEBUG

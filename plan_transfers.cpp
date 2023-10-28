@@ -42,7 +42,7 @@ bool plan_transfers(
 			++i;
 		}
 	}
-	const uint32_t Count = from.size();
+	const uint32_t Count = uint32_t(from.size());
 	assert(from.size() == Count);
 	assert(to.size() == Count);
 	assert(slack.size() == Count);

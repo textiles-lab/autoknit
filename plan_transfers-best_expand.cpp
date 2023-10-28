@@ -199,7 +199,7 @@ void best_expand(
 
 			//cross the indices:
 			next_state.l = -1 - int32_t(top.size());
-			next_state.r = bottom.size() + top.size();
+			next_state.r = int32_t(bottom.size()) + int32_t(top.size());
 
 			assert( -(next_state.l + 1) == int32_t(top.size()) );
 			assert( int32_t(top.size()) - 1 - (next_state.r - int32_t(bottom.size())) == -1 );

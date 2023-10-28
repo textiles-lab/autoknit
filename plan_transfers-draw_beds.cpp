@@ -54,9 +54,9 @@ void draw_beds(
 	}
 
 	int32_t column_width = 1;
-	for (auto const &l : needle_labels) column_width = std::max< int32_t >(column_width, l.size());
-	for (auto const &l : top_labels) column_width = std::max< int32_t >(column_width, l.size());
-	for (auto const &l : bottom_labels) column_width = std::max< int32_t >(column_width, l.size());
+	for (auto const &l : needle_labels) column_width = std::max(column_width, int32_t(l.size()));
+	for (auto const &l : top_labels) column_width = std::max(column_width, int32_t(l.size()));
+	for (auto const &l : bottom_labels) column_width = std::max(column_width, int32_t(l.size()));
 	column_width += 1;
 
 	std::ostringstream needle_str, top_str, bottom_str;
