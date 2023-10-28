@@ -16,57 +16,73 @@ However, it is also reasonably straightforward to build on your own using the st
 
 ## <a name="building"></a>Building
 
-You will need Perforce's Jam/MR tool to build, along with the SDL2 library (opengl + mouse handling), the glm math library, and the Eigen linear algebra library.
+Building autoknit is handled with the single-file build tool [maek](https://github.com/ixchow/maek), and uses the [nest-libs](https://github.com/15-466/nest-libs/releases) pre-built library package (for SDL2 and glm), along with the Eigen linear algebra library, which you will need to fetch separately.
 
 ### <a name="mac"></a>MacOS setup
 ```
+#install eigen library and nodejs (used for build script and to post-process scheduled output):
+brew eigen node
+
+#extract nest-libs package as a sibling of autoknit folder:
+curl 'https://github.com/15-466/nest-libs/releases/download/v0.13/nest-libs-macos-v0.13.tar.gz'
+tar xvfz nest-libs-macos-v0.13.tar.gz
+
 #clone repository:
 git clone git@github.com:textiles-lab/autoknit
 cd autoknit
 git submodule init
 git submodule update
-
-#install prerequisite libraries and build tool:
-brew install ftjam sdl2 glm eigen libpng
 ```
 
 ### <a name="linux"></a>Linux setup
+
 ```
+#install eigen library and nodejs (used for build script and to post-process scheduled output):
+sudo apt-get install libeigen3-dev nodejs
+
+#extract nest-libs package as a sibling of autoknit folder:
+curl 'https://github.com/15-466/nest-libs/releases/download/v0.13/nest-libs-linux-v0.13.tar.gz'
+tar xvfz nest-libs-macos-v0.13.tar.gz
+
 #clone repository:
 git clone git@github.com:textiles-lab/autoknit
 cd autoknit
 git submodule init
 git submodule update
-
-#install prerequisite libraries and build tool:
-sudo apt-get install ftjam libglm-dev libpng-dev libsdl2-dev libeigen3-dev
 ```
 
 ### <a name="windows"></a>Windows setup
 
-First, install [ftjam](https://www.freetype.org/jam/) somewhere in your ```%path%``` so you can run it from a command prompt. (Also make sure that git is installed in such a way that it can be run from a command prompt.)
+First, make sure that git is installed in such a way that it can be run from a command prompt; also install [nodejs](https://nodejs.org/), which is used by the build script and to post-process scheduled output.
 
-Then, from a ```Visual Studio 2017 > x64 Native Tools Command Prompt for VS 2017``` do:
+Then, from a `Visual Studio 2022 > x64 Native Tools Command Prompt for VS 2022` command prompt do:
 ```
+#get a local copy of the eigen library:
+git clone git@github.com:eigenteam/eigen-git-mirror eigen
+
 #clone repository:
 git clone git@github.com:textiles-lab/autoknit
 cd autoknit
 git submodule init
 git submodule update
-
-#install pre-built versions of sdl2 and glm libraries:
-git clone git@github.com:ixchow/kit-libs-win
-#get a copy of the Eigen headers:
-git clone git@github.com:eigenteam/eigen-git-mirror eigen
 ```
+
+Finally, download the nest-libs package (https://github.com/15-466/nest-libs/releases/download/v0.13/nest-libs-windows-v0.13.zip) and place the contained `nest-libs/` folder next to the `autoknit` folder where you checked out the code.
 
 ### Linux/Windows/MacOS build
+
+NOTE: on windows, be sure to use a `Visual Studio 2022 > x64 Native Tools Command Prompt for VS 2022`.
+
 ```
 cd autoknit
-jam -j8
+node Maekfile.js
 ```
 
-The ```-j8``` parameter means to run up to 8 compilation jobs in parallel. You may wish to adjust this for your particular machine.
+Command line flags for maek include:
+- `-j8` run with 8 compilation jobs in parallel. Adjust the number to suit your machine. Defaults to number of cores + 1.
+- `-q` quit on first error
+
+Note that maek is a small build system, entirely contained in [Maekfile.js](Maekfile.js). You can read the file to see more about command line options or to see how the build is structured.
 
 ## <a name="usage"></a>Usage
 
