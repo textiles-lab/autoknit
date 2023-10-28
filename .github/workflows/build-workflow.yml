@@ -31,7 +31,6 @@ jobs:
         run: |
           dir/w
           #call "C:\Program Files (x86)\Microsoft Visual Studio\2022\Enterprise\VC\Auxiliary\Build\vcvars64.bat"
-          git clone https://github.com/eigenteam/eigen-git-mirror eigen
           node Maekfile.js -q
       - name: Upload Artifact
         uses: actions/upload-artifact@v2
@@ -74,7 +73,7 @@ jobs:
         shell: bash
         run: |
           sudo apt-get update
-          sudo apt-get install libgl-dev libasound2-dev libeigen3-dev
+          sudo apt-get install libgl-dev libasound2-dev
           ls
           node Maekfile.js -q
       - name: Upload Artifact
@@ -114,7 +113,6 @@ jobs:
           cd ..
           wget https://github.com/15-466/nest-libs/releases/download/${NEST_LIBS_VERSION}/nest-libs-macos-${NEST_LIBS_VERSION}.tar.gz -Onest-libs.tar.gz
           tar xfz nest-libs.tar.gz
-          brew install eigen
       - name: Build Code
         shell: bash
         run: |

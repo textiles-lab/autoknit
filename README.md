@@ -20,8 +20,8 @@ Building autoknit is handled with the single-file build tool [maek](https://gith
 
 ### <a name="mac"></a>MacOS setup
 ```
-#install eigen library and nodejs (used for build script and to post-process scheduled output):
-brew install eigen node
+#install nodejs (used for build script and to post-process scheduled output):
+brew install node
 
 #extract nest-libs package as a sibling of autoknit folder:
 curl 'https://github.com/15-466/nest-libs/releases/download/v0.13/nest-libs-macos-v0.13.tar.gz' -L -O
@@ -37,8 +37,8 @@ git submodule update
 ### <a name="linux"></a>Linux setup
 
 ```
-#install eigen library and nodejs (used for build script and to post-process scheduled output):
-sudo apt-get install libeigen3-dev nodejs
+#install nodejs (used for build script and to post-process scheduled output):
+sudo apt-get install nodejs
 
 #extract nest-libs package as a sibling of autoknit folder:
 curl 'https://github.com/15-466/nest-libs/releases/download/v0.13/nest-libs-linux-v0.13.tar.gz' -L -O
@@ -57,9 +57,6 @@ First, make sure that git is installed in such a way that it can be run from a c
 
 Then, from a `Visual Studio 2022 > x64 Native Tools Command Prompt for VS 2022` command prompt do:
 ```
-#get a local copy of the eigen library:
-git clone git@github.com:eigenteam/eigen-git-mirror eigen
-
 #clone repository:
 git clone git@github.com:textiles-lab/autoknit
 cd autoknit
