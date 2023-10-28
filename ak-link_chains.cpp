@@ -1632,6 +1632,12 @@ void flatten(std::vector< uint32_t > &closest, std::vector< float > const &weigh
 	}
 	assert(!symbols.empty());
 
+
+	//DEBUG:
+	//std::cout << "condensed:";
+	//for (auto const &s : symbols) std::cout << ' ' << s.first;
+	//std::cout << std::endl;
+
 	//(b) early-out in certain easy-to-check conditions:
 	if (symbols.size() == 1) return; //single symbol
 	//DEBUG: don't do these checks; exercise the code a bit more instead:
@@ -1864,7 +1870,7 @@ void flatten(std::vector< uint32_t > &closest, std::vector< float > const &weigh
 		if (state.min != next.min && state.max != next.max) {
 			//a(bc)d -> (abcd), keep 'a' (next.min), 'd' (state.max)
 			assert(bit_symbols[next.min].first == bit_symbols[state.max].first);
-			assert(next.current == bit_symbols[state.min].first);
+			assert(next.current == bit_symbols[next.min].first);
 			//std::cout << "keep " << int32_t(next.min) << " (\"" << symbols[next.min].first << "\")" << ", " << int32_t(state.max) << " (\"" << symbols[state.max].first << "\")" << std::endl; //DEBUG
 			assert(keep[next.min] == -1);
 			assert(keep[state.max] == -1);
