@@ -1741,7 +1741,7 @@ int main(int argc, char **argv) {
 		instructions.emplace_back(instr);
 		//std::cout << instr << std::endl; //DEBUG
 	};
-	add_instr("const autoknit = require('autoknit');");
+	add_instr("const autoknit = require('autoknit-yarns');");
 	add_instr("let h = new autoknit.Helpers;");
 
 	//helper:
@@ -2586,10 +2586,14 @@ int main(int argc, char **argv) {
 				std::string instr = "h.start_tube(";
 				instr += (stitches[step.begin].direction == Stitch::Clockwise ? "'clockwise'" : "'anticlockwise'");
 				instr += ", [";
+				uint32_t yarn = -1U;
 				for (uint32_t s = step.begin; s != step.end; ++s) {
 					auto const &st = stitches[s];
 					assert(st.type == Stitch::Start);
 					assert(st.out[0] != -1U && st.out[1] == -1U);
+
+					if (s == step.begin) yarn = st.yarn;
+					else assert(yarn == st.yarn);
 
 					Loop out0(s, 0);
 					auto f0 = loop_inds.find(out0);
@@ -2618,7 +2622,8 @@ int main(int argc, char **argv) {
 
 ;
 				}
-				instr += "]);";
+				instr += "]";
+				instr += ", " + std::to_string(yarn) + ");";
 
 				add_instr(instr);
 
@@ -2643,10 +2648,14 @@ int main(int argc, char **argv) {
 			std::string instr = "h.end_tube(";
 			instr += (stitches[step.begin].direction == Stitch::Clockwise ? "'clockwise'" : "'anticlockwise'");
 			instr += ", [";
+			uint32_t yarn = -1U;
 			for (uint32_t s = step.begin; s != step.end; ++s) {
 				auto const &st = stitches[s];
 				assert(st.type == Stitch::End);
 				assert(st.in[0] != -1U && st.in[1] == -1U);
+
+				if (s == step.begin) yarn = st.yarn;
+				else assert(yarn == st.yarn);
 
 				Loop in0(st.in[0], stitches[st.in[0]].find_out(s));
 				assert(in0.idx == 0 || in0.idx == 1);
@@ -2674,7 +2683,8 @@ int main(int argc, char **argv) {
 				make_end(bed, needle, in0);
 				stitch_locations[&st - &stitches[0]].first = BedNeedle(bed == 'f' ? BedNeedle::Front : BedNeedle::Back, needle);
 							}
-			instr += "]);";
+			instr += "]";
+			instr += ", " + std::to_string(yarn) + ");";
 
 			add_instr(instr);
 
@@ -2908,7 +2918,8 @@ int main(int argc, char **argv) {
 								instr += (bed == 'f' ? '+' : '-');
 							}
 							instr += '\'';
-							instr += ", " + typeset_bed_needle(bed, needle) + ");";
+							instr += ", " + typeset_bed_needle(bed, needle);
+							instr += ", " + std::to_string(st.yarn) + ");";
 
 							add_instr(instr);
 							
@@ -2981,6 +2992,7 @@ int main(int argc, char **argv) {
 							instr += '\'';
 							instr += ", ";
 							instr += typeset_bed_needle(bed1, needle1);
+							instr += ", " + std::to_string(st.yarn) + ");";
 							instr += ");";
 
 							add_instr(instr);
@@ -3032,6 +3044,7 @@ int main(int argc, char **argv) {
 							instr += '\'';
 							instr += ", ";
 							instr += typeset_bed_needle(bed0, needle0);
+							instr += ", " + std::to_string(st.yarn) + ");";
 							instr += ");";
 
 							add_instr(instr);

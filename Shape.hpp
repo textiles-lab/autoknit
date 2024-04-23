@@ -4,6 +4,7 @@
 #include <cstdint>
 #include <cassert>
 #include <limits>
+#include <algorithm>
 
 //Shape represents the shape of a cycle of stitches on the bed.
 // It is a map from stitch indices to needles, such that each stitch
@@ -274,6 +275,8 @@ struct Shape {
 			}
 			assert(ret.size() == count * 4);
 		}
+		//Uncomment this line to modify the order shapes are returned in (useful for demonstrating that scheduling may have a large set of equivalent possible shapes)
+		//std::rotate(ret.begin(), ret.begin() + ret.size() / 4, ret.end());
 		return ret;
 	}
 
