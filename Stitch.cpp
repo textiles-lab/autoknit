@@ -20,7 +20,7 @@ bool load_stitches(std::string const &filename, std::vector< Stitch > *into_) {
 		int32_t out[2];
 
 		if (!(iss >> temp.yarn >> temp.type >> temp.direction >> in[0] >> in[1] >> out[0] >> out[1] >> temp.at.x >> temp.at.y >> temp.at.z)) {
-			std::cerr << "ERROR: Failed to read stitch." << std::endl;
+			std::cerr << "ERROR: Failed to read stitch from '" << line << "'" << std::endl;
 			return false;
 		}
 		temp.in[0] = in[0];
