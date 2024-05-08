@@ -363,7 +363,7 @@ void build_next_active_chains(
 
 
 struct TracedStitch {
-	uint32_t yarn = -1U; //yarn ID (why is this on a yarn_in? I guess the schedule.cpp code will tell me someday.
+	uint32_t yarn = -1U; //yarn ID (why is this on a yarn_in? I guess the schedule.cpp code will tell me someday.)
 	//ins and outs are in construction order (OLD was: CW direction):
 	uint32_t ins[2] = {-1U, -1U};
 	uint32_t outs[2] = {-1U, -1U};

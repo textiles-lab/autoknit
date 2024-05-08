@@ -1902,17 +1902,28 @@ void Interface::update_traced_tristrip() {
 		glm::u8vec4(0xee, 0x55, 0xbb, 0xff)
 	};
 
+	struct YarnInfo {
+		glm::vec3 prev;
+		uint32_t color;
+	};
+
+	std::unordered_map< uint32_t, YarnInfo > yarn_infos;
+
 	uint32_t yarn_color = 0;
 	std::vector< GLAttribBuffer< glm::vec3, glm::vec3, glm::u8vec4 >::Vertex > attribs;
-	for (uint32_t ti = 1; ti < traced.size(); ++ti) {
-		if (traced[ti].yarn != traced[ti-1].yarn) {
+	for (auto const &ts : traced) {
+		auto res = yarn_infos.emplace(ts.yarn, YarnInfo());
+		if (res.second) {
+			res.first->second.prev = ts.at;
+			res.first->second.color = yarn_color;
 			yarn_color = (yarn_color + 1) % yarn_colors.size();
 			continue;
 		}
 		make_tube(&attribs,
-			traced[ti-1].at, traced[ti].at,
+			res.first->second.prev, ts.at,
 			0.01f,
-			yarn_colors[yarn_color]);
+			yarn_colors[res.first->second.color]);
+		res.first->second.prev = ts.at;
 	}
 	for (uint32_t ti = 0; ti < traced.size(); ++ti) {
 		glm::vec3 const &at = traced[ti].at;

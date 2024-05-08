@@ -2,6 +2,8 @@
 #include "Interface.hpp"
 #include "TaggedArguments.hpp"
 
+#include "Stitch.hpp"
+
 #include <kit/kit.hpp>
 #include <kit/Load.hpp>
 
@@ -20,6 +22,7 @@ std::shared_ptr< kit::Mode > kit_mode() {
 	std::string save_constraints_file = "";
 	std::string constraints_file = "";
 	std::string save_traced_file = "";
+	std::string load_traced_file = "";
 	float constraint_tolerance = 0.01f;
 	int32_t peel_test = 0;
 	int32_t peel_step = 0;
@@ -35,6 +38,7 @@ std::shared_ptr< kit::Mode > kit_mode() {
 		args.emplace_back("constraints", &constraints_file, "try to load constraints from the named file, and definitely save them to it (load_constraints_file or save_constraints_file will override)");
 		args.emplace_back("constraint-tolerance", &constraint_tolerance, "maximum distance away from a model vertex that a loaded constraint vertex can be before it is considered missing");
 		args.emplace_back("save-traced", &save_traced_file, "save traced stitches to this file");
+		args.emplace_back("load-traced", &load_traced_file, "load and view traced stitches from this file (may break other interface actions)");
 		args.emplace_back("stitch-width", &parameters.stitch_width_mm, "stitch width (mm)");
 		args.emplace_back("stitch-height", &parameters.stitch_height_mm, "stitch height (mm)");
 		args.emplace_back("peel-test", &peel_test, "run N rounds of peeling then quit (-1 to run until done)");
@@ -88,6 +92,33 @@ std::shared_ptr< kit::Mode > kit_mode() {
 
 	if (test_constraints != 0) {
 		interface->DEBUG_test_linking(test_constraints < 0);
+	}
+
+	//hack to make it easier to view output ".st" files:
+	if (load_traced_file != "") {
+		std::vector< Stitch > stitches;
+		if (!load_stitches(load_traced_file, &stitches)) {
+			std::cerr << "ERROR: failed to load traced stitches from '" << load_traced_file << "'." << std::endl;
+			return nullptr;
+		}
+		interface->traced.clear();
+		interface->traced.reserve(stitches.size());
+		for (auto const &stitch : stitches) {
+			ak::TracedStitch ts;
+			ts.yarn = stitch.yarn;
+			ts.type = ak::TracedStitch::Type(stitch.type);
+			ts.dir = ak::TracedStitch::Dir(stitch.direction);
+			ts.ins[0] = stitch.in[0];
+			ts.ins[1] = stitch.in[1];
+			ts.outs[0] = stitch.out[0];
+			ts.outs[1] = stitch.out[1];
+			ts.at = stitch.at;
+			interface->traced.emplace_back(ts);
+		}
+
+		std::cout << "Loaded traced stitches from '" << load_traced_file << "' -- these will probably be visible until you do anything with tracing." << std::endl;
+		interface->show = Interface::ShowTraced;
+		interface->traced_tristrip_dirty = true;
 	}
 
 	if (peel_test != 0 || peel_step != 0) {
