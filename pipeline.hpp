@@ -396,10 +396,4 @@ void trace_graph(
 	Model const *DEBUG_model = nullptr //in (optional): model; stitches' .at will be set using its vertices
 );
 
-void schedule_stitches(
-	std::vector< TracedStitch > const &stitches
-	//in: list of stitches
-	//out: knitout-ish
-);
-
 } //namespace ak
