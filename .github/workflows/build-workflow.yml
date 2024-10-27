@@ -1,6 +1,6 @@
-name: Build Libraries
+name: Build
 on:
-  push:
+  workflow_dispatch:
   release:
     types: [created]
 
