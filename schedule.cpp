@@ -76,23 +76,71 @@ int main(int argc, char **argv) {
 	std::string out_js = "";
 	std::string out_st = "";
 	uint32_t max_racking = 3;
+	std::unordered_map< uint32_t, std::vector< PackedShape > > step_shapes;
 	{ //parse arguments:
 		TaggedArguments args;
 		args.emplace_back("st", &in_st, "input stitches file (required)");
 		args.emplace_back("js", &out_js, "output knitting file");
 		args.emplace_back("rack", &max_racking, "maximum racking");
 		args.emplace_back("out-st", &out_st, "output stitches file");
+		std::string step_shapes_ = "";
+		args.emplace_back("step-shapes", &step_shapes_, "force step input shapes ('s=shape-shape/s2=...') (for debugging and testing)");
 		
 		bool usage = !args.parse(argc, argv);
 		if (!usage && in_st == "") {
 			std::cerr << "ERROR: 'st:' argument is required." << std::endl;
 			usage = true;
 		}
+
+
+		{ //parse step_shapes_:
+			//split on '/':
+			std::vector< std::string > groups;
+			for (auto c : step_shapes_) {
+				if (c == '/') {
+					groups.emplace_back("");
+				} else {
+					if (groups.empty()) groups.emplace_back("");
+					groups.back() += c;
+				}
+			}
+			for (auto const &group : groups) {
+				uint32_t step = -1U;
+				std::string shapes;
+				{ //split on '=':
+					std::string::size_type i = group.find('=');
+					if (i == std::string::npos) {
+						usage = true;
+						std::cerr << "ERROR: each group in step-shapes should be of the form '\\d+=\\d+(-\\d+)*'" << std::endl;
+						break;
+					}
+					step = std::stoul(group.substr(0, i));
+					shapes = group.substr(i+1);
+				}
+				std::vector< PackedShape > shape_vec;
+				size_t begin = 0;
+				for (size_t end = 1; end <= shapes.size(); ++end) {
+					if (end >= shapes.size() || shapes[end] == '-') {
+						if (end <= begin) {
+							usage = true;
+							std::cerr << "ERROR: zero-length shape index in step-shapes." << std::endl;
+							break;
+						}
+						shape_vec.emplace_back(std::stoul(shapes.substr(begin, end-begin)));
+						begin = end + 1;
+					}
+				}
+
+				step_shapes.emplace(step, shape_vec);
+			}
+		}
+
 		if (usage) {
 			std::cerr << "Usage:\n\t./schedule [tag:value] [...]\n" << args.help_string() << std::endl;
 			return 1;
 		}
 	}
+
 
 	//------------------------------
 
@@ -1145,6 +1193,44 @@ int main(int argc, char **argv) {
 		std::cout << "steps[" << (&step - &steps[0]) << "] had " << step.options.size() << " scheduling options." << std::endl;
 	}
 
+	if (!step_shapes.empty()) {
+		std::cout << "Discarding shapes that don't match 'step-shapes:' parameter:" << std::endl; //DEBUG
+		for (auto &[step_index, shapes] : step_shapes) {
+			if (!(step_index < steps.size())) {
+				std::cerr << "ERROR: step index " << step_index << " is out of range." << std::endl;
+				return 1;
+			}
+			auto &step = steps[step_index];
+
+			if (step.in.size() != shapes.size()) {
+				std::cerr << "ERROR: step " << step_index << " has " << step.in.size() << " inputs, but " << shapes.size() << " shapes were specified." << std::endl;
+				return 1;
+			}
+
+			std::vector< ScheduleOption > filtered_options;
+			for (auto const &option : step.options) {
+				assert(option.in_shapes.size() == step.in.size());
+				assert(option.in_shapes.size() == shapes.size());
+				if (option.in_shapes == shapes) {
+					filtered_options.emplace_back(option);
+				}
+			}
+
+			std::string shapes_str;
+			for (PackedShape ps : shapes) {
+				if (!shapes_str.empty()) shapes_str += "-";
+				shapes_str += std::to_string(ps);
+			}
+
+			std::cout << "  Filtered step " << step_index << " from " << step.options.size() << " to " << filtered_options.size() << " options that match " << step_index << "=" << shapes_str << std::endl;
+			step.options = filtered_options;
+			if (step.options.empty()) {
+				std::cout << "ERROR: no options remain." << std::endl;
+				return 1;
+			}
+		}
+	}
+
 	//---------------------
 	std::vector< int32_t > storage_positions(storages.size(), std::numeric_limits< int32_t >::max());
 	std::vector< PackedShape > storage_shapes(storages.size(), -1U); //shapes of storages just after creation (should be same as the step_options of the step that made them)
@@ -1561,6 +1647,14 @@ int main(int argc, char **argv) {
 			uint32_t si = &step - &steps[0];
 			std::cout << "Step " << si << " gets option " << step_options[si] << " of " << steps[si].options.size() << "\n";
 			auto const &option = steps[si].options[step_options[si]];
+
+			std::string shape_summary = std::to_string(si) + "=";
+			for (uint32_t i = 0; i < step.in.size(); ++i) {
+				if (i != 0) shape_summary += "-";
+				shape_summary += std::to_string(storage_shapes[step.in[i]]);
+			}
+			std::cout << "  step-shapes:" + shape_summary + "\n";
+
 			std::cout << "  takes";
 			for (auto i : option.in_order) {
 				uint32_t in = step.in[i];
