@@ -3087,7 +3087,6 @@ int main(int argc, char **argv) {
 							instr += ", ";
 							instr += typeset_bed_needle(bed1, needle1);
 							instr += ", " + std::to_string(st.yarn) + ");";
-							instr += ");";
 
 							add_instr(instr);
 
@@ -3139,7 +3138,6 @@ int main(int argc, char **argv) {
 							instr += ", ";
 							instr += typeset_bed_needle(bed0, needle0);
 							instr += ", " + std::to_string(st.yarn) + ");";
-							instr += ");";
 
 							add_instr(instr);
 							// awkward to use loop_to_bn.find()..,since already xferred...
