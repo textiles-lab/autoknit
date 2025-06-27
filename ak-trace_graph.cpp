@@ -102,7 +102,7 @@ void ak::trace_graph(
 	constexpr ak::TracedStitch::Dir Forward = ak::TracedStitch::CCW;
 	constexpr ak::TracedStitch::Dir Backward = ak::TracedStitch::CW;
 
-	uint32_t fresh_yarn_id = 0;
+	uint32_t fresh_yarn_id = 1;
 
 	auto trace_yarn = [&]() -> bool {
 		uint32_t at = -1U;
