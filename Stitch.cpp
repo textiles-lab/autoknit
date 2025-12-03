@@ -18,11 +18,20 @@ bool load_stitches(std::string const &filename, std::vector< Stitch > *into_) {
 
 		int32_t in[2];
 		int32_t out[2];
+		std::string at_x,at_y,at_z;
 
-		if (!(iss >> temp.yarn >> temp.type >> temp.direction >> in[0] >> in[1] >> out[0] >> out[1] >> temp.at.x >> temp.at.y >> temp.at.z)) {
+		if (!(iss >> temp.yarn >> temp.type >> temp.direction >> in[0] >> in[1] >> out[0] >> out[1] >> at_x >> at_y >> at_z)) {
 			std::cerr << "ERROR: Failed to read stitch from '" << line << "'" << std::endl;
 			return false;
 		}
+		try {
+			temp.at.x = std::stof(at_x);
+			temp.at.y = std::stof(at_y);
+			temp.at.z = std::stof(at_z);
+		} catch (std::exception &e) {
+			std::cerr << "ERROR: Failed to convert position '" << at_x << "' '" << at_y << "' '" << at_z << "' to floating point." << std::endl;
+		}
+
 		temp.in[0] = in[0];
 		temp.in[1] = in[1];
 		temp.out[0] = out[0];
