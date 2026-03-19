@@ -56,15 +56,15 @@ if (maek.OS === "windows") {
 		'-I.', '-DKIT_RAW_SDL_EVENTS', //for kit
 		`-O2`, //optimize
 		//include paths for nest libraries:
-		`-I${NEST_LIBS}/SDL2/include/SDL2`, `-D_THREAD_SAFE`, //the output of sdl-config --cflags
-		`-I${NEST_LIBS}/glm/include`,
+		`-I${NEST_LIBS}/SDL3/include`, `-D_THREAD_SAFE`,
+		`-I${NEST_LIBS}/glm/include`, `-DGLM_ENABLE_EXPERIMENTAL`,
 		`-I${NEST_LIBS}/libpng/include`,
 		//`-I${NEST_LIBS}/harfbuzz/include`,
 		//`-I${NEST_LIBS}/freetype/include`
 	);
 	maek.options.LINKLibs.push(
 		//linker flags for nest libraries:
-		`-L${NEST_LIBS}/SDL2/lib`, `-lSDL2`, `-lm`, `-ldl`, `-lasound`, `-lpthread`, `-lX11`, `-lXext`, `-lpthread`, `-lrt`, `-lGL`, //the output of sdl-config --static-libs
+		`-L${NEST_LIBS}/SDL3/lib`, `-lSDL3`, `-lm`, `-lpthread`, `-lGL`,
 		`-L${NEST_LIBS}/libpng/lib`, `-lpng`,
 		`-L${NEST_LIBS}/zlib/lib`, `-lz`,
 		//`-L${NEST_LIBS}/harfbuzz/lib`, `-lharfbuzz`,
@@ -74,11 +74,10 @@ if (maek.OS === "windows") {
 	maek.options.CPPFlags.push(
 		'-I.', '-DKIT_RAW_SDL_EVENTS', //for kit
 		`-O2`, //optimize
-		`-DGLM_ENABLE_EXPERIMENTAL`,
 		`-Wno-deprecated-declarations`, //glm uses vsprintf
 		//include paths for nest libraries:
 		`-I${NEST_LIBS}/SDL3/include`, `-D_THREAD_SAFE`,
-		`-I${NEST_LIBS}/glm/include`,
+		`-I${NEST_LIBS}/glm/include`, `-DGLM_ENABLE_EXPERIMENTAL`,
 		`-I${NEST_LIBS}/libpng/include`,
 		//`-I${NEST_LIBS}/harfbuzz/include`,
 		//`-I${NEST_LIBS}/freetype/include`
