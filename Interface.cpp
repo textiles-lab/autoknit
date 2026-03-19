@@ -11,7 +11,7 @@
 #include <glm/gtx/norm.hpp>
 #include <glm/gtx/hash.hpp>
 
-#include <SDL.h>
+#include <SDL3/SDL.h>
 
 #include <algorithm>
 #include <unordered_set>
@@ -859,7 +859,7 @@ void Interface::handle_event(SDL_Event const &evt) {
 	#define MAPX( X ) ((((X) + 0.5f) / kit::display.window_size.x) * 2.0f - 1.0f)
 	#define MAPY( Y ) ((((Y) + 0.5f) / kit::display.window_size.y) *-2.0f + 1.0f)
 
-	if (evt.type == SDL_MOUSEMOTION) {
+	if (evt.type == SDL_EVENT_MOUSE_MOTION) {
 		glm::vec2 old_at = mouse.at;
 		mouse.at = glm::vec2( MAPX(evt.motion.x), MAPY(evt.motion.y) );
 		mouse.moved = true;
@@ -894,7 +894,7 @@ void Interface::handle_event(SDL_Event const &evt) {
 				dragging.clear();
 			}
 		}
-	} else if (evt.type == SDL_MOUSEBUTTONDOWN) {
+	} else if (evt.type == SDL_EVENT_MOUSE_BUTTON_DOWN) {
 		mouse.at = glm::vec2( MAPX(evt.button.x), MAPY(evt.button.y) );
 		mouse.moved = true;
 		if (evt.button.button == SDL_BUTTON_LEFT) {
@@ -907,7 +907,7 @@ void Interface::handle_event(SDL_Event const &evt) {
 			}
 		} else if (evt.button.button == SDL_BUTTON_RIGHT) {
 			if (drag == DragNone) {
-				if (SDL_GetModState() & KMOD_SHIFT) {
+				if (SDL_GetModState() & SDL_KMOD_SHIFT) {
 					drag = DragCameraPan;
 				} else {
 					if (std::cos(camera.elevation) > 0.0f) {
@@ -918,7 +918,7 @@ void Interface::handle_event(SDL_Event const &evt) {
 				}
 			}
 		}
-	} else if (evt.type == SDL_MOUSEBUTTONUP) {
+	} else if (evt.type == SDL_EVENT_MOUSE_BUTTON_UP) {
 		mouse.at = glm::vec2( MAPX(evt.button.x), MAPY(evt.button.y) );
 		mouse.moved = true;
 		if (evt.button.button == SDL_BUTTON_LEFT) {
@@ -931,28 +931,28 @@ void Interface::handle_event(SDL_Event const &evt) {
 				drag = DragNone;
 			}
 		}
-	} else if (evt.type == SDL_MOUSEWHEEL) {
+	} else if (evt.type == SDL_EVENT_MOUSE_WHEEL) {
 		camera.radius *= std::pow(0.5f, evt.wheel.y / 10.0f);
 		if (camera.radius < 0.1f) camera.radius = 0.1f;
-	} else if (evt.type == SDL_KEYDOWN) {
-		if (evt.key.keysym.scancode == SDL_SCANCODE_S) {
+	} else if (evt.type == SDL_EVENT_KEY_DOWN) {
+		if (evt.key.key == SDLK_S) {
 			if (show & ShowModel) show = (show & ~ShowModelBits) | ShowTimesModel;
 			else if (show & ShowTimesModel) show = (show & ~ShowModelBits) | ShowSlice;
 			else /*if (show & ShowSlice)*/ show = (show & ~ShowModelBits) | ShowModel;
-		} else if (evt.key.keysym.scancode == SDL_SCANCODE_G) {
+		} else if (evt.key.key == SDLK_G) {
 			show = show ^ ShowRowColGraph;
-		} else if (evt.key.keysym.scancode == SDL_SCANCODE_L) {
+		} else if (evt.key.key == SDLK_L) {
 			//show = ShowConstrainedModel;
 			DEBUG_test_linking();
-		} else if (evt.key.keysym.scancode == SDL_SCANCODE_P) {
-			if (evt.key.keysym.mod & KMOD_SHIFT) {
+		} else if (evt.key.key == SDLK_P) {
+			if (evt.key.mod & SDL_KMOD_SHIFT) {
 				clear_peeling();
 			} else {
 				step_peeling();
 			}
-		} else if (evt.key.keysym.scancode == SDL_SCANCODE_T) {
+		} else if (evt.key.key == SDLK_T) {
 			update_traced();
-		} else if (evt.key.keysym.scancode == SDL_SCANCODE_C) {
+		} else if (evt.key.key == SDLK_C) {
 			if (hovered.cons < constraints.size()) {
 				if (drag == DragNone) {
 					auto &cons = constraints[hovered.cons];
@@ -966,7 +966,7 @@ void Interface::handle_event(SDL_Event const &evt) {
 				constraints.back().chain.emplace_back(hovered.vert);
 				constraints_dirty = true;
 			}
-		} else if (evt.key.keysym.scancode == SDL_SCANCODE_R) {
+		} else if (evt.key.key == SDLK_R) {
 			if (hovered.cons < constraints.size()) {
 				if (drag == DragNone) {
 					if (constraints[hovered.cons].radius == 0.0f) {
@@ -979,7 +979,7 @@ void Interface::handle_event(SDL_Event const &evt) {
 					}
 				}
 			}
-		} else if (evt.key.keysym.scancode == SDL_SCANCODE_X) {
+		} else if (evt.key.key == SDLK_X) {
 			if (hovered.cons < constraints.size() && hovered.cons_pt < constraints[hovered.cons].chain.size()) {
 				auto &cons = constraints[hovered.cons];
 				cons.chain.erase(
@@ -991,12 +991,12 @@ void Interface::handle_event(SDL_Event const &evt) {
 				constraints_dirty = true;
 			}
 			
-		} else if (evt.key.keysym.scancode == SDL_SCANCODE_EQUALS || evt.key.keysym.scancode == SDL_SCANCODE_KP_PLUS) {
+		} else if (evt.key.key == SDLK_EQUALS || evt.key.key == SDLK_KP_PLUS) {
 			if (hovered.cons < constraints.size()) {
 				constraints[hovered.cons].value += 0.1f;
 				constraints_dirty = true;
 			}
-		} else if (evt.key.keysym.scancode == SDL_SCANCODE_MINUS || evt.key.keysym.scancode == SDL_SCANCODE_KP_MINUS) {
+		} else if (evt.key.key == SDLK_MINUS || evt.key.key == SDLK_KP_MINUS) {
 			if (hovered.cons < constraints.size()) {
 				constraints[hovered.cons].value -= 0.1f;
 				constraints_dirty = true;

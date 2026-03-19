@@ -74,9 +74,10 @@ if (maek.OS === "windows") {
 	maek.options.CPPFlags.push(
 		'-I.', '-DKIT_RAW_SDL_EVENTS', //for kit
 		`-O2`, //optimize
+		`-DGLM_ENABLE_EXPERIMENTAL`,
 		`-Wno-deprecated-declarations`, //glm uses vsprintf
 		//include paths for nest libraries:
-		`-I${NEST_LIBS}/SDL2/include/SDL2`, `-D_THREAD_SAFE`, //the output of sdl-config --cflags
+		`-I${NEST_LIBS}/SDL3/include`, `-D_THREAD_SAFE`,
 		`-I${NEST_LIBS}/glm/include`,
 		`-I${NEST_LIBS}/libpng/include`,
 		//`-I${NEST_LIBS}/harfbuzz/include`,
@@ -85,7 +86,25 @@ if (maek.OS === "windows") {
 	maek.options.LINKLibs.push(
 		'-I.', //for kit
 		//linker flags for nest libraries:
-		`-L${NEST_LIBS}/SDL2/lib`, `-lSDL2`, `-lm`,`-liconv`, `-framework`, `CoreAudio`, `-framework`, `AudioToolbox`, `-weak_framework`, `CoreHaptics`, `-weak_framework`, `GameController`, `-framework`, `ForceFeedback`, `-lobjc`, `-framework`, `CoreVideo`, `-framework`, `Cocoa`, `-framework`, `Carbon`, `-framework`, `IOKit`, `-framework`, `OpenGL`, //the output of sdl-config --static-libs
+		`-L${NEST_LIBS}/SDL3/lib`,  `-lSDL3`,
+		`-framework`, `OpenGL`,
+ 		`-Wl,-framework,CoreMedia`,
+		`-Wl,-framework,CoreVideo`,
+		`-Wl,-framework,Cocoa`,
+		`-Wl,-weak_framework,UniformTypeIdentifiers`,
+		`-Wl,-framework,IOKit`,
+		`-Wl,-framework,ForceFeedback`,
+		`-Wl,-framework,Carbon`,
+		`-Wl,-framework,CoreAudio`,
+		`-Wl,-framework,AudioToolbox`,
+		`-Wl,-framework,AVFoundation`,
+		`-Wl,-framework,Foundation`,
+		`-Wl,-framework,GameController`,
+		`-Wl,-framework,Metal`,
+		`-Wl,-framework,QuartzCore`,
+		`-Wl,-weak_framework,CoreHaptics`,
+		`-lpthread`,
+		`-lm`,
 		`-L${NEST_LIBS}/libpng/lib`, `-lpng`,
 		`-L${NEST_LIBS}/zlib/lib`, `-lz`,
 		//`-L${NEST_LIBS}/harfbuzz/lib`, `-lharfbuzz`,
@@ -105,7 +124,7 @@ let copies = [
 	//maek.COPY(`${NEST_LIBS}/freetype/dist/README-freetype.txt`, `dist/README-freetype.txt`)
 ];
 if (maek.OS === 'windows') {
-	copies.push( maek.COPY(`${NEST_LIBS}/SDL2/dist/SDL2.dll`, `dist/SDL2.dll`) );
+	copies.push( maek.COPY(`${NEST_LIBS}/SDL2/dist/SDL2.dll`, `dist/SDL3.dll`) );
 }
 
 const kit_names = [
@@ -113,7 +132,7 @@ const kit_names = [
 	maek.CPP('kit/Button.cpp'),
 	maek.CPP('kit/GLProgram.cpp'),
 	maek.CPP('kit/kit.cpp'),
-	maek.CPP('kit/kit-SDL2.cpp'),
+	maek.CPP('kit/kit-SDL3.cpp'),
 	maek.CPP('kit/Load.cpp'),
 	//maek.CPP('kit/load_save_jpeg.cpp'), //not used in this code and we don't have libjpeg in nest-libs yet for some reason
 	maek.CPP('kit/load_save_png.cpp'),
@@ -125,7 +144,7 @@ if (maek.OS === 'windows') {
 	//only need gl shims on windows:
 	kit_names.push(maek.CPP('kit/gl_shims.cpp'));
 } else if (maek.OS === 'macos') {
-	kit_names.push(maek.CPP('kit/kit-SDL2-osx.mm'));
+	kit_names.push(maek.CPP('kit/kit-SDL3-osx.mm'));
 }
 
 const plan_transfers_names = [
