@@ -371,7 +371,7 @@ maek.JS2K = (jsFile, kFile, localOptions = {}) => {
 const test_sts = [
 	//maek.PEEL('tests/models/bunny.obj', 'tests/constraints/bunny.cons', undefined, {peelScale:1}), //fails to peel
 	//maek.PEEL('tests/models/bunny.obj', 'tests/constraints/bunny.cons', undefined, {peelScale:2}), //failes to schedule
-	maek.PEEL('tests/models/bunny.obj', 'tests/constraints/bunny.cons', undefined, {peelScale:0.8}), //???
+	maek.PEEL('tests/models/bunny.obj', 'tests/constraints/bunny.cons', undefined, {peelScale:0.8}),
 	maek.PEEL('tests/models/misc-cactus.obj', 'tests/constraints/misc-cactus.cons', undefined, {peelScale:10}),
 	//maek.PEEL('tests/models/misc-cactus.obj', 'tests/constraints/misc-cactus.cons', undefined, {peelScale:20}), //fails to peel
 
