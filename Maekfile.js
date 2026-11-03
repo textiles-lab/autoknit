@@ -28,11 +28,11 @@ if (maek.OS === "windows") {
 		'/I.', '/DKIT_RAW_SDL_EVENTS', //for kit
 		`/O2`, //optimize
 		//include paths for nest libraries:
-		`/I${NEST_LIBS}/SDL2/include`,
+		`/I${NEST_LIBS}/SDL3/include`,
 		`/I${NEST_LIBS}/glm/include`,
 		`/I${NEST_LIBS}/libpng/include`,
-		`/I${NEST_LIBS}/harfbuzz/include`,
-		`/I${NEST_LIBS}/freetype/include`,
+		//`/I${NEST_LIBS}/harfbuzz/include`,
+		//`/I${NEST_LIBS}/freetype/include`,
 		//#disable a few warnings:
 		`/wd4146`, //-1U is still unsigned
 		`/wd4297`, //unfortunately SDLmain is nothrow
@@ -44,7 +44,7 @@ if (maek.OS === "windows") {
 		`/wd4267`, //integer width change (size_t -> uint32_t) -- NOTE: should probably actually fix these
 	);
 	maek.options.LINKLibs.push(
-		`/LIBPATH:${NEST_LIBS}/SDL2/lib`, `SDL2main.lib`, `SDL2.lib`, `OpenGL32.lib`, `Shell32.lib`,
+		`/LIBPATH:${NEST_LIBS}/SDL3/lib`, `SDL3.lib`, `OpenGL32.lib`, `Shell32.lib`,
 		`/LIBPATH:${NEST_LIBS}/libpng/lib`, `libpng.lib`,
 		`/LIBPATH:${NEST_LIBS}/zlib/lib`, `zlib.lib`,
 		//`/LIBPATH:${NEST_LIBS}/harfbuzz/lib`, `harfbuzz.lib`,
@@ -116,14 +116,14 @@ if (maek.OS === "windows") {
 // to: file to copy to
 let copies = [
 	maek.COPY(`README.md`, `dist/README.md`),
-	maek.COPY(`${NEST_LIBS}/SDL2/dist/README-SDL.txt`, `dist/README-SDL.txt`),
+	maek.COPY(`${NEST_LIBS}/SDL3/dist/README-SDL.txt`, `dist/README-SDL.txt`),
 	maek.COPY(`${NEST_LIBS}/libpng/dist/README-libpng.txt`, `dist/README-libpng.txt`),
 	maek.COPY(`${NEST_LIBS}/glm/dist/README-glm.txt`, `dist/README-glm.txt`),
 	//maek.COPY(`${NEST_LIBS}/harfbuzz/dist/README-harfbuzz.txt`, `dist/README-harfbuzz.txt`),
 	//maek.COPY(`${NEST_LIBS}/freetype/dist/README-freetype.txt`, `dist/README-freetype.txt`)
 ];
 if (maek.OS === 'windows') {
-	copies.push( maek.COPY(`${NEST_LIBS}/SDL2/dist/SDL2.dll`, `dist/SDL3.dll`) );
+	copies.push( maek.COPY(`${NEST_LIBS}/SDL3/dist/SDL3.dll`, `dist/SDL3.dll`) );
 }
 
 const kit_names = [
@@ -223,6 +223,175 @@ const interface_exe = maek.LINK([...autoknit_names, ...kit_names, stitch_obj], '
 //set the default target to the game (and copy the readme files):
 maek.TARGETS = [test_shape_exe, test_plan_transfers_exe, test_flatten_exe, schedule_exe, interface_exe];
 
+//---------- tests ------------
+
+maek.DEFAULT_OPTIONS.peelScale = 1;
+
+//Custom rule: peel/link an obj file:
+//(based on nakluV GLSLC rule)
+maek.PEEL = (objFile, consFile, stFile, localOptions = {}) => {
+	const path = require('path').posix; //NOTE: expect posix-style paths even on windows
+	const fsPromises = require('fs').promises;
+
+	//combine options:
+	const options = maek.combineOptions(localOptions);
+
+	if (typeof stFile === 'undefined') {
+		const base = path.basename(objFile, '.obj');
+		stFile = path.relative('', `tests/out-st/${base}-${options.peelScale}.st`);
+	}
+
+	const command = [
+		interface_exe,
+		`obj:${objFile}`,
+		`load-constraints:${consFile}`,
+		`obj-scale:${options.peelScale}`,
+		`stitch-width:3.66`,
+		`stitch-height:1.73`,
+		`peel-test:-1`,
+		`save-traced:${stFile}`,
+	];
+
+	//The actual build task:
+	const task = async () => {
+		//make object file:
+		await fsPromises.mkdir(path.dirname(stFile), { recursive: true });
+		await maek.run(command, `${task.label}: peel`,
+			async () => {
+				return {
+					read:[objFile,consFile],
+					written:[stFile]
+				};
+			}
+		);
+	};
+
+	task.depends = [interface_exe, objFile, consFile, ...options.depends];
+
+	task.label = `PEEL ${objFile}/${consFile} x ${options.peelScale}`;
+
+	if (stFile in maek.tasks) {
+		throw new Error(`Task ${task.label} purports to create ${stFile}, but ${maek.tasks[stFile].label} already creates that file.`);
+	}
+	maek.tasks[stFile] = task;
+
+	return stFile;
+};
+
+maek.SCHEDULE = (stFile, jsFile, localOptions = {}) => {
+	const path = require('path').posix; //NOTE: expect posix-style paths even on windows
+	const fsPromises = require('fs').promises;
+
+	//combine options:
+	const options = maek.combineOptions(localOptions);
+
+	if (typeof jsFile === 'undefined') {
+		const base = path.basename(stFile, '.st');
+		jsFile = path.relative('', `tests/out-js/${base}.js`);
+	}
+
+	const command = [
+		schedule_exe,
+		`st:${stFile}`,
+		`js:${jsFile}`,
+	];
+
+	//The actual build task:
+	const task = async () => {
+		//make object file:
+		await fsPromises.mkdir(path.dirname(jsFile), { recursive: true });
+		await maek.run(command, `${task.label}: schedule`,
+			async () => {
+				return {
+					read:[stFile],
+					written:[jsFile]
+				};
+			}
+		);
+	};
+
+	task.depends = [schedule_exe, stFile, ...options.depends];
+
+	task.label = `SCHEDULE ${stFile}`;
+
+	if (jsFile in maek.tasks) {
+		throw new Error(`Task ${task.label} purports to create ${jsFile}, but ${maek.tasks[jsFile].label} already creates that file.`);
+	}
+	maek.tasks[jsFile] = task;
+
+	return jsFile;
+};
+
+maek.JS2K = (jsFile, kFile, localOptions = {}) => {
+	const path = require('path').posix; //NOTE: expect posix-style paths even on windows
+	const fsPromises = require('fs').promises;
+
+	//combine options:
+	const options = maek.combineOptions(localOptions);
+
+	if (typeof kFile === 'undefined') {
+		const base = path.basename(jsFile, '.js');
+		kFile = path.relative('', `tests/out-k/${base}.k`);
+	}
+
+	const command = [
+		'node',
+		jsFile,
+		`out:${kFile}`,
+	];
+
+	//The actual build task:
+	const task = async () => {
+		//make object file:
+		await fsPromises.mkdir(path.dirname(kFile), { recursive: true });
+		await maek.run(command, `${task.label}: run`,
+			async () => {
+				return {
+					read:[jsFile,'node_modules/autoknit-yarns.js'],
+					written:[kFile]
+				};
+			}
+		);
+	};
+
+	task.depends = [jsFile, ...options.depends];
+
+	task.label = `JS2K ${jsFile}`;
+
+	if (kFile in maek.tasks) {
+		throw new Error(`Task ${task.label} purports to create ${kFile}, but ${maek.tasks[kFile].label} already creates that file.`);
+	}
+	maek.tasks[kFile] = task;
+
+	return kFile;
+};
+
+
+
+const test_sts = [
+	//maek.PEEL('tests/models/bunny.obj', 'tests/constraints/bunny.cons', undefined, {peelScale:1}), //fails to peel
+	maek.PEEL('tests/models/misc-cactus.obj', 'tests/constraints/misc-cactus.cons', undefined, {peelScale:10}),
+	//maek.PEEL('tests/models/misc-cactus.obj', 'tests/constraints/misc-cactus.cons', undefined, {peelScale:20}), //fails to peel
+
+	maek.PEEL('tests/models/misc-pipes.obj', 'tests/constraints/misc-pipes.cons', undefined, {peelScale:10}),
+	maek.PEEL('tests/models/simple-elbow.obj', 'tests/constraints/simple-elbow.cons', undefined, {peelScale:10}),
+	maek.PEEL('tests/models/simple-torus.obj', 'tests/constraints/simple-torus.cons', undefined, {peelScale:10}),
+	maek.PEEL('tests/models/split-1-2.obj', 'tests/constraints/split-1-2.cons', undefined, {peelScale:10}),
+	//maek.PEEL('tests/models/split-3-3-nonflat.obj', 'tests/constraints/split-3-3-nonflat.cons', undefined, {peelScale:10}), //<-- fails to schedule, as expected
+	//maek.PEEL('tests/models/split-swiss.obj', 'tests/constraints/split-swiss.cons', undefined, {peelScale:10}), //fails to peel
+];
+
+const test_jss = test_sts.map( (x) => maek.SCHEDULE(x) );
+
+const test_ks = test_jss.map( (x) => maek.JS2K(x) );
+
+{ //make pseduo-target ':tests' that runs all the tests:
+	const task = async () => { };
+	task.label = `RAN TESTS`;
+	task.depends = [...test_ks];
+	maek.tasks[':tests'] = task;
+}
+
 
 //======================================================================
 //Now, onward to the code that makes all this work:
@@ -292,19 +461,20 @@ function init_maek() {
 		CPPFlags: [], //extra flags for c++ compiler
 		LINK: [], //the linker and any flags to start with (set below, per-OS)
 		LINKLibs: [], //extra -L and -l flags for linker
-	}
+	};
 
 	if (maek.OS === 'windows') {
-		DEFAULT_OPTIONS.CPP = ['cl.exe', '/nologo', '/EHsc', '/Z7', '/std:c++17', '/W4', '/WX', '/MD'];
+		DEFAULT_OPTIONS.CPP = ['cl.exe', '/nologo', '/EHsc', '/Z7', '/std:c++20', '/W4', '/WX', '/MD'];
 		//TODO: could embed manifest to set UTF8 codepage
 		DEFAULT_OPTIONS.LINK = ['link.exe', '/nologo', '/SUBSYSTEM:CONSOLE', '/DEBUG:FASTLINK', '/INCREMENTAL:NO'];
 	} else if (maek.OS === 'linux') {
-		DEFAULT_OPTIONS.CPP = ['g++', '-std=c++17', '-Wall', '-Werror', '-g'];
-		DEFAULT_OPTIONS.LINK = ['g++', '-std=c++17', '-Wall', '-Werror', '-g'];
+		DEFAULT_OPTIONS.CPP = ['g++', '-std=c++20', '-Wall', '-Werror', '-g'];
+		DEFAULT_OPTIONS.LINK = ['g++', '-std=c++20', '-Wall', '-Werror', '-g'];
 	} else if (maek.OS === 'macos') {
-		DEFAULT_OPTIONS.CPP = ['clang++', '-std=c++17', '-Wall', '-Werror', '-g'];
-		DEFAULT_OPTIONS.LINK = ['clang++', '-std=c++17', '-Wall', '-Werror', '-g'];
+		DEFAULT_OPTIONS.CPP = ['clang++', '-std=c++20', '-Wall', '-Werror', '-g'];
+		DEFAULT_OPTIONS.LINK = ['clang++', '-std=c++20', '-Wall', '-Werror', '-g'];
 	}
+	maek.DEFAULT_OPTIONS = DEFAULT_OPTIONS; //make available for custom rules
 
 	//any settings here override 'DEFAULT_OPTIONS':
 	maek.options = Object.assign({}, DEFAULT_OPTIONS); //shallow copy of DEFAULT_OPTIONS in case you want to console.log(maek.options) to check settings.
@@ -325,6 +495,7 @@ function init_maek() {
 		}
 		return combined;
 	}
+	maek.combineOptions = combineOptions; //make available for custom rules
 
 	//tasks is a map from targets -> tasks:
 	maek.tasks = {};
@@ -613,6 +784,7 @@ function init_maek() {
 		}
 
 	}
+	maek.run = run; //make available for custom rules
 
 	let hashCacheHits = 0;
 	let hashCache = {};
@@ -674,6 +846,10 @@ function init_maek() {
 			PATH = process.env.PATH.split(';');
 		} else {
 			PATH = process.env.PATH.split(':');
+		}
+		//handle './' or 'path/to/command' commands:
+		if (command[0].indexOf('/') !== -1) {
+			PATH = ['.'];
 		}
 		for (const prefix of PATH) {
 			const exe = osPath.resolve(prefix, command[0]);

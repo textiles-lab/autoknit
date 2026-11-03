@@ -3,4 +3,7 @@
 	url = git@github.com:ixchow/kit
 [submodule "eigen"]
 	path = eigen
-	url = https://github.com/eigenteam/eigen-git-mirror
+	url = https://gitlab.com/libeigen/eigen
+[submodule "tests"]
+	path = tests
+	url = git@github.com:textiles-lab/autoknit-tests
