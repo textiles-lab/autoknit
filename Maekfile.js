@@ -370,13 +370,17 @@ maek.JS2K = (jsFile, kFile, localOptions = {}) => {
 
 const test_sts = [
 	//maek.PEEL('tests/models/bunny.obj', 'tests/constraints/bunny.cons', undefined, {peelScale:1}), //fails to peel
+	//maek.PEEL('tests/models/bunny.obj', 'tests/constraints/bunny.cons', undefined, {peelScale:2}), //failes to schedule
+	maek.PEEL('tests/models/bunny.obj', 'tests/constraints/bunny.cons', undefined, {peelScale:0.8}), //???
 	maek.PEEL('tests/models/misc-cactus.obj', 'tests/constraints/misc-cactus.cons', undefined, {peelScale:10}),
 	//maek.PEEL('tests/models/misc-cactus.obj', 'tests/constraints/misc-cactus.cons', undefined, {peelScale:20}), //fails to peel
 
 	maek.PEEL('tests/models/misc-pipes.obj', 'tests/constraints/misc-pipes.cons', undefined, {peelScale:10}),
 	maek.PEEL('tests/models/simple-elbow.obj', 'tests/constraints/simple-elbow.cons', undefined, {peelScale:10}),
 	maek.PEEL('tests/models/simple-torus.obj', 'tests/constraints/simple-torus.cons', undefined, {peelScale:10}),
+	maek.PEEL('tests/models/simple-torus.obj', 'tests/constraints/simple-torus.cons', undefined, {peelScale:20}),
 	maek.PEEL('tests/models/split-1-2.obj', 'tests/constraints/split-1-2.cons', undefined, {peelScale:10}),
+	maek.PEEL('tests/models/split-1-2.obj', 'tests/constraints/split-1-2.cons', undefined, {peelScale:20}),
 	//maek.PEEL('tests/models/split-3-3-nonflat.obj', 'tests/constraints/split-3-3-nonflat.cons', undefined, {peelScale:10}), //<-- fails to schedule, as expected
 	//maek.PEEL('tests/models/split-swiss.obj', 'tests/constraints/split-swiss.cons', undefined, {peelScale:10}), //fails to peel
 ];
